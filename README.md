@@ -31,11 +31,11 @@ VakyaLang implements a full classical compiler and runtime pipeline:
 
 ## 📂 Repository Structure
 
-- `vak-lang/`: Core programming language runtime and interpreter.
-- `sanskrit-coder/`: Sanskrit-native math, logic, and grammar engine.
+- `runtime/`: Core programming language runtime and interpreter (`src/`) and standard library (`stdlib/`).
+- `sanskrit_coder/`: Sanskrit-native math, logic, and grammar engine.
 - `docs/`: Language specifications, architectural philosophy, and research documentation.
 - `examples/`: Example programs (Fibonacci, OOP, Task Managers, etc.).
-- `stdlib/`: The standard library written in pure Vāk.
+- `tests/`: Unified test suite.
 
 ---
 
@@ -44,23 +44,30 @@ VakyaLang implements a full classical compiler and runtime pipeline:
 ### Prerequisites
 - Python 3.8+ (No external dependencies required)
 
-### Run a Program
+### Installation
 ```bash
-# Navigate to the language directory
-cd vak-lang
+git clone https://github.com/Sansmatic-z/VakyaLang.git
+cd VakyaLang
+pip install -e .
+```
 
+### Run a Program
+Once installed, you can use the `vak` command from anywhere:
+```bash
 # Run a sample program
-python run.py examples/namaste.vak
+vak examples/namaste.vak
 
 # Start the interactive REPL
-python run.py
+vak repl
 ```
 
 ### Sanskrit Coder CLI
 ```bash
-cd sanskrit-coder
-python main.py
+# Start the symbolic engine
+sanskrit-coder
 ```
+
+For more detailed technical documentation, see the [Complete Technical Manual](SANSKRIT_COMPUTING_COMPLETE_Full.md) and the `docs/` folder.
 
 ---
 

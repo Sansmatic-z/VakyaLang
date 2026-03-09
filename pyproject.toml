@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "vakyalang"
 version = "0.1.0"
 authors = [
-  { name="Raj Mitra", email="rajmitra@example.com" },
+  { name="Raj Mitra" },
 ]
 description = "A Sanskrit-inspired programming language and symbolic computing ecosystem."
 readme = "README.md"
