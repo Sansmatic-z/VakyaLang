@@ -1,0 +1,26 @@
+# 🕉️ VakyaLang Licensing
+
+Copyright (c) 2026 Raj Mitra
+
+This repository uses a **dual-license model** to ensure the integrity of the runtime while allowing open study of the language specification.
+
+## 1. Runtime and Implementation
+All source code for the runtime, compiler, interpreter, and execution engine (contained in `vak-lang/` and `sanskrit-coder/`) is licensed under:
+**GNU Affero General Public License v3.0 (AGPLv3)**
+Any modification or network deployment of this code must release its source code under the same license.
+
+## 2. Language Specification and Documentation
+All specifications, grammar definitions, and architectural documentation (contained in `docs/` and `spec/`) are licensed under:
+**Apache License 2.0**
+This allows researchers and developers to reference and cite the specification freely while providing patent protection.
+
+## 3. Attribution Requirement
+You may not use this project without proper attribution to the original author. You must retain all copyright notices in any redistributed or modified version.
+
+**Author:** Raj Mitra  
+**Project:** VakyaLang  
+**Repository:** https://github.com/Sansmatic-z/VakyaLang
+
+---
+
+See `LICENSE_AGPL` and `LICENSE_APACHE` for the full license texts.

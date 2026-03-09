@@ -1,0 +1,47 @@
+name: Bug Report
+description: Report a bug in VakyaLang (वाक्)
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        🙏 Thank you for reporting a bug! Please provide as much detail as possible to help us resolve it.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Create a file 'test.vak' with...
+        2. Run 'python run.py test.vak'
+        3. See error...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Tracebacks
+      description: Please paste any relevant error messages or tracebacks.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: VakyaLang Version
+      description: E.g., 0.1.0 or Git commit hash.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: E.g., Windows 11, Termux (Android), Ubuntu 22.04.

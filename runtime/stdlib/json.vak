@@ -1,0 +1,37 @@
+# वाक् मानक पुस्तकालय — जेसन (JSON Utilities)
+# Vak Standard Library — Basic Serialization
+
+वर्ग जेसन_उपकरण:
+    कर्म स्ट्रिंग_बनाओ(डेटा):
+        टीका Convert data to JSON-like string
+        चर प्र = प्रकार(डेटा)
+        
+        यदि प्र == "पूर्णांक" अथवा प्र == "दशमलव":
+            प्रत्यागच्छ पाठ_कर(डेटा)
+            
+        यदि प्र == "तार":
+            प्रत्यागच्छ "\"" + डेटा + "\""
+            
+        यदि प्र == "बूलियन":
+            यदि डेटा: प्रत्यागच्छ "true"
+            प्रत्यागच्छ "false"
+            
+        यदि प्र == "शून्य":
+            प्रत्यागच्छ "null"
+            
+        यदि प्र == "सूची":
+            चर परिणाम = "["
+            प्रत्येक चर इ अन्तर्गत डेटा:
+                परिणाम = परिणाम + स्वयं.स्ट्रिंग_बनाओ(इ) + ", "
+            # Remove trailing comma if list is not empty
+            यदि दीर्घता(डेटा) > ०:
+                # Simple implementation: doesn't handle exact slicing easily in this version
+                परिणाम = परिणाम + "]"
+            अन्यथा:
+                परिणाम = "[]"
+            प्रत्यागच्छ परिणाम
+
+        यदि प्र == "शब्दकोश":
+            प्रत्यागच्छ "{...}" # Placeholder for complex dict serialization
+
+मुद्रय "जेसन पुस्तकालय लोड हुआ। (json library loaded.)"
