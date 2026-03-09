@@ -460,7 +460,7 @@ Check Unicode font support
 
 ## 📜 अनुज्ञापत्रम् (License)
 
-**MIT License**
+**GNU AGPL v3**
 
 स्वतन्त्रं सॉफ्टवेयरम्।  
 कस्यचित् उपयोगाय मुक्तम्।  

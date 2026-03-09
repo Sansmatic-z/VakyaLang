@@ -245,7 +245,7 @@ Output (संस्कृत/English)
 
 ## 📜 अनुज्ञापत्रम् (License)
 
-MIT License - मुक्तं उपयोगाय (Free to use)
+GNU AGPL v3 - मुक्तं उपयोगाय (Free to use under AGPL v3 terms)
 
 ---
 
