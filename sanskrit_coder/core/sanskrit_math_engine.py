@@ -1,3 +1,9 @@
+# VakyaLang (????) � Copyright (c) 2026 Raj Mitra. All Rights Reserved.
+# Original author: Raj Mitra (Visionary RM)
+# Licensed under GNU AGPL v3.0 � see LICENSE and NOTICE.
+# Any use, modification, or derivative work must preserve this header
+# and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
+
 # संस्कृत-कोडकः - संस्कृत गणित इन्जिन्
 # Sanskrit Coder - Native Sanskrit Mathematics Engine
 
@@ -656,3 +662,4 @@ class SanskritMathEngine:
                 return f"{name} = {value}"
         
         return f"सूत्रं न लब्धम्: {query}"
+

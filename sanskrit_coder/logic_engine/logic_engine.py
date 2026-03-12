@@ -1,3 +1,9 @@
+# VakyaLang (????) � Copyright (c) 2026 Raj Mitra. All Rights Reserved.
+# Original author: Raj Mitra (Visionary RM)
+# Licensed under GNU AGPL v3.0 � see LICENSE and NOTICE.
+# Any use, modification, or derivative work must preserve this header
+# and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
+
 # संस्कृत-कोडकः - तर्क इन्जिन्
 # *Visionary RM (Raj Mitra)* ⚡
 # *"संस्कृतम् अमरम् भवतु"* 🔥
@@ -52,3 +58,4 @@ class SanskritLogicEngine:
         if 'logic' in question_lower or 'तर्क' in question_lower:
             return "तर्कशास्त्रम् (Logic): The study of valid reasoning and argumentation."
         return f"क्षम्यताम् (Apologies): एतं विषयं नाहं जानामि (I don't have information about: {question})"
+

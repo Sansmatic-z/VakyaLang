@@ -1,3 +1,9 @@
+# VakyaLang (????) � Copyright (c) 2026 Raj Mitra. All Rights Reserved.
+# Original author: Raj Mitra (Visionary RM)
+# Licensed under GNU AGPL v3.0 � see LICENSE and NOTICE.
+# Any use, modification, or derivative work must preserve this header
+# and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
+
 # संस्कृत-कोडकः - सजीव-विशेषता-परीक्षा (Live Features Test)
 import sys
 import os
@@ -48,3 +54,4 @@ def run_live_tests():
 
 if __name__ == "__main__":
     run_live_tests()
+

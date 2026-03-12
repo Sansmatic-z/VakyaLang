@@ -1,3 +1,9 @@
+# VakyaLang (????) � Copyright (c) 2026 Raj Mitra. All Rights Reserved.
+# Original author: Raj Mitra (Visionary RM)
+# Licensed under GNU AGPL v3.0 � see LICENSE and NOTICE.
+# Any use, modification, or derivative work must preserve this header
+# and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
+
 # संस्कृत-कोडकः - अनुवादकः
 # *Visionary RM (Raj Mitra)* ⚡
 # *"संस्कृतम् अमरम् भवतु"* 🔥
@@ -94,3 +100,4 @@ class SanskritTranslator:
             return self.english_to_sanskrit(text)
         else:
             return self.sanskrit_to_english(text)
+

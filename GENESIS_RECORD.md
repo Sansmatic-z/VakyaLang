@@ -6,6 +6,7 @@
 **Genesis Date:** March 12, 2026 — The Bytecode Awakening  
 **Current Version:** 2.0.0 (Production Grade)  
 **License:** Runtime → AGPL v3 | Specifications → Apache 2.0  
+**Contact:** r.8981718053@gmail.com
 
 ---
 
@@ -57,12 +58,14 @@ Sanskrit Command
 | **Exceptions** | ✅ STABLE | `प्रयत्न/दोष` stack unwinding and custom error objects. |
 | **Iterators** | ✅ STABLE | `प्रत्येक` protocol using `GET_ITER` and `FOR_ITER` opcodes. |
 
-### Built-in Library (Integrated & Tested)
-- **Math:** `योग`, `संख्या`, `दशमलव`, `वर्गमूल` (math.sqrt), `पाई` (math.pi).
-- **Strings:** `विभाजन` (split), `संयोग` (join), `छाँटो` (strip), `पाठ_कर` (str).
-- **Collections:** `दीर्घता` (len), `क्रमबद्ध` (sorted), `कुंजियाँ` (keys), `मान` (values).
-- **I/O:** `मुद्रय` (print), `पठन` (read), `लेखन` (write), `मिटाओ` (delete).
-- **OS:** `सूची_निर्देशिका` (ls), `बनाओ_निर्देशिका` (mkdir), `मंच` (platform), `कार्य_निर्देशिका` (pwd).
+### Legal & Professional Protection
+| Item | Status | Purpose |
+|---|---|---|
+| **License** | ✅ AGPL v3 | Strong copyleft to prevent closed-source forks. |
+| **Headers** | ✅ ACTIVE | Original copyright headers injected into ALL `.py` files. |
+| **NOTICE** | ✅ ACTIVE | Mandatory attribution file at root. |
+| **Metadata** | ✅ VERIFIED | Verified `pyproject.toml` and author contact info. |
+| **Badges** | ✅ ACTIVE | Professional Shields.io branding for Stars, License, and Version. |
 
 ---
 
@@ -83,14 +86,14 @@ The following production examples have been verified on the **v2.0.0 Bytecode VM
 
 ## 📜 CHANGELOG: THE GREAT LEAP
 
-### v2.0.0 — 2026-03-12 (THE GENESIS)
+### v2.0.0 — 2026-03-12 (THE GENESIS & POLISH)
 - **Engine Swap:** Replaced Tree-Walking interpreter with a full Bytecode VM.
 - **ISA Design:** Created a 16-bit operand instruction set architecture.
-- **Closure Fix:** Implemented environment capturing for nested functions.
-- **Inheritance Fix:** Implemented class method bubbling for child classes.
+- **Anti-Theft:** Injected original copyright headers into every source file.
+- **Visual Branding:** Applied high-polish README with dynamic Shields.io badges.
+- **Packaging:** Standardized `pyproject.toml` for future PyPI release.
 - **Math Upgrade:** Shifted Math Engine to `Decimal` for high-precision Sanskrit computation.
 - **Equation Solver:** Implemented a real Symbolic Polynomial Parser for `समाधत्स्व`.
-- **System Sync:** Fully merged all laboratory tests into the master `vaklang main` repository.
 
 ### v1.1.0 — 2026-03-09
 - Initial File I/O Bridge.

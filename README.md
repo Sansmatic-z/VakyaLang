@@ -1,92 +1,65 @@
 # 🕉️ VakyaLang (वाक्)
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Stars](https://img.shields.io/github/stars/Sansmatic-z/VakyaLang)](https://github.com/Sansmatic-z/VakyaLang)
+[![AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org)
+[![Stars](https://img.shields.io/github/stars/Sansmatic-z/VakyaLang)](https://github.com/Sansmatic-z/VakyaLang/stargazers)
 
-**वाक् वै ब्रह्म** — *"Speech is indeed the universal principle."*
+**वाक् वै ब्रह्म** — *Speech is indeed the universal principle.*
 
-**VakyaLang** is a Sanskrit-inspired symbolic programming language and computing framework that treats Sanskrit not as a historical artifact, but as a rigorous, formal substrate for modern computing.
+**VakyaLang** is a Sanskrit-inspired symbolic programming language and computing framework that treats Sanskrit as a rigorous formal substrate for modern computing — rooted in Pāṇinian grammar and Nyāya logic.
 
-The system combines:
-- **वाक् (Vāk):** A general-purpose, virtual-machine-based programming language with syntax rooted in Pāṇinian grammar.
-- **संस्कृत-कोडकः (Sanskrit Coder):** A symbolic reasoning engine and mathematical executor that operates through Nyāya logic and natural Sanskrit expressions.
-
----
-
-## 🏗️ Architecture
-
-VakyaLang implements a full classical compiler and runtime pipeline:
-
-`Source (.vak) → Lexer → Parser → AST → Compiler → Bytecode → Virtual Machine`
-
-### Key Features
-- **Full Devanagari Syntax:** Keywords, operators, and digits in Sanskrit Devanagari.
-- **Pāṇinian Logic:** Grammar-driven parsing and structural regularity.
-- **Nyāya Syllogism:** Native logical reasoning (*Pañcāvayava*) for symbolic computing.
-- **Multi-Level Runtime:** Tree-walk interpreter and a stack-based Virtual Machine.
-- **Standard Library:** Core modules for math, file I/O, and string processing.
+### Core Components
+- **Vāk (वाक्)**: General-purpose VM-based language with Devanagari syntax
+- **Sanskrit Coder**: Symbolic reasoning engine using natural Sanskrit + Nyāya syllogisms
 
 ---
 
-## 📂 Repository Structure
+## 🚀 Quick Start
 
-- `runtime/`: Core programming language runtime and interpreter (`src/`) and standard library (`stdlib/`).
-- `sanskrit_coder/`: Sanskrit-native math, logic, and grammar engine.
-- `docs/`: Language specifications, architectural philosophy, and research documentation.
-- `examples/`: Example programs (Fibonacci, OOP, Task Managers, etc.).
-- `tests/`: Unified test suite.
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Python 3.8+ (No external dependencies required)
-
-### Installation
 ```bash
 git clone https://github.com/Sansmatic-z/VakyaLang.git
 cd VakyaLang
 pip install -e .
 ```
 
-### Run a Program
-Once installed, you can use the `vak` command from anywhere:
 ```bash
-# Run a sample program
-vak examples/namaste.vak
-
-# Start the interactive REPL
-vak repl
+vak examples/namaste.vak          # Run program
+vak repl                         # Interactive REPL
+sanskrit-coder                   # Symbolic engine
 ```
 
-### Sanskrit Coder CLI
-```bash
-# Start the symbolic engine
-sanskrit-coder
-```
+---
 
-For more detailed technical documentation, see the [Complete Technical Manual](SANSKRIT_COMPUTING_COMPLETE_Full.md) and the `docs/` folder.
+## 📂 Repository Structure
+- `runtime/` — Core language runtime, VM, compiler, interpreter + stdlib
+- `sanskrit_coder/` — Sanskrit-native math, logic & grammar engine
+- `docs/` — Full specification, philosophy & research papers
+- `examples/` — Ready-to-run programs (namaste, Fibonacci, OOP, etc.)
+- `tests/` — Complete test suite
 
 ---
 
-## 🤝 Contributing
+## ⚖️ Licensing & Attribution (Important)
 
-We welcome contributions that respect the project's vision of Sanskrit as a computing substrate. Please see `CONTRIBUTING.md` for guidelines on how to participate.
+**This is the original research and architecture of Raj Mitra (2026).**
 
----
+- **Runtime & Source Code**: GNU Affero General Public License v3.0 (AGPL v3)  
+- **Language Specification & Documentation**: Apache License 2.0
 
-## ⚖️ License & Attribution
+**You MUST** include the `NOTICE` file and all original copyright headers in any derivative work.  
+See `LICENSE`, `LICENSE_AGPL`, `LICENSE_APACHE`, `NOTICE`, and `CITATION.cff` for full legal details.
 
-This project is the original research and architecture of **Raj Mitra**.
-
-- **Runtime & Runtime Source:** GNU Affero General Public License v3.0 (AGPL v3).
-- **Language Specification & Docs:** Apache License 2.0.
-
-See the `LICENSE`, `NOTICE`, and `CITATION.cff` files for full details on attribution requirements.
+**© 2026 Raj Mitra. All Rights Reserved.**  
+If you use VakyaLang in research, products, or derivatives, proper credit is legally required.
 
 ---
 
-*"संस्कृतम् अमरम् भवतु"* — **May Sanskrit Become Immortal.**  
-**© 2026 Raj Mitra. All Rights Reserved.**
+## 🤝 Contributing & Citation
+
+See `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md`.  
+Cite the project using `CITATION.cff` (BibTeX & APA ready).
+
+---
+
+*"संस्कृतम् अमरम् भवतु"* — May Sanskrit become immortal in computing.

@@ -1,3 +1,9 @@
+# VakyaLang (????) � Copyright (c) 2026 Raj Mitra. All Rights Reserved.
+# Original author: Raj Mitra (Visionary RM)
+# Licensed under GNU AGPL v3.0 � see LICENSE and NOTICE.
+# Any use, modification, or derivative work must preserve this header
+# and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
+
 # संस्कृत-कोडकः - संस्कृत व्याकरण तन्त्रम्
 # Sanskrit Coder - Sanskrit Grammar Engine
 
@@ -285,3 +291,4 @@ class SanskritGrammar:
             return f"{subj} {obj} {verb_form} ।"
         
         return f"{subj} {verb_form} ।"
+

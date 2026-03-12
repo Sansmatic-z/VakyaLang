@@ -1,3 +1,9 @@
+# VakyaLang (????) � Copyright (c) 2026 Raj Mitra. All Rights Reserved.
+# Original author: Raj Mitra (Visionary RM)
+# Licensed under GNU AGPL v3.0 � see LICENSE and NOTICE.
+# Any use, modification, or derivative work must preserve this header
+# and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
+
 # संस्कृत-कोडकः - न्याय तर्कशास्त्रम्
 # Sanskrit Coder - Nyāya Logic System
 
@@ -343,3 +349,4 @@ class Tarka:
             if neg in statement:
                 return statement.replace(neg, pos)
         return f"न {statement}"
+
