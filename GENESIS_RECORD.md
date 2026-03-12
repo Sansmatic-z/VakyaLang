@@ -32,6 +32,56 @@ Source (.vak file)
 [VakVM]         Stack-based Virtual Machine (The Soul)
 ```
 
+### 2. Sanskrit Coder Pipeline
+```
+Sanskrit Command
+    ↓
+[SanskritEngine]     Main Dispatcher
+    ↓
+[MathEngine]         High-Precision Decimal Symbolic Parser
+[LogicEngine]        Nyāya Syllogism Generator (5-part)
+[VedicEngine]        Native Vedic Multipliers & Sutras
+```
+
+---
+
+## ✅ SYSTEM STATUS (Verified March 12, 2026)
+
+### Language Core (100% Functional)
+| Feature | Status | Specification |
+|---|---|---|
+| **VM Mode** | ✅ ACTIVE | Default runtime is now the Bytecode VM. |
+| **ISA** | ✅ STABLE | 16-bit operands, 64+ Opcodes. |
+| **Recursion** | ✅ STABLE | Global frame injection for deep recursion (Fibonacci verified). |
+| **Closures** | ✅ STABLE | Environment capturing for nested functions (`कर्म`). |
+| **OOP** | ✅ STABLE | Inheritance, polymorphism, and `प्रारम्भ` (constructor) logic. |
+| **Exceptions** | ✅ STABLE | `प्रयत्न/दोष` stack unwinding and custom error objects. |
+| **Iterators** | ✅ STABLE | `प्रत्येक` protocol using `GET_ITER` and `FOR_ITER` opcodes. |
+
+### Legal & Professional Protection
+| Item | Status | Purpose |
+|---|---|---|
+| **License** | ✅ AGPL v3 | Strong copyleft to prevent closed-source forks. |
+| **Headers** | ✅ ACTIVE | Original copyright headers injected into ALL `.py` files. |
+| **NOTICE** | ✅ ACTIVE | Mandatory attribution file at root. |
+| **Metadata** | ✅ VERIFIED | Verified `pyproject.toml` and author contact info. |
+| **Badges** | ✅ ACTIVE | Professional Shields.io branding for Stars, License, and Version. |
+
+---
+
+## 🧪 THE GENESIS TEST RESULTS (100% PASS)
+
+The following production examples have been verified on the **v2.0.0 Bytecode VM**:
+
+1. `namaste.vak`: ✅ Basic Syntax & Devanagari IO.
+2. `fibonacci.vak`: ✅ Recursion vs Iteration benchmark.
+3. `data.vak`: ✅ Complex Dict/List/String manipulation.
+4. `varg.vak`: ✅ OOP Inheritance (`वृत्त(आकार)`) & Constructors.
+5. `dosh.vak`: ✅ Exception Handling & Resource Finalization.
+6. `tasks.vak`: ✅ Persistent CLI App (The first "Real Software" in VakyaLang).
+7. `webgen.vak`: ✅ System Bridge & HTML Generation.
+8. `vyapak.vak`: ✅ Closure environments & High-level built-ins.
+
 ---
 
 ## 📜 CHRONOLOGICAL LEDGER (The History)
@@ -67,20 +117,6 @@ Source (.vak file)
 
 ---
 
-## ✅ SYSTEM STATUS (Current State: March 12, 2026)
-
-### Language Core (Bytecode VM DNA)
-- **VM Mode:** ✅ ACTIVE (Default)
-- **ISA:** ✅ STABLE (64+ Opcodes)
-- **OOP/Closures:** ✅ STABLE
-- **Exceptions:** ✅ STABLE
-- **Iterators:** ✅ STABLE
-
-### Built-in Library (Verified)
-- Math, Strings, Collections, I/O, and OS modules are fully integrated with the Bytecode VM.
-
----
-
 ## 👤 Credits & Ownership
 
 **Visionary RM (Raj Mitra)**
@@ -89,5 +125,5 @@ Source (.vak file)
 The code contained in this repository is the technical manifestation of Visionary RM's architectural vision. This record serves as a permanent, timestamped proof of the project's evolution and authorship.
 
 ---
-*DNA Record Sealed: March 12, 2026 (Updated with v2.1.1 Fortification)*
+*DNA Record Sealed: March 12, 2026 (Full Restoration & v2.1.1 Extension)*
 *"वाक् वै ब्रह्म"*
