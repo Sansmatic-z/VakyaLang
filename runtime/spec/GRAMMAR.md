@@ -1,6 +1,6 @@
 # वाक् भाषा — व्याकरण विनिर्देश
 # Vāk Language — Formal Grammar Specification
-# Version 1.0.0 · Author: Raj Mitra · © 2026 · AGPL v3
+# Version 2.0.0 · Author: Raj Mitra · © 2026 · AGPL v3
 
 ---
 

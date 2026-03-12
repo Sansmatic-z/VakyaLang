@@ -271,6 +271,6 @@ GNU AGPL v3 - मुक्तं उपयोगाय (Free to use under AGPL v
 
 ---
 
-**Version:** 1.0.0  
+**Version:** 2.0.0  
 **Date:** March 8, 2026  
 **Status:** Active Development
