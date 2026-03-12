@@ -1,6 +1,6 @@
-# VakyaLang (????) � Copyright (c) 2026 Raj Mitra. All Rights Reserved.
+# VakyaLang (वाक्) — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
 # Original author: Raj Mitra (Visionary RM)
-# Licensed under GNU AGPL v3.0 � see LICENSE and NOTICE.
+# Licensed under GNU AGPL v3.0 — see LICENSE and NOTICE.
 # Any use, modification, or derivative work must preserve this header
 # and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
 
@@ -8,9 +8,23 @@ import os
 import subprocess
 import sys
 
+# Set UTF-8 encoding for Windows console output
+if sys.platform == 'win32':
+    os.system('chcp 65001 > nul')  # Set console to UTF-8
+    sys.stdout.reconfigure(encoding='utf-8')
+
 def run_command(cmd):
     """Run a shell command and return (returncode, stdout, stderr)."""
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
+    # Use UTF-8 encoding for subprocess
+    process = subprocess.Popen(
+        cmd, 
+        stdout=subprocess.PIPE, 
+        stderr=subprocess.PIPE, 
+        text=True, 
+        shell=True,
+        encoding='utf-8',
+        errors='replace'
+    )
     stdout, stderr = process.communicate()
     return process.returncode, stdout, stderr
 
@@ -18,11 +32,11 @@ def test_examples():
     # Run regular examples
     examples_dir = "../examples"
     examples = [os.path.join(examples_dir, f) for f in os.listdir(examples_dir) if f.endswith(".vak")]
-    
+
     # Also run our new stdlib test
     tests = examples + ["test_stdlib.vak"]
     tests.sort()
-    
+
     results = []
     print(f"Running {len(tests)} tests...")
     for path in tests:
@@ -42,7 +56,7 @@ def test_examples():
 def test_cli():
     print("Testing CLI flags...")
     cli_results = []
-    
+
     # Test --ast/--tokens logic if supported, but for now we just verify it runs
     return cli_results
 
@@ -50,7 +64,7 @@ if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     example_results = test_examples()
     cli_results = test_cli()
-    
+
     all_results = example_results + cli_results
     failed = [name for name, success in all_results if not success]
     if failed:
@@ -59,4 +73,3 @@ if __name__ == "__main__":
     else:
         print("\nAll tests PASSED!")
         sys.exit(0)
-

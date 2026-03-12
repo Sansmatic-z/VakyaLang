@@ -1,9 +1,8 @@
-# VakyaLang (????) � Copyright (c) 2026 Raj Mitra. All Rights Reserved.
+# VakyaLang (वाक्) — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
 # Original author: Raj Mitra (Visionary RM)
-# Licensed under GNU AGPL v3.0 � see LICENSE and NOTICE.
+# Licensed under GNU AGPL v3.0 — see LICENSE and NOTICE.
 # Any use, modification, or derivative work must preserve this header
 # and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
-
 # वाक् भाषा - संकलक (Compiler)
 # Vak Language - AST to Bytecode Compiler
 
@@ -302,13 +301,20 @@ class Compiler:
     def _compile_ImportStmt(self, node: ImportStmt):
         idx = self.bytecode.add_constant(node.module)
         self.bytecode.emit_16bit(OpCode.IMPORT_NAME, idx)
-        
+
         if node.names:
             # We would extract specific names from the imported module here
             pass
         else:
             # Store module object in local variable
-            slot = self.bytecode.get_var_slot(node.module)
+            # For dotted imports (e.g., 'stdlib.mool'), store under the base name ('stdlib')
+            # The module object will have attributes for submodules
+            if '.' in node.module:
+                # Store under the first part (e.g., 'stdlib' not 'stdlib.mool')
+                base_name = node.module.split('.')[0]
+                slot = self.bytecode.get_var_slot(base_name)
+            else:
+                slot = self.bytecode.get_var_slot(node.module)
             self.bytecode.emit(OpCode.STORE_VAR, slot)
     def _compile_Block(self, node: Block):
         for stmt in node.stmts:

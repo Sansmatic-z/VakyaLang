@@ -744,7 +744,7 @@ Planned integration path:
 
 ```
 vak-coder/
-├── vak-lang/                    ← The वाक् programming language
+├── runtime/                    ← The वाक् programming language
 │   ├── run.py                   ← Entry point, REPL, CLI
 │   ├── run_tests.py             ← Test runner
 │   ├── benchmark.vak            ← Performance benchmark
@@ -777,7 +777,7 @@ vak-coder/
 │       ├── dosh.vak             ← Error handling
 │       └── vyapak.vak           ← Comprehensive feature demo
 │
-└── sanskrit-coder/              ← The Sanskrit math/logic engine
+└── sanskrit_coder/              ← The Sanskrit math/logic engine
     ├── main.py                  ← CLI entry point
     ├── core/
     │   ├── engine.py            ← Main dispatcher
