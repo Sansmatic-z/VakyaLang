@@ -1,75 +1,68 @@
 #!/usr/bin/env python3
-"""
-VakyaLang (वाक्) Unified CLI
-Unified entry point for Vāk programming language and Sanskrit Coder.
+# वाक् भाषा - CLI Entry Point
 
-© 2026 Raj Mitra. All Rights Reserved.
-"""
 import sys
-import os
+import argparse
+from pathlib import Path
 
-# Add root to sys.path to allow imports
-root_path = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, root_path)
+# Add parent to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
 
-def usage():
-    print("VakyaLang (वाक्) Unified CLI")
-    print("Usage:")
-    print("  python vak.py run <file.vak>    Run a Vāk program")
-    print("  python vak.py repl              Start the Vāk interactive REPL")
-    print("  python vak.py coder             Start Sanskrit Coder CLI")
-    print("  python vak.py test              Run all tests")
-    print("  python vak.py --version         Show version info")
+from runtime.src.interpreter import VakInterpreter
+from runtime.src.errors import VakError
 
 def main():
-    if len(sys.argv) < 2:
-        usage()
-        sys.exit(1)
-
-    cmd = sys.argv[1].lower()
-
-    if cmd == "run":
-        if len(sys.argv) < 3:
-            print("Error: Specify a .vak file to run.")
+    parser = argparse.ArgumentParser(
+        description='वाक् भाषा (VakyaLang) - Sanskrit-inspired Programming Language',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s                          Start REPL
+  %(prog)s file.vak                 Run a VakyaLang file
+  %(prog)s file.vak --debug         Run with debug output
+  %(prog)s --compile file.vak       Compile to bytecode only
+        """
+    )
+    parser.add_argument('file', nargs='?', help='VakyaLang source file')
+    parser.add_argument('--debug', '-d', action='store_true', help='Enable debug mode')
+    parser.add_argument('--compile', '-c', action='store_true', help='Compile only, do not run')
+    parser.add_argument('--disassemble', action='store_true', help='Show bytecode disassembly')
+    parser.add_argument('--version', '-v', action='version', version='%(prog)s 2.0.0')
+    
+    args = parser.parse_args()
+    interpreter = VakInterpreter()
+    
+    if args.file:
+        try:
+            source = Path(args.file).read_text(encoding='utf-8')
+            
+            if args.compile:
+                bytecode = interpreter.compile_only(source)
+                output_file = Path(args.file).with_suffix('.vakc')
+                output_file.write_bytes(bytecode.to_bytes())
+                print(f"Compiled to: {output_file}")
+                if args.disassemble:
+                    print("\n" + bytecode.disassemble())
+            else:
+                result = interpreter.run(source, debug=args.debug)
+                if result is not None:
+                    print(result)
+                    
+        except FileNotFoundError:
+            print(f"Error: File not found: {args.file}", file=sys.stderr)
             sys.exit(1)
-        import runtime.run as vak_run
-        sys.argv = [sys.argv[0]] + sys.argv[2:] # Strip 'run'
-        vak_run.main()
-
-    elif cmd == "repl":
-        import runtime.run as vak_run
-        sys.argv = [sys.argv[0]] # Empty args for REPL
-        vak_run.main()
-
-    elif cmd == "coder":
-        import sanskrit_coder.main as coder_main
-        coder_main.main()
-
-    elif cmd == "test":
-        print("Running VakyaLang Test Suite...")
-        # Run Sanskrit Coder tests
-        import tests.test_sanskrit_coder as coder_test
-        coder_test.main()
-        
-        # Run Vāk examples as integration tests
-        import runtime.run as vak_run
-        examples = [
-            "examples/namaste.vak",
-            "examples/fibonacci.vak",
-            "examples/varg.vak"
-        ]
-        for ex in examples:
-            print(f"\n--- Testing Example: {ex} ---")
-            ex_path = os.path.join(root_path, ex)
-            if os.path.exists(ex_path):
-                sys.argv = [sys.argv[0], ex_path]
-                vak_run.main()
-
-    elif cmd in ["--version", "-v"]:
-        print("VakyaLang v0.1.0")
-
+        except VakError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Internal error: {e}", file=sys.stderr)
+            if args.debug:
+                import traceback
+                traceback.print_exc()
+            sys.exit(1)
     else:
-        usage()
+        # Start REPL
+        interpreter.repl()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

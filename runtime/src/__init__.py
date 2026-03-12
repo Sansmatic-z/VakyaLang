@@ -3,10 +3,10 @@
 
 from .lexer       import Lexer
 from .parser      import Parser
-from .interpreter import Interpreter
-from .errors      import VakError, LexerError, ParseError, VakRuntimeError
+from .interpreter import VakInterpreter
+from .errors      import VakError, LexerError, ParseError, VMError
 
 __all__ = [
-    "Lexer", "Parser", "Interpreter",
-    "VakError", "LexerError", "ParseError", "VakRuntimeError",
+    "Lexer", "Parser", "VakInterpreter",
+    "VakError", "LexerError", "ParseError", "VMError",
 ]

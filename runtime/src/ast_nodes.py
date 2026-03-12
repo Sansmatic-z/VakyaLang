@@ -4,20 +4,17 @@
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
-
 # ── Base ──────────────────────────────────────────────────────────────────────
 
 class Node:
     """Base class for all AST nodes."""
     line: int = 0
 
-
 # ── Statements ────────────────────────────────────────────────────────────────
 
 @dataclass
 class Program(Node):
     body: List[Any]
-
 
 @dataclass
 class VarDecl(Node):
@@ -26,7 +23,6 @@ class VarDecl(Node):
     value: Any
     line: int = 0
 
-
 @dataclass
 class ConstDecl(Node):
     """स्थिर name = value"""
@@ -34,31 +30,28 @@ class ConstDecl(Node):
     value: Any
     line: int = 0
 
-
 @dataclass
 class FuncDecl(Node):
     """
     कर्म name(params...):
-        body
+    body
     """
     name: str
     params: List[str]
-    defaults: List[Any]    # default values (None if no default)
-    body: Any              # Block
+    defaults: List[Any] # default values (None if no default)
+    body: Any # Block
     line: int = 0
-
 
 @dataclass
 class ClassDecl(Node):
     """
     वर्ग Name(Parent):
-        body
+    body
     """
     name: str
     superclass: Optional[Any]
-    body: Any              # Block
+    body: Any # Block
     line: int = 0
-
 
 @dataclass
 class ReturnStmt(Node):
@@ -66,30 +59,27 @@ class ReturnStmt(Node):
     value: Any
     line: int = 0
 
-
 @dataclass
 class PrintStmt(Node):
     """मुद्रय expr, expr, ..."""
     values: List[Any]
     line: int = 0
 
-
 @dataclass
 class IfStmt(Node):
     """
     यदि cond:
-        then_body
+    then_body
     अन्यत् cond:
-        elif_body
+    elif_body
     अन्यथा:
-        else_body
+    else_body
     """
     condition: Any
     then_body: Any
-    elif_clauses: List[Any]    # list of (condition, body) tuples
+    elif_clauses: List[Any] # list of (condition, body) tuples
     else_body: Optional[Any]
     line: int = 0
-
 
 @dataclass
 class WhileStmt(Node):
@@ -97,7 +87,6 @@ class WhileStmt(Node):
     condition: Any
     body: Any
     line: int = 0
-
 
 @dataclass
 class ForStmt(Node):
@@ -107,28 +96,25 @@ class ForStmt(Node):
     body: Any
     line: int = 0
 
-
 @dataclass
 class BreakStmt(Node):
     """विराम"""
     line: int = 0
-
 
 @dataclass
 class ContinueStmt(Node):
     """अग्रे"""
     line: int = 0
 
-
 @dataclass
 class TryStmt(Node):
     """
     प्रयत्न:
-        try_body
+    try_body
     दोष var:
-        catch_body
+    catch_body
     अन्ततः:
-        finally_body
+    finally_body
     """
     try_body: Any
     catch_var: Optional[str]
@@ -136,13 +122,11 @@ class TryStmt(Node):
     finally_body: Optional[Any]
     line: int = 0
 
-
 @dataclass
 class ThrowStmt(Node):
     """उत्क्षिप expr"""
     value: Any
     line: int = 0
-
 
 @dataclass
 class ImportStmt(Node):
@@ -151,9 +135,8 @@ class ImportStmt(Node):
     आयात name से module
     """
     module: str
-    names: Optional[List[str]]   # None = import whole module
+    names: Optional[List[str]] # None = import whole module
     line: int = 0
-
 
 @dataclass
 class ExprStmt(Node):
@@ -161,13 +144,11 @@ class ExprStmt(Node):
     expr: Any
     line: int = 0
 
-
 @dataclass
 class Block(Node):
     """A sequence of statements."""
     stmts: List[Any]
     line: int = 0
-
 
 # ── Expressions ───────────────────────────────────────────────────────────────
 
@@ -179,7 +160,6 @@ class BinaryExpr(Node):
     right: Any
     line: int = 0
 
-
 @dataclass
 class UnaryExpr(Node):
     """op expr"""
@@ -187,15 +167,13 @@ class UnaryExpr(Node):
     operand: Any
     line: int = 0
 
-
 @dataclass
 class AssignExpr(Node):
-    """target = value  (also +=, -=, etc.)"""
+    """target = value (also +=, -=, etc.)"""
     target: Any
     op: str
     value: Any
     line: int = 0
-
 
 @dataclass
 class CallExpr(Node):
@@ -205,14 +183,12 @@ class CallExpr(Node):
     kwargs: dict
     line: int = 0
 
-
 @dataclass
 class MemberExpr(Node):
     """object.attribute"""
     obj: Any
     attr: str
     line: int = 0
-
 
 @dataclass
 class IndexExpr(Node):
@@ -221,48 +197,40 @@ class IndexExpr(Node):
     index: Any
     line: int = 0
 
-
 @dataclass
 class IdentifierExpr(Node):
     """A bare name."""
     name: str
     line: int = 0
 
-
 @dataclass
 class NumberLiteral(Node):
-    value: Any      # int or float
+    value: Any # int or float
     line: int = 0
-
 
 @dataclass
 class StringLiteral(Node):
     value: str
     line: int = 0
 
-
 @dataclass
 class BoolLiteral(Node):
     value: bool
     line: int = 0
 
-
 @dataclass
 class NullLiteral(Node):
     line: int = 0
-
 
 @dataclass
 class ListLiteral(Node):
     elements: List[Any]
     line: int = 0
 
-
 @dataclass
 class DictLiteral(Node):
-    pairs: List[Any]   # list of (key_expr, val_expr) tuples
+    pairs: List[Any] # list of (key_expr, val_expr) tuples
     line: int = 0
-
 
 @dataclass
 class LambdaExpr(Node):
