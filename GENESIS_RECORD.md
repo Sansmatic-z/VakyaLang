@@ -4,7 +4,9 @@
 **Project:** वाक् (Vāk) Language + संस्कृत-कोडकः (Sanskrit Coder)  
 **Author & Inventor:** Raj Mitra (- Visionary RM)  
 **Genesis Date:** March 12, 2026 — The Bytecode Awakening  
+**Current Version:** 2.1.1 (Fortified)  
 **License:** Runtime → AGPL v3 | Specifications → Apache 2.0  
+**Contact:** r.8981718053@gmail.com
 
 ---
 
@@ -57,6 +59,12 @@ Source (.vak file)
 - **Repository Health:** Consolidated `tests/` and `examples/` to root; renamed `sanskrit_coder` for Python compliance.
 - **Tagging:** Created and pushed the first formal release tag `v0.1.0` (as the first stable ecosystem snapshot).
 
+### [CHAPTER 4] v2.1.1 — 2026-03-12 (THE SANSKRIT CODER FORTIFICATION)
+- **Module Self-Containment:** Added a local `LICENSE` pointer inside `sanskrit_coder/` to prevent standalone theft.
+- **Module Branding:** Updated all `.py` files in `sanskrit_coder/` with module-specific "Sanskrit Coder" headers.
+- **Sub-README Polish:** Upgraded `sanskrit_coder/README.md` with professional badges and links to the main ecosystem.
+- **Consistency Check:** Verified that all module-level documentation aligns with the global AGPL v3 protection.
+
 ---
 
 ## ✅ SYSTEM STATUS (Current State: March 12, 2026)
@@ -81,5 +89,5 @@ Source (.vak file)
 The code contained in this repository is the technical manifestation of Visionary RM's architectural vision. This record serves as a permanent, timestamped proof of the project's evolution and authorship.
 
 ---
-*DNA Record Sealed: March 12, 2026 (Updated with v2.1.0 Polish)*
+*DNA Record Sealed: March 12, 2026 (Updated with v2.1.1 Fortification)*
 *"वाक् वै ब्रह्म"*

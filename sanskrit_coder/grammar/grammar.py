@@ -1,3 +1,8 @@
+# Sanskrit Coder ó Copyright (c) 2026 Raj Mitra. All Rights Reserved.
+# Part of VakyaLang project (https://github.com/Sansmatic-z/VakyaLang)
+# Licensed under GNU AGPL v3.0 ó see root LICENSE_AGPL and NOTICE.
+# Any use or modification must preserve this header and include NOTICE.
+
 # VakyaLang (????) ó Copyright (c) 2026 Raj Mitra. All Rights Reserved.
 # Original author: Raj Mitra (Visionary RM)
 # Licensed under GNU AGPL v3.0 ó see LICENSE and NOTICE.
@@ -65,4 +70,5 @@ class SanskritGrammar:
         elif verb in ['‡§Ö‡§®‡•ç‡§µ‡•á‡§∑‡§Ø', 'search']:
             result['type'] = 'search'
         return result
+
 

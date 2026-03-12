@@ -1,7 +1,48 @@
 # 🕉️ संस्कृत-कोडकः (Sanskrit Coder)
 
+[![AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Part of VakyaLang](https://img.shields.io/badge/Part%20of-VakyaLang-8B00FF.svg)](https://github.com/Sansmatic-z/VakyaLang)
+
 **पूर्णं संस्कृत निष्पादन तन्त्रम्**  
 *Complete Sanskrit Execution System*
+
+A symbolic mathematics, logic and grammar engine that speaks Sanskrit natively — powered by Nyāya reasoning and Pāṇinian grammar.
+
+---
+
+## 🚀 Quick Start (Recommended)
+
+```bash
+# From the main VakyaLang repository
+pip install -e .
+sanskrit-coder
+```
+
+(Uses the official `sanskrit-coder` CLI from `pyproject.toml` — no manual `requirements.txt` needed.)
+
+---
+
+## विशेषताः (Features)
+- Full Sanskrit input/output (Devanagari + spoken commands)
+- Sanskrit Numbers, Grammar (Vibhakti, Lakara), Mathematics & Nyāya Logic
+- Auto Sanskrit ↔ English translation
+- Formula lookup, equation solving, physics/grammar engine
+
+---
+
+## ⚖️ Licensing & Legal Protection (Very Important)
+
+**This is original research by Raj Mitra (2026).**
+
+- Licensed under **GNU AGPL v3.0** (same as the rest of VakyaLang runtime)
+- Part of the main VakyaLang project
+- **You MUST** include the root `NOTICE` file and all copyright headers in any copy or derivative work.
+
+See the root files for full legal text:  
+`../LICENSE_AGPL`, `../NOTICE`, `../LICENSE`
+
+**© 2026 Raj Mitra. All Rights Reserved.**  
+Any use, modification, or redistribution without proper credit and AGPL compliance is prohibited.
 
 ---
 
@@ -29,7 +70,9 @@ A complete mathematics and logic execution system in Sanskrit language.
 ## 📦 संस्थापनम् (Installation)
 
 ```bash
-cd sanskrit-coder
+# Recommendation: Use 'pip install -e .' from the root directory.
+# Alternative manual install:
+cd sanskrit_coder
 pip install -r requirements.txt
 ```
 
@@ -75,8 +118,9 @@ print(result)
 ## 📂 सञ्चिकाः (File Structure)
 
 ```
-sanskrit-coder/
+sanskrit_coder/
 ├── README.md              # इयं सञ्चिका (This file)
+├── LICENSE                # Module License
 ├── requirements.txt       # आवश्यकताः (Dependencies)
 │
 ├── core/                  # मुख्य भागः (Core)
@@ -94,7 +138,7 @@ sanskrit-coder/
 │   ├── __init__.py
 │   ├── vibhakti.py        # विभक्तयः (Cases)
 │   ├── lakara.py          # लकाराः (Tenses)
-│   └── sentence.py        # वाक्यरचना (Syntax)
+│   └── sentence.py        # वाक्यर रचना (Syntax)
 │
 ├── math/                  # गणितम्
 │   ├── __init__.py
@@ -106,14 +150,6 @@ sanskrit-coder/
 │   ├── __init__.py
 │   ├── nyaya.py           # न्याय तर्कः
 │   └── inference.py       # अनुमानम्
-│
-├── commands/              # आदेशाः
-│   ├── __init__.py
-│   └── sanskrit_commands.py
-│
-└── tests/                 # परीक्षा
-    ├── __init__.py
-    └── test_sanskrit.py
 ```
 
 ---
@@ -227,26 +263,6 @@ The system understands all 8 Sanskrit cases:
 - Sanskrit Unicode support
 - No external NLP libraries required (built-in)
 
-### Architecture
-
-```
-User Input (Sanskrit/English)
-        ↓
-Translator (संस्कृत ↔ English)
-        ↓
-Parser (विश्लेषणम्)
-        ↓
-Executor (निष्पादनम्)
-        ↓
-Output (संस्कृत/English)
-```
-
----
-
-## 📜 अनुज्ञापत्रम् (License)
-
-GNU AGPL v3 - मुक्तं उपयोगाय (Free to use under AGPL v3 terms)
-
 ---
 
 ## 🙏 कृतज्ञता (Acknowledgments)
@@ -265,12 +281,10 @@ GNU AGPL v3 - मुक्तं उपयोगाय (Free to use under AGPL v
 
 ---
 
-*Visionary RM (Raj Mitra)* ⚡  
-*"संस्कृतम् अमरम् भवतु"* 🔥  
-*"May Sanskrit Become Immortal"*
-
----
+*"संस्कृतम् अमरम् भवतु"*  
+**Visionary RM (Raj Mitra)** ⚡  
+[Back to main VakyaLang](https://github.com/Sansmatic-z/VakyaLang)
 
 **Version:** 2.0.0  
-**Date:** March 8, 2026  
+**Date:** March 12, 2026  
 **Status:** Active Development

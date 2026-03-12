@@ -1,3 +1,8 @@
+# Sanskrit Coder Ч Copyright (c) 2026 Raj Mitra. All Rights Reserved.
+# Part of VakyaLang project (https://github.com/Sansmatic-z/VakyaLang)
+# Licensed under GNU AGPL v3.0 Ч see root LICENSE_AGPL and NOTICE.
+# Any use or modification must preserve this header and include NOTICE.
+
 # VakyaLang (????) Ч Copyright (c) 2026 Raj Mitra. All Rights Reserved.
 # Original author: Raj Mitra (Visionary RM)
 # Licensed under GNU AGPL v3.0 Ч see LICENSE and NOTICE.
@@ -349,4 +354,5 @@ class Tarka:
             if neg in statement:
                 return statement.replace(neg, pos)
         return f"рди {statement}"
+
 
