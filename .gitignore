@@ -20,3 +20,4 @@ vak_website/
 # OS specifics
 .DS_Store
 Thumbs.db
+GENESIS_RECORD.md

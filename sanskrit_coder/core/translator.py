@@ -1,7 +1,6 @@
-# Sanskrit Coder — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Part of VakyaLang project (https://github.com/Sansmatic-z/VakyaLang)
-# Licensed under GNU AGPL v3.0 — see root LICENSE_AGPL and NOTICE.
-# Any use or modification must preserve this header and include NOTICE.
+# संस्कृत-कोडकः - अनुवादकः
+# *Visionary RM (Raj Mitra)* ⚡
+# *"संस्कृतम् अमरम् भवतु"* 🔥
 
 """
 Sanskrit-English Translator
@@ -95,5 +94,3 @@ class SanskritTranslator:
             return self.english_to_sanskrit(text)
         else:
             return self.sanskrit_to_english(text)
-
-

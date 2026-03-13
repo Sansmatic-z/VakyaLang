@@ -1,7 +1,5 @@
-# Sanskrit Coder — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Part of VakyaLang project (https://github.com/Sansmatic-z/VakyaLang)
-# Licensed under GNU AGPL v3.0 — see root LICENSE_AGPL and NOTICE.
-# Any use or modification must preserve this header and include NOTICE.
+# संस्कृत-कोडकः - संस्कृत गणित इन्जिन्
+# Sanskrit Coder - Native Sanskrit Mathematics Engine
 
 import re
 import math
@@ -56,8 +54,8 @@ class SanskritMathEngine:
         
         # Sanskrit mathematical operations
         self.operations = {
-            '+': '+', 'योगः': '+', 'सन्धिः': '+', 'सम्मेलनम्': '+', 'प्लस': '+',
-            '-': '-', 'व्यवकलनम्': '-', 'अपसरणम्': '-', 'वियोगः': '-', 'ऋण': '-',
+            '+': '+', 'योगः': '+', 'सन्धिः': '+', 'सम्मेलनम्': '+',
+            '-': '-', 'व्यवकलनम्': '-', 'अपसरणम्': '-', 'वियोगः': '-',
             '*': '*', 'गुणनम्': '*', 'हननम्': '*', 'वर्धनम्': '*',
             '/': '/', 'भागहारः': '/', 'विभाजनम्': '/', 'परिकलनम्': '/',
             '**': '**', 'वर्गः': '**2', 'घनः': '**3', 'घातः': '**',
@@ -462,34 +460,24 @@ class SanskritMathEngine:
         """
         terms = {0: Decimal('0.0'), 1: Decimal('0.0'), 2: Decimal('0.0')}
         expr = expr.replace(' ', '')
-
+        
         # Tokenize by finding all terms (signed groups of digits and variables)
         # Pattern: [+-]? (number)? (x)? (**2)?
-        # Improved pattern to handle negative numbers properly
-        pattern = r'([+-]?(?:\d+\.?\d*|\d*\.?\d+)?)(x)?(?:\*\*(\d))?'
+        pattern = r'([+-]?(?:\d*\.?\d+)?)(x)?(?:\*\*(\d))?'
         matches = re.finditer(pattern, expr)
-
+        
         for m in matches:
             coeff_str, var, power_str = m.groups()
             if not coeff_str and not var: continue
             
-            # Skip empty matches or just operators
-            if not coeff_str or coeff_str in ['+', '-'] and not var:
-                continue
-
             # Determine coefficient value
-            if coeff_str == "+" or (not coeff_str and var):
+            if coeff_str == "+" or not coeff_str:
                 coeff = Decimal('1.0')
             elif coeff_str == "-":
                 coeff = Decimal('-1.0')
-            elif not coeff_str:
-                continue
             else:
-                try:
-                    coeff = Decimal(coeff_str)
-                except:
-                    continue
-
+                coeff = Decimal(coeff_str)
+                
             # Determine power
             if not var:
                 power = 0
@@ -497,10 +485,10 @@ class SanskritMathEngine:
                 power = 1
             else:
                 power = int(power_str)
-
+                
             if power in terms:
                 terms[power] += coeff
-
+                
         return terms
     
     def _solve_linear(self, terms: Dict[int, Decimal]) -> str:
@@ -668,5 +656,3 @@ class SanskritMathEngine:
                 return f"{name} = {value}"
         
         return f"सूत्रं न लब्धम्: {query}"
-
-

@@ -1,8 +1,3 @@
-# VakyaLang (वाक्) — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Original author: Raj Mitra (Visionary RM)
-# Licensed under GNU AGPL v3.0 — see LICENSE and NOTICE.
-# Any use, modification, or derivative work must preserve this header
-# and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
 # वाक् भाषा - प्रणाली सेतु (System Bridge)
 # Vak Language - File I/O and OS Bridge
 
@@ -112,4 +107,3 @@ def register_system_bridge(globals_env):
     from ..interpreter import BuiltinFunction
     for name, fn in system_builtins.items():
         globals_env.define(name, BuiltinFunction(name, fn))
-

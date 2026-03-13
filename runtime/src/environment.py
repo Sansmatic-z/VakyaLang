@@ -1,8 +1,3 @@
-# VakyaLang (वाक्) — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Original author: Raj Mitra (Visionary RM)
-# Licensed under GNU AGPL v3.0 — see LICENSE and NOTICE.
-# Any use, modification, or derivative work must preserve this header
-# and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
 # वाक् भाषा - परिवेश (Environment / Scope)
 # Vak Language - Lexical Scope Implementation
 
@@ -69,4 +64,3 @@ class Environment:
 
     def __repr__(self):
         return f"Environment({self.name}, vars={list(self._vars.keys())})"
-

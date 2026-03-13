@@ -1,43 +1,56 @@
-# Sanskrit Coder — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Part of VakyaLang project (https://github.com/Sansmatic-z/VakyaLang)
-# Licensed under GNU AGPL v3.0 — see root LICENSE_AGPL and NOTICE.
-# Any use or modification must preserve this header and include NOTICE.
-
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# संस्कृत-कोडकः - मुख्य कार्यक्रमः
 # *Visionary RM (Raj Mitra)* ⚡
+# *"संस्कृतम् अमरम् भवतु"* 🔥
+
+"""
+Sanskrit Coder - Main Entry Point
+"""
 
 import sys
 import os
-from pathlib import Path
 
-# Add the parent directory to sys.path to allow imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add paths
+base_path = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, base_path)
+sys.path.insert(0, os.path.join(base_path, 'core'))
+sys.path.insert(0, os.path.join(base_path, 'numbers'))
+sys.path.insert(0, os.path.join(base_path, 'grammar'))
+sys.path.insert(0, os.path.join(base_path, 'math_engine'))
+sys.path.insert(0, os.path.join(base_path, 'logic_engine'))
 
-from sanskrit_coder.core.engine import SanskritEngine
+from core.engine import SanskritEngine
+
 
 def main():
+    """मुख्य कार्यक्रमः"""
     engine = SanskritEngine()
-    print("🕉️ Sanskrit Coder (संस्कृत-कोडकः) v2.0.0")
-    print("Type 'exit' or 'quit' to stop.")
+    
+    print(engine.namaskar())
     
     while True:
         try:
-            user_input = input("\nसंस्कृतम् > ")
-            if user_input.lower() in ['exit', 'quit', 'विराम']:
+            user_input = input("\n>>> ").strip()
+            
+            if not user_input:
+                continue
+            
+            # Exit commands
+            if user_input.lower() in ['quit', 'exit', 'त्याजय', 'बहिर्गच्छ', 'q']:
+                print("\nधन्यवादः! नमस्कारः। 🙏")
+                print("जयतु संस्कृतम्! 🕉️")
                 break
             
-            if not user_input.strip():
-                continue
-                
-            result = engine.execute(user_input)
-            print(f"फलम्: {result}")
+            # Process command
+            result = engine.process_command(user_input)
+            print(f"\n{result}")
             
         except KeyboardInterrupt:
-            print("\nपुनर्मिलामः!")
+            print("\n\nधन्यवादः! नमस्कारः। 🙏")
             break
         except Exception as e:
-            print(f"दोषः: {e}")
+            print(f"\nत्रुटि (Error): {str(e)}")
+
 
 if __name__ == "__main__":
     main()

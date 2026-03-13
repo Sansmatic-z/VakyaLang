@@ -1,8 +1,3 @@
-# VakyaLang (वाक्) — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Original author: Raj Mitra (Visionary RM)
-# Licensed under GNU AGPL v3.0 — see LICENSE and NOTICE.
-# Any use, modification, or derivative work must preserve this header
-# and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
 # वाक् भाषा - बाइटकोड अपरेशन कोड (Bytecode Opcodes)
 # Vak Language - Instruction Set Architecture
 
@@ -52,7 +47,6 @@ class OpCode(Enum):
     JUMP = 0x40             # JUMP offset: PC += offset
     JUMP_IF_TRUE = 0x41     # Pop cond, if true: PC += offset
     JUMP_IF_FALSE = 0x42    # Pop cond, if false: PC += offset
-    LOOP = 0x43             # LOOP offset: PC -= offset (backward jump for loops)
     
     # ── Functions & OOP ─────────────────────────────────────────────────────
     CALL = 0x50             # CALL func_idx argc: Call function with argc args
@@ -118,7 +112,6 @@ STACK_EFFECT = {
     OpCode.JUMP: 0,
     OpCode.JUMP_IF_TRUE: -1,
     OpCode.JUMP_IF_FALSE: -1,
-    OpCode.LOOP: 0,  # Backward jump for loops
     
     OpCode.CALL: -999,  # Variable, depends on argc
     OpCode.RETURN: -1,
@@ -136,4 +129,3 @@ STACK_EFFECT = {
     
     OpCode.HALT: 0,
 }
-

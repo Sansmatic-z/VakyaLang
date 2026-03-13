@@ -1,7 +1,5 @@
-# Sanskrit Coder — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Part of VakyaLang project (https://github.com/Sansmatic-z/VakyaLang)
-# Licensed under GNU AGPL v3.0 — see root LICENSE_AGPL and NOTICE.
-# Any use or modification must preserve this header and include NOTICE.
+# संस्कृत-कोडकः - न्याय तर्कशास्त्रम्
+# Sanskrit Coder - Nyāya Logic System
 
 from typing import List, Dict, Tuple, Optional, Union
 from dataclasses import dataclass
@@ -345,5 +343,3 @@ class Tarka:
             if neg in statement:
                 return statement.replace(neg, pos)
         return f"न {statement}"
-
-

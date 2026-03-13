@@ -1,10 +1,3 @@
-# Sanskrit Coder — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Part of VakyaLang project (https://github.com/Sansmatic-z/VakyaLang)
-# Licensed under GNU AGPL v3.0 — see root LICENSE_AGPL and NOTICE.
-# Any use or modification must preserve this header and include NOTICE.
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # संस्कृत-कोडकः - मुख्य इन्जिन्
 # Sanskrit Coder - Main Engine
 
@@ -465,42 +458,3 @@ Examples:
 
 जयतु संस्कृतम्! 🙏
 """
-
-    # ── Compatibility Methods (for tests) ─────────────────────────────────────
-
-    def calculate(self, expr: str) -> str:
-        """Calculate expression - compatibility method for tests."""
-        return self.cmd_calculate(expr)
-
-    def process_command(self, cmd: str) -> str:
-        """Process command - compatibility method for tests."""
-        return self.process(cmd)
-
-    def convert(self, value: str, from_unit: str, to_unit: str) -> str:
-        """Convert units - compatibility method for tests."""
-        # Simple unit conversion
-        conversions = {
-            ('km', 'm'): 1000,
-            ('m', 'km'): 0.001,
-            ('kg', 'g'): 1000,
-            ('g', 'kg'): 0.001,
-            ('m', 'cm'): 100,
-            ('cm', 'm'): 0.01,
-            ('m', 'mm'): 1000,
-            ('mm', 'm'): 0.001,
-            ('ft', 'm'): 0.3048,
-            ('m', 'ft'): 3.28084,
-            ('in', 'cm'): 2.54,
-            ('cm', 'in'): 0.393701,
-        }
-        
-        try:
-            val = float(value)
-            key = (from_unit.lower(), to_unit.lower())
-            if key in conversions:
-                result = val * conversions[key]
-                return f"{result} {to_unit}"
-            else:
-                return f"Unknown conversion: {from_unit} to {to_unit}"
-        except Exception as e:
-            return f"Conversion error: {e}"

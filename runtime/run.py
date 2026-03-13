@@ -1,8 +1,3 @@
-# VakyaLang (वाक्) — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Original author: Raj Mitra (Visionary RM)
-# Licensed under GNU AGPL v3.0 — see LICENSE and NOTICE.
-# Any use, modification, or derivative work must preserve this header
-# and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
 #!/usr/bin/env python3
 # वाक् भाषा — मुख्य प्रवेश बिन्दु (Main Entry Point)
 # Vak Language - CLI Runner & Interactive REPL
@@ -200,4 +195,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

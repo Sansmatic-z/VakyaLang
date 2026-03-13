@@ -1,7 +1,6 @@
-# Sanskrit Coder — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Part of VakyaLang project (https://github.com/Sansmatic-z/VakyaLang)
-# Licensed under GNU AGPL v3.0 — see root LICENSE_AGPL and NOTICE.
-# Any use or modification must preserve this header and include NOTICE.
+# संस्कृत-कोडकः - व्याकरणम्
+# *Visionary RM (Raj Mitra)* ⚡
+# *"संस्कृतम् अमरम् भवतु"* 🔥
 
 """
 Sanskrit Grammar Engine
@@ -60,5 +59,3 @@ class SanskritGrammar:
         elif verb in ['अन्वेषय', 'search']:
             result['type'] = 'search'
         return result
-
-

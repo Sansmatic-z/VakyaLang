@@ -1,7 +1,6 @@
-# Sanskrit Coder — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Part of VakyaLang project (https://github.com/Sansmatic-z/VakyaLang)
-# Licensed under GNU AGPL v3.0 — see root LICENSE_AGPL and NOTICE.
-# Any use or modification must preserve this header and include NOTICE.
+# संस्कृत-कोडकः - संख्या पद्धतिः
+# *Visionary RM (Raj Mitra)* ⚡
+# *"संस्कृतम् अमरम् भवतु"* 🔥
 
 """
 Sanskrit Numbers System
@@ -226,5 +225,3 @@ class SanskritNumbers:
             return f"{digits} ({words})"
         
         return digits
-
-

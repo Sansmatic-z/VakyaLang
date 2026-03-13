@@ -1,8 +1,3 @@
-# VakyaLang (वाक्) — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Original author: Raj Mitra (Visionary RM)
-# Licensed under GNU AGPL v3.0 — see LICENSE and NOTICE.
-# Any use, modification, or derivative work must preserve this header
-# and include the NOTICE file. https://github.com/Sansmatic-z/VakyaLang
 # वाक् भाषा - आभासी यन्त्र (Virtual Machine)
 # Vak Language - Stack-based Bytecode VM
 
@@ -55,13 +50,12 @@ class VakVM:
     - Constant pool
     - Builtin functions
     """
-
+    
     def __init__(self):
         self.frames: List[CallFrame] = []
         self.globals: Dict[str, Any] = {}
         self.builtins: Dict[str, Callable] = self._init_builtins()
         self.current_frame: CallFrame = None
-        self.modules: Dict[str, Any] = {}  # Module cache
         
     def _init_builtins(self) -> Dict[str, Callable]:
         """Initialize builtin functions."""
@@ -120,150 +114,32 @@ class VakVM:
             'मान': lambda d: list(d.values()) if isinstance(d, dict) else [],
             'वर्गमूल': math.sqrt
         }
-
-    def _import_module(self, module_name: str):
-        """
-        Import a VakyaLang module.
         
-        Searches for .vak files in:
-        1. stdlib directory
-        2. Current directory
-        
-        Uses module cache to avoid reloading.
-        """
-        import os
-        from pathlib import Path
-        from .lexer import Lexer
-        from .parser import Parser
-        from .compiler import Compiler
-        
-        # Check cache first
-        if module_name in self.modules:
-            return self.modules[module_name]
-        
-        # Get the directory where the VM is located
-        vm_dir = Path(__file__).parent.parent
-        stdlib_dir = vm_dir / "stdlib"
-        
-        # Handle module paths with dots (e.g., 'stdlib.mool')
-        module_parts = module_name.split('.')
-        module_filename = module_parts[-1] + '.vak'
-        
-        # For dotted imports, first ensure parent modules exist
-        if len(module_parts) > 1:
-            parent_name = module_parts[0]
-            if parent_name not in self.modules:
-                # Create a parent module placeholder
-                parent_module = type('Module', (), {'__name__': parent_name})()
-                self.modules[parent_name] = parent_module
-        
-        # Search paths - include stdlib subdirectories
-        search_paths = [
-            stdlib_dir,
-            Path.cwd(),
-        ]
-        
-        # If module has a prefix like 'stdlib', search in that subdirectory
-        if len(module_parts) > 1:
-            # Try as subdirectory of stdlib
-            sublib_dir = stdlib_dir / module_parts[0]
-            if sublib_dir.exists():
-                search_paths.insert(0, sublib_dir)
-            # Also try as relative path from cwd
-            search_paths.insert(0, Path.cwd() / module_parts[0])
-        
-        # Try to find the module
-        module_file = None
-        for search_path in search_paths:
-            candidate = search_path / module_filename
-            if candidate.exists():
-                module_file = candidate
-                break
-        
-        if not module_file:
-            raise VMError(f"Module '{module_name}' not found. Searched: {search_paths}")
-        
-        # Load and compile the module
-        source = module_file.read_text(encoding='utf-8')
-        
-        lexer = Lexer(source)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        compiler = Compiler()
-        bytecode = compiler.compile(ast)
-        
-        # Execute the module in a new frame
-        module_frame = CallFrame(bytecode)
-        module_frame.locals = [None] * len(bytecode.var_names)
-        
-        # Save current frame
-        saved_frame = self.current_frame
-        
-        # Execute module
-        self.frames.append(module_frame)
-        self.current_frame = module_frame
-        
-        try:
-            self._execute_frame(module_frame)
-        finally:
-            # Restore previous frame
-            self.frames.pop()
-            self.current_frame = saved_frame
-        
-        # Return module object with its exported variables
-        module_obj = type('Module', (), {'__name__': module_name})()
-
-        # Copy module's local variables to the module object
-        for i, var_name in enumerate(bytecode.var_names):
-            setattr(module_obj, var_name, module_frame.locals[i])
-
-        # Cache the module
-        self.modules[module_name] = module_obj
-
-        return module_obj
-    
-    def _execute_frame(self, frame: CallFrame):
-        """Execute a single frame without managing the frame stack.
-        Delegates to _execute which has full opcode support."""
-        # Save current frame
-        saved_frame = self.current_frame
-        self.current_frame = frame
-        
-        try:
-            self._execute()
-        finally:
-            self.current_frame = saved_frame
-    
     def run(self, bytecode: Bytecode) -> Any:
         """Execute bytecode and return result."""
         frame = CallFrame(bytecode)
         self.frames = [frame]
         self.current_frame = frame
-
+        
         try:
             return self._execute()
         except VMError as e:
             # Add stack trace
             trace = self._format_stack_trace()
             raise VMError(f"{e}\n{trace}")
-
+            
     def _execute(self) -> Any:
         """Main execution loop."""
         frame = self.current_frame
         code = frame.bytecode.code
         constants = frame.bytecode.constants
-
-        # Debug trace mode (set to True for debugging)
-        DEBUG_TRACE = False
-
+        
         while frame.pc < len(code):
             op = code[frame.pc]
-
+            
             # --- DEBUG TRACE ---
-            if DEBUG_TRACE:
-                op_name = OPCODE_NAMES.get(op, f"UNKNOWN({op})")
-                print(f"TRACE: pc={frame.pc:04d} op={op_name:15} stack={frame.stack}")
+            op_name = OPCODE_NAMES.get(op, f"UNKNOWN({op})")
+            print(f"TRACE: pc={frame.pc:04d} op={op_name:15} stack={frame.stack}")
             # -------------------
             
             if op == OpCode.HALT.value:
@@ -745,38 +621,9 @@ class VakVM:
             elif op == OpCode.IMPORT_NAME.value:
                 idx = (code[frame.pc + 1] << 8) | code[frame.pc + 2]
                 module_name = constants[idx]
-                
-                # Real module import implementation
-                try:
-                    module_obj = self._import_module(module_name)
-                    
-                    # For dotted imports (e.g., 'stdlib.mool'), set up parent module references
-                    if '.' in module_name:
-                        parts = module_name.split('.')
-                        parent_name = parts[0]
-                        
-                        # Get or create parent module
-                        if parent_name not in self.modules:
-                            parent_module = type('Module', (), {'__name__': parent_name})()
-                            self.modules[parent_name] = parent_module
-                        else:
-                            parent_module = self.modules[parent_name]
-                        
-                        # Set nested attributes (e.g., stdlib.mool = module_obj)
-                        current = parent_module
-                        for i in range(1, len(parts) - 1):
-                            child_name = parts[i]
-                            if not hasattr(current, child_name):
-                                nested = type('Module', (), {'__name__': '.'.join(parts[:i+1])})()
-                                setattr(current, child_name, nested)
-                            current = getattr(current, child_name)
-                        
-                        # Set the final module as an attribute
-                        setattr(current, parts[-1], module_obj)
-                    
-                    frame.stack.append(module_obj)
-                except Exception as e:
-                    raise VMError(f"Import error for module '{module_name}': {e}")
+                # Dummy import for now, returning string name.
+                # A real import would load file, compile to bytecode, and execute it
+                frame.stack.append(f"<module {module_name}>")
                 frame.pc += 3
 
             elif op == OpCode.GET_ITER.value:
@@ -798,12 +645,7 @@ class VakVM:
             # ── I/O ──────────────────────────────────────────────────────────────
             elif op == OpCode.PRINT.value:
                 val = frame.stack.pop()
-                # Handle UTF-8 output for Windows
-                try:
-                    print(val, end='', flush=True)
-                except UnicodeEncodeError:
-                    # Fallback for Windows console encoding issues
-                    print(val.encode('utf-8', errors='replace').decode('utf-8'), end='', flush=True)
+                print(val, end='')
                 frame.pc += 1
                 
             elif op == OpCode.CALL_BUILTIN.value:
@@ -842,4 +684,3 @@ class VakVM:
 
 class VMError(Exception):
     pass
-

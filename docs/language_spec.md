@@ -5,7 +5,7 @@ The official grammar and syntax specification for VakyaLang (वाक्).
 ## Formal Grammar
 The language uses a recursive descent parser to process a Pāṇinian-inspired grammar. The full EBNF (Extended Backus-Naur Form) specification is available here:
 
-👉 **[Official Grammar Specification](../runtime/spec/GRAMMAR.md)**
+👉 **[Official Grammar Specification](../vak-coder/vak-lang/spec/GRAMMAR.md)**
 
 ---
 

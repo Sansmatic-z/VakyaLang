@@ -1,31 +1,12 @@
-# Sanskrit Coder — Copyright (c) 2026 Raj Mitra. All Rights Reserved.
-# Part of VakyaLang project (https://github.com/Sansmatic-z/VakyaLang)
-# Licensed under GNU AGPL v3.0 — see root LICENSE_AGPL and NOTICE.
-# Any use or modification must preserve this header and include NOTICE.
-
-"""
-Sanskrit Coder - Live Features Test
-संस्कृत-कोडकः - सजीव-विशेषता-परीक्षा
-"""
-
+# संस्कृत-कोडकः - सजीव-विशेषता-परीक्षा (Live Features Test)
 import sys
 import os
 
-# Set UTF-8 encoding for Windows console
-if sys.platform == 'win32':
-    try:
-        sys.stdout.reconfigure(encoding='utf-8')
-    except Exception:
-        pass
+base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, base_path)
+sys.path.insert(0, os.path.join(base_path, 'core'))
 
-# Get the directory of this script
-script_dir = os.path.dirname(os.path.abspath(__file__))
-# Go up one level to the VakyaLang root
-root_dir = os.path.dirname(script_dir)
-# Add root to path so we can import sanskrit_coder
-sys.path.insert(0, root_dir)
-
-from sanskrit_coder.core.engine import SanskritEngine
+from core.engine import SanskritEngine
 
 def run_live_tests():
     engine = SanskritEngine()
@@ -64,8 +45,6 @@ def run_live_tests():
     print(f"Input: {topic}")
     result = engine.process_command(f"अन्वेषय {topic}")
     print(f"Result: {result}\n")
-
-    print("सर्वे परीक्षाः सफलाः! (All tests completed!)")
 
 if __name__ == "__main__":
     run_live_tests()
