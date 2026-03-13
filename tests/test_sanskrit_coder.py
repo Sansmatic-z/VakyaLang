@@ -13,19 +13,14 @@ import os
 # Add paths for imports
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, base_path)
-sys.path.insert(0, os.path.join(base_path, 'core'))
-sys.path.insert(0, os.path.join(base_path, 'numbers'))
-sys.path.insert(0, os.path.join(base_path, 'grammar'))
-sys.path.insert(0, os.path.join(base_path, 'math_engine'))
-sys.path.insert(0, os.path.join(base_path, 'logic_engine'))
 
 # Import all modules
-from numbers import SanskritNumbers
-from grammar import SanskritGrammar
-from math_engine import SanskritMathEngine
-from logic_engine import SanskritLogicEngine
-from translator import SanskritTranslator
-from core.engine import SanskritEngine
+from sanskrit_coder.numbers.sanskrit_numbers import SanskritNumbers
+from sanskrit_coder.grammar.grammar import SanskritGrammar
+from sanskrit_coder.math_engine.math_engine import SanskritMathEngine
+from sanskrit_coder.logic_engine.logic_engine import SanskritLogicEngine
+from sanskrit_coder.core.translator import SanskritTranslator
+from sanskrit_coder.core.engine import SanskritEngine
 
 
 class TestSanskritCoder:
@@ -234,7 +229,7 @@ class TestSanskritCoder:
         
         # Test calculation
         try:
-            result = self.engine.calculate("5 + 3")
+            result = self.engine.cmd_calculate("5 + 3")
             assert "8" in result, f"Engine calculation failed: {result}"
             self.passed += 1
             print("✓ Engine calculation")
@@ -254,7 +249,7 @@ class TestSanskritCoder:
         
         # Test command processing
         try:
-            result = self.engine.process_command("गणय १० ऋण ४")
+            result = self.engine.process("गणय १० ऋण ४")
             assert "6" in result, f"Command processing failed: {result}"
             self.passed += 1
             print("✓ Command processing")

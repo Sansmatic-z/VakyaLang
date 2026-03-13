@@ -4,9 +4,9 @@ import os
 
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, base_path)
-sys.path.insert(0, os.path.join(base_path, 'core'))
+sys.path.insert(0, os.path.join(base_path, 'sanskrit_coder', 'core'))
 
-from core.engine import SanskritEngine
+from sanskrit_coder.core.engine import SanskritEngine
 
 def run_live_tests():
     engine = SanskritEngine()
