@@ -736,8 +736,9 @@ class VakVM:
                 
                 # Find the module file
                 base_dir = os.path.dirname(os.path.abspath(__file__))
-                stdlib_path = os.path.join(base_dir, '..', 'stdlib', f"{module_name}.vak")
-                local_path = os.path.join(os.getcwd(), f"{module_name}.vak")
+                # Correct path: runtime/src/vm.py -> runtime/stdlib/
+                stdlib_path = os.path.abspath(os.path.join(base_dir, '..', 'stdlib', f"{module_name}.vak"))
+                local_path = os.path.abspath(os.path.join(os.getcwd(), f"{module_name}.vak"))
                 
                 target_path = None
                 if os.path.exists(local_path):
