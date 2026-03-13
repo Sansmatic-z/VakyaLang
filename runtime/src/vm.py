@@ -39,6 +39,12 @@ class VakInstance:
         self.klass = klass
         self.attrs = {}
 
+class VakModule:
+    """Represents an imported VakyaLang module."""
+    def __init__(self, name: str, attrs: dict):
+        self.name = name
+        self.attrs = attrs
+
 class VakVM:
     """
     Stack-based Virtual Machine for VakyaLang.
@@ -62,6 +68,20 @@ class VakVM:
         import os
         import platform
         import math
+        import sys
+        
+        # Get the directory of vm.py, then go up 3 levels to find the unified root
+        vm_dir = os.path.dirname(os.path.abspath(__file__))
+        unified_root = os.path.abspath(os.path.join(vm_dir, '..', '..'))
+        if unified_root not in sys.path:
+            sys.path.insert(0, unified_root)
+            
+        from sansmatic.src.engine import SansmaticEngine, ProofError
+        from atmalipi.src.engine import AtmaLipiEngine, AtmaValue
+        from runtime.src.errors import VMError
+        
+        _sansmatic = SansmaticEngine(verbose=True)
+        _atmalipi = AtmaLipiEngine()
         
         def _read_file(path):
             with open(path, 'r', encoding='utf-8') as f:
@@ -75,6 +95,14 @@ class VakVM:
         def _make_dir(path):
             os.makedirs(path, exist_ok=True)
             return None
+            
+        def _atma_wrap(*args):
+            if not args: raise VMError("आत्म_मूल्य: मूल्य चाहिए")
+            val = args[0]
+            bhav = str(args[1]) if len(args) > 1 else None
+            avastha = str(args[2]) if len(args) > 2 else None
+            note = str(args[3]) if len(args) > 3 else None
+            return _atmalipi.wrap(val, bhav, avastha, note)
             
         return {
             'पाठ_कर': str,
@@ -112,7 +140,26 @@ class VakVM:
             'न्यूनतम': min,
             'कुंजियाँ': lambda d: list(d.keys()) if isinstance(d, dict) else [],
             'मान': lambda d: list(d.values()) if isinstance(d, dict) else [],
-            'वर्गमूल': math.sqrt
+            'वर्गमूल': math.sqrt,
+            
+            # Sansmatic Builtins
+            'परिभाषय': lambda *args: _sansmatic.define(str(args[0]), args[1]),
+            'दावा': lambda *args: _sansmatic.assert_fact(str(args[0]), str(args[1]), str(args[2]), str(args[3]) if len(args)>3 else None),
+            'नियम': lambda *args: _sansmatic.rule((str(args[0]), str(args[1]), str(args[2])), (str(args[3]), str(args[4]), str(args[5]))),
+            'मूल्यांकन': lambda *args: _sansmatic.evaluate(str(args[0]), str(args[1]), str(args[2])),
+            'सिद्ध_है': lambda *args: _sansmatic.is_provable(str(args[0]), str(args[1]), str(args[2])),
+            
+            # AtmaLipi Builtins
+            'आत्म_मूल्य': _atma_wrap,
+            'भाव_पढ़ो': lambda *args: _atmalipi.read_bhav(str(args[0])),
+            'अवस्था_पढ़ो': lambda *args: _atmalipi.read_avastha(str(args[0])),
+            'सभी_भाव': lambda *args: [f"{k} → {v}" for k, v in _atmalipi.all_bhav().items()],
+            'सभी_अवस्था': lambda *args: [f"{k} → {v}" for k, v in _atmalipi.all_avastha().items()],
+            'आत्म_इतिहास': lambda *args: _atmalipi.get_history(),
+            'आत्म_है': lambda *args: isinstance(args[0], AtmaValue) if args else False,
+            'आत्म_भाव': lambda *args: args[0].bhav or "शून्य" if args and isinstance(args[0], AtmaValue) else "शून्य",
+            'आत्म_अवस्था': lambda *args: args[0].avastha or "शून्य" if args and isinstance(args[0], AtmaValue) else "शून्य",
+            'आत्म_मूल': lambda *args: args[0].value if args and isinstance(args[0], AtmaValue) else (args[0] if args else None)
         }
         
     def run(self, bytecode: Bytecode) -> Any:
@@ -138,8 +185,8 @@ class VakVM:
             op = code[frame.pc]
             
             # --- DEBUG TRACE ---
-            op_name = OPCODE_NAMES.get(op, f"UNKNOWN({op})")
-            print(f"TRACE: pc={frame.pc:04d} op={op_name:15} stack={frame.stack}")
+            # op_name = OPCODE_NAMES.get(op, f"UNKNOWN({op})")
+            # print(f"TRACE: pc={frame.pc:04d} op={op_name:15} stack={frame.stack}")
             # -------------------
             
             if op == OpCode.HALT.value:
@@ -202,7 +249,11 @@ class VakVM:
                 a = frame.stack.pop()
                 frame.stack.append(a / b)
                 frame.pc += 1
-                
+            elif op == OpCode.IDIV.value:
+                b = frame.stack.pop()
+                a = frame.stack.pop()
+                frame.stack.append(a // b)
+                frame.pc += 1
             elif op == OpCode.MOD.value:
                 b = frame.stack.pop()
                 a = frame.stack.pop()
@@ -502,6 +553,55 @@ class VakVM:
                         continue
                     else:
                         raise VMError(f"Method '{method_name}' not found on {obj.klass.name}")
+                elif isinstance(obj, VakModule):
+                    if method_name in obj.attrs:
+                        func = obj.attrs[method_name]
+                        # Put the function back on the stack, followed by args, then let CALL handle it
+                        # Since we are replacing CALL_METHOD, we can just execute the CALL logic here.
+                        # Wait, easier: put func and args on stack, then decrement PC to execute a standard CALL.
+                        # Actually, our CALL opcode pops args then func.
+                        frame.stack.append(func)
+                        for arg in args:
+                            frame.stack.append(arg)
+                        
+                        # We must jump to a CALL opcode. We can just execute the CALL logic inline.
+                        if isinstance(func, tuple) and func[0] == 'function':
+                            func_name = func[1]
+                            # Modules use the main VM's function dictionary which we updated during import
+                            func_bc = self.frames[0].bytecode.functions.get(func_name)
+                            if func_bc:
+                                new_frame = CallFrame(func_bc)
+                                for i, arg in enumerate(args):
+                                    if i < len(new_frame.locals):
+                                        new_frame.locals[i] = arg
+                                        
+                                if len(func) == 3:
+                                    closure_env = func[2]
+                                    for i, name in enumerate(new_frame.bytecode.var_names):
+                                        if i >= argc and name in closure_env:
+                                            new_frame.locals[i] = closure_env[name]
+                                            
+                                global_frame = self.frames[0]
+                                for i, name in enumerate(new_frame.bytecode.var_names):
+                                    if i >= argc:
+                                        if name in global_frame.bytecode.var_names:
+                                            g_slot = global_frame.bytecode.var_names.index(name)
+                                            new_frame.locals[i] = global_frame.locals[g_slot]
+                                            
+                                frame.pc += 2
+                                self.frames.append(new_frame)
+                                self.current_frame = new_frame
+                                frame = new_frame
+                                code = frame.bytecode.code
+                                constants = frame.bytecode.constants
+                                frame.pc = 0
+                                continue
+                            else:
+                                raise VMError(f"Function not found in module: {func_name}")
+                        else:
+                            raise VMError(f"Attribute '{method_name}' in module '{obj.name}' is not callable")
+                    else:
+                        raise VMError(f"Method '{method_name}' not found in module {obj.name}")
                 else:
                     # Map Sanskrit method names to Python builtins
                     method_map = {
@@ -566,6 +666,11 @@ class VakVM:
                         frame.stack.append(('bound_method', obj, attr_name))
                     else:
                         raise VMError(f"Attribute '{attr_name}' not found on {obj.klass.name}")
+                elif isinstance(obj, VakModule):
+                    if attr_name in obj.attrs:
+                        frame.stack.append(obj.attrs[attr_name])
+                    else:
+                        raise VMError(f"Attribute '{attr_name}' not found in module {obj.name}")
                 else:
                     try:
                         frame.stack.append(getattr(obj, attr_name))
@@ -621,9 +726,71 @@ class VakVM:
             elif op == OpCode.IMPORT_NAME.value:
                 idx = (code[frame.pc + 1] << 8) | code[frame.pc + 2]
                 module_name = constants[idx]
-                # Dummy import for now, returning string name.
-                # A real import would load file, compile to bytecode, and execute it
-                frame.stack.append(f"<module {module_name}>")
+                
+                # Check for standard library path
+                import os
+                import sys
+                from runtime.src.lexer import Lexer
+                from runtime.src.parser import Parser
+                from runtime.src.compiler import Compiler
+                
+                # Find the module file
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                stdlib_path = os.path.join(base_dir, '..', 'stdlib', f"{module_name}.vak")
+                local_path = os.path.join(os.getcwd(), f"{module_name}.vak")
+                
+                target_path = None
+                if os.path.exists(local_path):
+                    target_path = local_path
+                elif os.path.exists(stdlib_path):
+                    target_path = stdlib_path
+                
+                if not target_path:
+                    raise VMError(f"Module not found: {module_name}")
+                
+                # Compile and execute the module in isolation
+                with open(target_path, 'r', encoding='utf-8') as f:
+                    source = f.read()
+                    
+                lexer = Lexer(source)
+                tokens = lexer.tokenize()
+                parser = Parser(tokens)
+                ast = parser.parse()
+                compiler = Compiler()
+                module_bytecode = compiler.compile(ast)
+                
+                # Run the module to populate its frame
+                module_vm = VakVM()
+                # Run without halting the main VM
+                try:
+                    module_vm.run(module_bytecode)
+                except Exception as e:
+                    raise VMError(f"Error executing module '{module_name}': {e}")
+                
+                # Extract the top-level globals that were defined
+                exported_attrs = {}
+                module_frame = module_vm.frames[0] if module_vm.frames else module_vm.current_frame
+                module_env = {}
+                if hasattr(module_frame, 'locals'):
+                    for i, name in enumerate(module_bytecode.var_names):
+                        if module_frame.locals[i] is not None:
+                            exported_attrs[name] = module_frame.locals[i]
+                            module_env[name] = module_frame.locals[i]
+                
+                # Add module functions to the module environment so they can call each other
+                for fn_name in module_bytecode.functions.keys():
+                    module_env[fn_name] = ('function', fn_name, module_env)
+                
+                # Add module functions
+                for fn_name, fn_bc in module_bytecode.functions.items():
+                    func_tuple = ('function', fn_name, module_env)
+                    exported_attrs[fn_name] = func_tuple
+                    
+                # Store functions in the main VM's global dictionary so they can be CALLed
+                self.frames[0].bytecode.functions.update(module_bytecode.functions)
+                
+                mod_obj = VakModule(module_name, exported_attrs)
+                frame.stack.append(mod_obj)
                 frame.pc += 3
 
             elif op == OpCode.GET_ITER.value:

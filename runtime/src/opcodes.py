@@ -29,6 +29,7 @@ class OpCode(Enum):
     MOD = 0x14              # Pop b, pop a, push a % b
     POW = 0x15              # Pop b, pop a, push a ** b
     NEG = 0x16              # Pop a, push -a
+    IDIV = 0x17             # Pop b, pop a, push a // b
     
     # ── Comparison ───────────────────────────────────────────────────────────
     EQ = 0x20               # Pop b, pop a, push a == b
@@ -97,6 +98,7 @@ STACK_EFFECT = {
     OpCode.MOD: -1,
     OpCode.POW: -1,
     OpCode.NEG: 0,
+    OpCode.IDIV: -1,
     
     OpCode.EQ: -1,
     OpCode.NEQ: -1,
