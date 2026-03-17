@@ -21,14 +21,30 @@ from src.core.vm       import VakVM
 from src.errors      import VakError
 
 
-BANNER = """\
+# ====================== AUTO VERSIONING (competitive grade) ======================
+try:
+    from importlib.metadata import version, PackageNotFoundError
+    __version__ = version("vakyalang")
+except (PackageNotFoundError, Exception):
+    # Fallback: git describe (works even without installing)
+    try:
+        import subprocess
+        __version__ = subprocess.check_output(
+            ["git", "describe", "--tags", "--always", "--dirty"],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        __version__ = "dev"
+
+# Beautiful dynamic banner (never outdated again)
+BANNER = f"""\
 ╔══════════════════════════════════════════════════════════════╗
 ║          वाक् भाषा  —  संस्कृत संगणन भाषा                  ║
 ║          Vāk Language  —  Sanskrit Computing Language        ║
 ║                                                              ║
-║  संस्करण (version): 1.0.0                                   ║
+║  संस्करण (version): {__version__:<33} ║
 ║  लेखक   (author) : Raj Mitra  © 2026                        ║
-║  लाइसेंस (license): AGPL v3                                  ║
+║  लाइसेंस (license): AGPL-3.0-or-later                        ║
 ║                                                              ║
 ║  'विराम' लिखें बाहर निकलने के लिए  (type 'विराम' to exit)  ║
 ╚══════════════════════════════════════════════════════════════╝
