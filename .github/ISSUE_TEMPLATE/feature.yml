@@ -1,0 +1,32 @@
+name: Feature Request
+description: Suggest a new feature or improvement for VakyaLang (वाक्)
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ✨ Have an idea for VakyaLang? We'd love to hear it! 
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the feature you're suggesting.
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: Why is this feature needed? What problem does it solve?
+    validations:
+      required: true
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Ideas
+      description: Any thoughts on how this could be implemented within the Sanskrit computing framework?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any other ways you've thought about achieving this.

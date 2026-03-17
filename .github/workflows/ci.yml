@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f vak-coder/sanskrit-coder/requirements.txt ]; then pip install -r vak-coder/sanskrit-coder/requirements.txt; fi
+        
+    - name: Run Sanskrit Coder Tests
+      run: |
+        cd vak-coder/sanskrit-coder
+        python tests/test_sanskrit_coder.py
+        
+    - name: Run Vāk Language Examples
+      run: |
+        cd vak-coder/vak-lang
+        python run.py examples/namaste.vak
+        python run.py examples/fibonacci.vak
+        python run.py examples/varg.vak
+        python run.py examples/data.vak
+        python run.py examples/dosh.vak

@@ -1,0 +1,4 @@
+# Multiple Assignment Test
+चर क, ख = १, २
+मुद्रय "क: ", क
+मुद्रय "ख: ", ख
