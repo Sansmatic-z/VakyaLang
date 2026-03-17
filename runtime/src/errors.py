@@ -26,3 +26,17 @@ class CompileError(VakError):
 class VMError(VakError):
     """Runtime error in VM."""
     pass
+
+class VakRuntimeError(VakError):
+    """Execution error."""
+    def __init__(self, message: str, line: int = 0):
+        self.line = line
+        super().__init__(f"Runtime Error: {message} at line {line}" if line else f"Runtime Error: {message}")
+
+class VakNameError(VakRuntimeError):
+    """Variable not found."""
+    pass
+
+class VakTypeError(VakRuntimeError):
+    """Invalid operation between types."""
+    pass

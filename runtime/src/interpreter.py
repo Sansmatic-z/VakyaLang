@@ -90,11 +90,13 @@ class VakInterpreter:
         """Execute pre-compiled bytecode."""
         return self.vm.run(bytecode)
         
-    def repl(self):
+    def repl(self, banner: str = None):
         """Interactive REPL."""
-        print("🕉️ वाक् भाषा - आभासी यन्त्र (VakyaLang VM)")
-        print("Version 2.0 - Bytecode Edition")
-        print("Type 'debug' to toggle debug mode, 'exit' to quit\n")
+        if banner:
+            print(banner)
+        else:
+            print("🕉️ वाक् भाषा - आभासी यन्त्र (VakyaLang VM)")
+            print("Type 'debug' to toggle debug mode, 'exit' to quit\n")
         
         while True:
             try:

@@ -1,0 +1,3 @@
+[console_scripts]
+sanskrit-coder = sanskrit_coder.main:main
+vak = runtime.run:main

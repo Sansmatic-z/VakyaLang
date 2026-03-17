@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 # वाक् भाषा — मुख्य प्रवेश बिन्दु (Main Entry Point)
 # Vak Language - CLI Runner & Interactive REPL
-#
-# उपयोग (Usage):
-#   python run.py              → start REPL
-#   python run.py file.vak     → run a .vak file
-#   python run.py -c "code"    → run inline code
 
 import sys
 import os
@@ -15,11 +10,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.lexer       import Lexer
 from src.parser      import Parser
-from src.interpreter import Interpreter
-from src.core.compiler import Compiler
-from src.core.vm       import VakVM
+from src.interpreter import VakInterpreter
+from src.compiler    import Compiler
+from src.vm          import VakVM
 from src.errors      import VakError
-
 
 # ====================== AUTO VERSIONING (competitive grade) ======================
 try:
@@ -51,29 +45,10 @@ BANNER = f"""\
 """
 
 
-def run_vm(source: str, vm: VakVM, filename: str = "<वाक्>") -> bool:
-    """Lex → Parse → Compile → Execute (VM)."""
+def run_source(source: str, interp: VakInterpreter, filename: str = "<वाक्>") -> bool:
+    """Execute source code using the high-level VakInterpreter."""
     try:
-        tokens   = Lexer(source).tokenize()
-        program  = Parser(tokens).parse()
-        compiler = Compiler()
-        code     = compiler.compile(program)
-        vm.run(code)
-        return True
-    except VakError as e:
-        print(str(e), file=sys.stderr)
-        return False
-    except Exception as e:
-        print(f"\n  VM त्रुटि: {e}", file=sys.stderr)
-        return False
-
-def run_source(source: str, interp: Interpreter,
-               filename: str = "<वाक्>") -> bool:
-    """Lex → Parse → Execute. Returns True on success."""
-    try:
-        tokens  = Lexer(source).tokenize()
-        program = Parser(tokens).parse()
-        interp.execute(program)
+        interp.run(source)
         return True
     except VakError as e:
         print(str(e), file=sys.stderr)
@@ -97,45 +72,15 @@ def run_file(path: str):
     with open(path, encoding='utf-8') as f:
         source = f.read()
 
-    interp = Interpreter()
+    interp = VakInterpreter()
     ok = run_source(source, interp, filename=path)
     sys.exit(0 if ok else 1)
 
 
 def run_repl():
     """Interactive REPL — Read-Eval-Print Loop."""
-    print(BANNER)
-    interp = Interpreter()
-
-    while True:
-        try:
-            line = input("वाक्> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nनमस्कार। (Goodbye.)")
-            break
-
-        if not line:
-            continue
-        if line in ("विराम", "exit", "quit", ":q"):
-            print("नमस्कार। (Goodbye.)")
-            break
-
-        # Multi-line input: if line ends with ':', keep reading until blank line
-        if line.endswith(':'):
-            lines = [line]
-            while True:
-                try:
-                    cont = input("...  ")
-                except (EOFError, KeyboardInterrupt):
-                    break
-                if cont == "":
-                    break
-                lines.append(cont)
-            source = '\n'.join(lines)
-        else:
-            source = line
-
-        run_source(source, interp)
+    interp = VakInterpreter()
+    interp.repl(banner=BANNER)
 
 
 def main():
@@ -149,12 +94,11 @@ def main():
         if len(args) < 2:
             print("उपयोग: python run.py -c \"कोड\"", file=sys.stderr)
             sys.exit(1)
-        interp = Interpreter()
+        interp = VakInterpreter()
         ok = run_source(args[1], interp)
         sys.exit(0 if ok else 1)
 
     if args[0] == '--tokens':
-        # Debug: print tokens for a file
         if len(args) < 2:
             print("उपयोग: python run.py --tokens file.vak", file=sys.stderr)
             sys.exit(1)
@@ -166,7 +110,6 @@ def main():
         return
 
     if args[0] == '--ast':
-        # Debug: print AST for a file
         if len(args) < 2:
             print("उपयोग: python run.py --ast file.vak", file=sys.stderr)
             sys.exit(1)
@@ -178,31 +121,22 @@ def main():
         pprint.pprint(program)
         return
 
-    if args[0] == '--vm':
+    if args[0] == '--bytecode' or args[0] == '--vm':
         if len(args) < 2:
-            print("उपयोग: python run.py --vm file.vak", file=sys.stderr)
+            print(f"उपयोग: python run.py {args[0]} file.vak", file=sys.stderr)
             sys.exit(1)
         with open(args[1], encoding='utf-8') as f:
             source = f.read()
-        # Initialize VM with globals from a dummy interpreter to get system bridge
-        interp = Interpreter()
-        vm = VakVM(globals_env=interp.globals)
-        ok = run_vm(source, vm, filename=args[1])
-        sys.exit(0 if ok else 1)
-
-    if args[0] == '--bytecode':
-        if len(args) < 2:
-            print("उपयोग: python run.py --bytecode file.vak", file=sys.stderr)
-            sys.exit(1)
-        with open(args[1], encoding='utf-8') as f:
-            source = f.read()
-        tokens   = Lexer(source).tokenize()
-        program  = Parser(tokens).parse()
-        compiler = Compiler()
-        code     = compiler.compile(program)
-        print(f"Bytecode for {args[1]}:")
-        for i, (op, operand) in enumerate(code.instructions):
-            print(f"  {i:4}: {op.name:<15} {operand if operand is not None else ''}")
+        
+        interp = VakInterpreter()
+        if args[0] == '--bytecode':
+            bytecode = interp.compile_only(source)
+            print(f"Bytecode for {args[1]}:")
+            print(bytecode.disassemble())
+        else:
+            # --vm just runs it via the bytecode interpreter
+            ok = run_source(source, interp, filename=args[1])
+            sys.exit(0 if ok else 1)
         return
 
     # Run file
@@ -211,3 +145,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
