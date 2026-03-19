@@ -46,6 +46,10 @@ class TokenType(Enum):
     SUPER       = auto()   # अभिभावक (super / parent)
     GLOBAL      = auto()   # वैश्विक (global)
     NONLOCAL    = auto()   # अस्थानिक (nonlocal)
+    
+    # ── Async/Await Keywords ──────────────────────────────────────────────────
+    ASYNC       = auto()   # अतुल्यकालिक (async - asynchronous)
+    AWAIT       = auto()   # प्रतीक्षा   (await - wait)
 
     # ── Arithmetic Operators ──────────────────────────────────────────────────
     PLUS        = auto()   # +
@@ -99,6 +103,11 @@ class TokenType(Enum):
     EOF         = auto()
     COMMENT     = auto()
 
+    # ── Macro Keywords (Pāṇinian Macro System) ───────────────────────────────
+    SUTRA       = auto()   # सूत्र (macro definition)
+    ANUVADA     = auto()   # अनुवाद (macro expansion template)
+    LARROW      = auto()   # -> (expansion arrow)
+
 
 # Sanskrit keyword map: Devanagari → TokenType
 KEYWORDS = {
@@ -135,6 +144,12 @@ KEYWORDS = {
     'नव':           TokenType.NEW,
     'स्वयं':        TokenType.SELF,
     'अभिभावक':      TokenType.SUPER,
+    # Async/Await keywords
+    'अतुल्यकालिक':  TokenType.ASYNC,
+    'प्रतीक्षा':    TokenType.AWAIT,
+    # Pāṇinian Macro System keywords
+    'सूत्र':        TokenType.SUTRA,
+    'अनुवाद':       TokenType.ANUVADA,
 }
 
 # Devanagari digit map

@@ -27,7 +27,7 @@ Examples:
     parser.add_argument('--debug', '-d', action='store_true', help='Enable debug mode')
     parser.add_argument('--compile', '-c', action='store_true', help='Compile only, do not run')
     parser.add_argument('--disassemble', action='store_true', help='Show bytecode disassembly')
-    parser.add_argument('--version', '-v', action='version', version='%(prog)s 2.0.0')
+    parser.add_argument('--version', '-v', action='version', version='%(prog)s 2.16.0')
     
     args = parser.parse_args()
     interpreter = VakInterpreter()

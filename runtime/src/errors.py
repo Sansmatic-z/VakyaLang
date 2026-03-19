@@ -40,3 +40,16 @@ class VakNameError(VakRuntimeError):
 class VakTypeError(VakRuntimeError):
     """Invalid operation between types."""
     pass
+
+class MacroError(VakError):
+    """
+    Macro expansion error.
+    
+    Raised when macro expansion fails due to:
+    - Invalid macro syntax
+    - Argument count mismatch
+    - Invalid substitution
+    """
+    def __init__(self, message: str, line: int = 0):
+        self.line = line
+        super().__init__(f"Macro Error: {message} at line {line}" if line else f"Macro Error: {message}")

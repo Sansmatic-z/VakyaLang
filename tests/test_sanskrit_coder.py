@@ -25,8 +25,8 @@ from sanskrit_coder.core.engine import SanskritEngine
 
 class TestSanskritCoder:
     """Test Suite for Sanskrit Coder"""
-    
-    def __init__(self):
+
+    def setup_method(self):
         self.engine = SanskritEngine()
         self.v_numbers = SanskritNumbers()
         self.translator = SanskritTranslator()
@@ -261,6 +261,7 @@ class TestSanskritCoder:
 def run_tests():
     """Run all tests"""
     tester = TestSanskritCoder()
+    tester.setup_method()
     tester.run_all_tests()
 
 

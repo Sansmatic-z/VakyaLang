@@ -249,6 +249,11 @@ class Lexer:
             if two == ':=':
                 self.tokens.append(Token(TokenType.WALRUS, ':=', line))
                 pos += 2; continue
+            
+            # Arrow operator for macro expansion (->)
+            if two == '->':
+                self.tokens.append(Token(TokenType.LARROW, '->', line))
+                pos += 2; continue
 
             # Single-char operators and delimiters
             single_map = {
@@ -342,4 +347,12 @@ class Lexer:
             pos += 1
         name = ''.join(buf)
         tok_type = KEYWORDS.get(name, TokenType.IDENTIFIER)
+        
+        # Check context: if after DOT (.) or FUNC (कर्म) or CLASS (वर्ग)
+        # Treat as IDENTIFIER instead of keyword
+        if self.tokens:
+            last_type = self.tokens[-1].type
+            if last_type in (TokenType.DOT, TokenType.FUNC, TokenType.CLASS):
+                tok_type = TokenType.IDENTIFIER
+                
         return Token(tok_type, name, line), pos

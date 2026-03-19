@@ -2,7 +2,7 @@
 # Vak Language - AST Node Definitions
 
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Dict
 
 # ── Base ──────────────────────────────────────────────────────────────────────
 
@@ -16,7 +16,6 @@ class Node:
 class Program(Node):
     body: List[Any]
 
-@dataclass
 @dataclass
 class VarDecl(Node):
     """चर a, b = value"""
@@ -37,13 +36,18 @@ class FuncDecl(Node):
     """
     कर्म name(params...):
     body
+    
+    Or async:
+    अतुल्यकालिक कर्म name(params...):
+    body
     """
     name: str
-    params: List[Any] # List of (name, type_hint) tuples
-    defaults: List[Any] # default values (None if no default)
+    params: List[Any]  # List of (name, type_hint) tuples
+    defaults: List[Any]  # default values (None if no default)
     varargs: Optional[str]
     body: Any
     return_type: Optional[str] = None
+    is_async: bool = False  # True if declared with अतुल्यकालिक (async)
     line: int = 0
 
 @dataclass
@@ -54,7 +58,36 @@ class ClassDecl(Node):
     """
     name: str
     superclass: Optional[Any]
-    body: Any # Block
+    body: Any  # Block
+    line: int = 0
+
+# ── Macro System (Pāṇinian सूत्र) ─────────────────────────────────────────────
+
+@dataclass
+class SutraDecl(Node):
+    """
+    सूत्र name(params):
+        अनुवाद -> expansion
+    
+    Macro definition using Pāṇini's sūtra (rule) concept.
+    The expansion template (अनुवाद) is substituted at compile-time.
+    """
+    name: str
+    params: List[str]
+    expansion: Any  # The AST node to expand to
+    line: int = 0
+    anuvritti_rules: Optional[List[Any]] = None  # Context continuation rules
+
+@dataclass
+class MacroPattern(Node):
+    """
+    Pattern matching for macro expansion.
+    
+    Allows sophisticated pattern matching in macro templates.
+    """
+    pattern_type: str  # 'identifier', 'expression', 'statement', 'block'
+    name: str
+    constraints: Optional[Dict[str, Any]] = None
     line: int = 0
 
 @dataclass
@@ -81,7 +114,7 @@ class IfStmt(Node):
     """
     condition: Any
     then_body: Any
-    elif_clauses: List[Any] # list of (condition, body) tuples
+    elif_clauses: List[Any]  # list of (condition, body) tuples
     else_body: Optional[Any]
     line: int = 0
 
@@ -159,7 +192,7 @@ class ImportStmt(Node):
     आयात name से module
     """
     module: str
-    names: Optional[List[str]] # None = import whole module
+    names: Optional[List[str]]  # None = import whole module
     line: int = 0
 
 @dataclass
@@ -238,7 +271,7 @@ class IdentifierExpr(Node):
 
 @dataclass
 class NumberLiteral(Node):
-    value: Any # int or float
+    value: Any  # int or float
     line: int = 0
 
 @dataclass
@@ -248,7 +281,7 @@ class StringLiteral(Node):
 
 @dataclass
 class FStringExpr(Node):
-    parts: List[Any] # Mix of strings and expressions
+    parts: List[Any]  # Mix of strings and expressions
     line: int = 0
 
 @dataclass
@@ -275,7 +308,7 @@ class ListComp(Node):
 
 @dataclass
 class DictLiteral(Node):
-    pairs: List[Any] # list of (key_expr, val_expr) tuples
+    pairs: List[Any]  # list of (key_expr, val_expr) tuples
     line: int = 0
 
 @dataclass
@@ -289,4 +322,15 @@ class LambdaExpr(Node):
     params: List[str]
     varargs: Optional[str]
     body: Any
+    line: int = 0
+
+@dataclass
+class AwaitExpr(Node):
+    """
+    प्रतीक्षा expr - await expression
+    
+    Waits for a coroutine to complete and returns its result.
+    Can only be used inside an async function (अतुल्यकालिक कर्म).
+    """
+    operand: Any
     line: int = 0

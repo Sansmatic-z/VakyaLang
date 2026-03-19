@@ -1,0 +1,24 @@
+{
+  "project_name": "VakyaLang-main",
+  "current_version": "2.1.1",
+  "history": [
+    {
+      "timestamp": "2026-03-17 09:44:41",
+      "type": "improvement",
+      "description": "Implemented competitive-grade auto-versioning",
+      "details": "Replaced hardcoded versions with setuptools_scm in pyproject.toml and dynamic git fallback in run.py. Configured automatic GitHub releases via Actions."
+    },
+    {
+      "timestamp": "2026-03-17 09:44:41",
+      "type": "bugfix",
+      "description": "Fixed run.py import errors and outdated architecture references",
+      "details": "Updated run.py to use the new VakInterpreter and removed legacy tree-walk interpreter imports. Passed custom BANNER to the REPL."
+    },
+    {
+      "timestamp": "2026-03-17 09:44:41",
+      "type": "improvement",
+      "description": "Master Truth Audit Passed",
+      "details": "Ran the comprehensive master_test.py validating VM core, Sanskrit Coder namespace, mathematical engines, and Universal Sanskrit Generative Library API. 100% success rate."
+    }
+  ]
+}

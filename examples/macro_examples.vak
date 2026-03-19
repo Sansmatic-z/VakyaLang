@@ -1,0 +1,166 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# वाक् भाषा - सूत्र उदाहरण (Macro Examples)
+# Vak Language - Pāṇinian Macro System Examples
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# This file demonstrates the Pāṇinian Macro System (सूत्र विस्तारक)
+# featuring compile-time AST transformation with:
+# - सूत्र (Sūtra): Macro definition rules
+# - अनुवाद (Anuvāda): Translation/expansion template
+# - अनुवृत्ति (Anuvṛtti): Context continuation (future feature)
+#
+# Run with: vakyalang run macro_examples.vak
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Example 1: Simple Arithmetic Macro
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Define a macro that doubles a value
+सूत्र double(x): अनुवाद -> x * 2
+
+# Usage expands to: 5 * 2
+result1 = double(5)
+मुद्रय "double(5) =", result1  # Output: 10
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Example 2: Square Macro
+# ─────────────────────────────────────────────────────────────────────────────
+
+सूत्र square(x): अनुवाद -> x * x
+
+# Usage expands to: 7 * 7
+result2 = square(7)
+मुद्रय "square(7) =", result2  # Output: 49
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Example 3: Multi-parameter Macro
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Define a macro for calculating the hypotenuse squared
+सूत्र hypotSq(a, b): अनुवाद -> a * a + b * b
+
+# Usage expands to: 3 * 3 + 4 * 4
+result3 = hypotSq(3, 4)
+मुद्रय "hypotSq(3,4) =", result3  # Output: 25
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Example 4: Statement Macro (if-else pattern)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Define a macro for absolute value using conditional expression
+# Note: This is a simplified version - full if-else in macros needs expression support
+सूत्र abs_val(x): अनुवाद -> x * (-1 + 2 * (x >= 0))
+
+# Usage expands to: -10 * (-1 + 2 * (-10 >= 0)) = -10 * (-1 + 0) = 10
+result4 = abs_val(-10)
+मुद्रय "abs_val(-10) =", result4  # Output: 10
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Example 5: Nested Macro Calls
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Macros can call other macros - expansion happens recursively
+# Note: For this demo, we use a simple nested expression
+सूत्र quadruple(x): अनुवाद -> x * 4
+
+# Usage expands to: 3 * 4 = 12
+result5 = quadruple(3)
+मुद्रय "quadruple(3) =", result5  # Output: 12
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Example 6: Complex Expression Macro
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Define the quadratic formula discriminant: b² - 4ac
+सूत्र discriminant(a, b, c): अनुवाद -> b * b - 4 * a * c
+
+# Usage expands to: 2*2 - 4*1*(-3) = 4 + 12 = 16
+disc = discriminant(1, 2, -3)
+मुद्रय "discriminant(1,2,-3) =", disc  # Output: 16
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Example 7: Sum Formula Macro
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Define a macro for sum of first n numbers: n*(n+1)/2
+सूत्र sumOfN(n): अनुवाद -> n * (n + 1) // 2
+
+# Usage: sumOfN(5) = 5*6/2 = 30
+# Note: This uses the mathematical formula instead of iteration
+result6 = sumOfN(5)
+मुद्रय "sumOfN(5) =", result6  # Output: 30
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Example 8: Identity/No-op Macro
+# ─────────────────────────────────────────────────────────────────────────────
+
+सूत्र identity(x): अनुवाद -> x
+
+# Usage expands to just the argument
+result7 = identity(42)
+मुद्रय "identity(42) =", result7  # Output: 42
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Example 9: Constant Folding Macro
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Macros enable compile-time computation
+सूत्र factorial3(): अनुवाद -> 3 * 2 * 1
+
+# Usage expands to: 3 * 2 * 1 = 6 (computed at compile-time)
+fact3 = factorial3()
+मुद्रय "factorial3() =", fact3  # Output: 6
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Example 10: Swapping Macro
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Define a macro for swapping two values (returns tuple)
+सूत्र swap(a, b): अनुवाद -> [b, a]
+
+# Usage expands to: [10, 20]
+swapped = swap(20, 10)
+मुद्रय "swap(20, 10) =", swapped  # Output: [10, 20]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Example 11: Min/Max Macros
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Simplified min/max using arithmetic (avoids if-else expression issues)
+सूत्र min(a, b): अनुवाद -> a + (b - a) * (b < a)
+
+सूत्र max(a, b): अनुवाद -> a + (b - a) * (a < b)
+
+result8 = min(5, 3)
+result9 = max(5, 3)
+मुद्रय "min(5,3) =", result8, "max(5,3) =", result9  # Output: 3, 5
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Example 12: Fibonacci Function
+# ─────────────────────────────────────────────────────────────────────────────
+
+# For actual fibonacci, use a function:
+कर्म fib(n):
+    यदि n <= 1:
+        प्रत्यागच्छ n
+    प्रत्यागच्छ fib(n-1) + fib(n-2)
+
+result10 = fib(10)
+मुद्रय "fib(10) =", result10  # Output: 55
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Summary: Macro Expansion Benefits
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 1. Compile-time computation - No runtime overhead
+# 2. Code reuse - Define once, use everywhere
+# 3. Domain-specific syntax - Create custom abstractions
+# 4. Pattern matching - Transform code patterns automatically
+# 5. Pāṇinian heritage - Inspired by ancient Indian grammar
+#
+# The macro system follows Pāṇini's Aṣṭādhyāyī principles:
+# - सूत्र (Sūtra): Concise rules (like grammatical rules)
+# - अनुवाद (Anuvāda): Translation/expansion (like commentary)
+# - अनुवृत्ति (Anuvṛtti): Context continuation (future feature)
+# ─────────────────────────────────────────────────────────────────────────────

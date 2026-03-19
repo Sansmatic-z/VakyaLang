@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from .bytecode import Bytecode
 from .opcodes import OpCode, OPCODE_NAMES
 
+class VakThrowException(Exception):
+    def __init__(self, value):
+        self.value = value
+
 @dataclass
 class CallFrame:
     """Represents a function call frame."""
@@ -37,6 +41,12 @@ class VakClass:
     def __init__(self, name: str, methods: dict):
         self.name = name
         self.methods = methods
+        
+    def __repr__(self):
+        return f"<वर्ग:{self.name}>"
+        
+    def __str__(self):
+        return self.__repr__()
 
 class VakInstance:
     """Represents an instance of a VakyaLang class."""
@@ -44,11 +54,50 @@ class VakInstance:
         self.klass = klass
         self.attrs = {}
 
+    def __repr__(self):
+        return f"<{self.klass.name} वस्तु>"
+        
+    def __str__(self):
+        return self.__repr__()
+
 class VakModule:
     """Represents an imported VakyaLang module."""
     def __init__(self, name: str, attrs: dict):
         self.name = name
         self.attrs = attrs
+
+
+class VakCoroutine:
+    """
+    Wrapper for suspendable coroutine execution.
+    
+    Represents an async function that can be suspended and resumed.
+    Maintains its own CallFrame and execution state.
+    
+    Usage:
+        async def मुख्य():
+            प्रतीक्षा कार्य_१()
+            प्रतीक्षा कार्य_२()
+    """
+    def __init__(self, frame: CallFrame, bytecode: Bytecode):
+        self.frame = frame
+        self.bytecode = bytecode
+        self.suspended = False
+        self.completed = False
+        self.result = None
+        self.pending_await = None  # For nested awaits
+        self.name = bytecode.name
+    
+    def __repr__(self):
+        status = "suspended" if self.suspended else ("completed" if self.completed else "active")
+        return f"VakCoroutine({self.name}, {status})"
+    
+    def __await__(self):
+        """Make coroutine awaitable by Python."""
+        if not self.completed:
+            yield self
+        return self.result
+
 
 class VakVM:
     """
@@ -258,6 +307,8 @@ class VakVM:
             'संयोग': lambda lst, sep="": sep.join(str(x) for x in lst),
             'विभाजन': lambda s, sep=" ": s.split(sep),
             'छाँटो': lambda s: s.strip(),
+            'उच्च': lambda s: s.upper() if isinstance(s, str) else s,
+            'निम्न': lambda s: s.lower() if isinstance(s, str) else s,
             'पूर्णांक_कर': int,
             'क्रमबद्ध': sorted,
             'योग': sum,
@@ -308,16 +359,33 @@ class VakVM:
         self.frames = [frame]
         self.current_frame = frame
         
-        try:
-            return self._execute()
-        except VMError as e:
-            # Add stack trace
-            trace = self._format_stack_trace()
-            raise VMError(f"{e}\n{trace}")
-        except Exception as e:
-            # Catch non-VM errors (Python crashes) and wrap them
-            trace = self._format_stack_trace()
-            raise VMError(f"Internal VM Crash: {e}\n{trace}")
+        while True:
+            try:
+                return self._execute()
+            except VakThrowException as e:
+                exception_val = e.value
+                handled = False
+                while self.frames:
+                    current = self.frames[-1]
+                    if current.blocks:
+                        catch_pc = current.blocks.pop()
+                        current.pc = catch_pc
+                        current.stack.append(exception_val)
+                        self.current_frame = current
+                        handled = True
+                        break
+                    else:
+                        self.frames.pop()
+                if not handled:
+                    raise VMError(f"Unhandled exception: {exception_val}")
+            except VMError as e:
+                # Add stack trace
+                trace = self._format_stack_trace()
+                raise VMError(f"{e}\n{trace}")
+            except Exception as e:
+                # Catch non-VM errors (Python crashes) and wrap them
+                trace = self._format_stack_trace()
+                raise VMError(f"Internal VM Crash: {e}\n{trace}")
             
     def _execute(self) -> Any:
         """Main execution loop."""
@@ -621,7 +689,7 @@ class VakVM:
                                         match = True
                                         
                                     if not match:
-                                        raise VMError(f"प्रकार त्रुटि (Type Error): '{p_name}' के लिए '{expected_type}' अपेक्षित था, लेकिन '{actual_type}' मिला।")
+                                        raise VakThrowException(f"प्रकार त्रुटि (Type Error): '{p_name}' के लिए '{expected_type}' अपेक्षित था, लेकिन '{actual_type}' मिला।")
                                         
                             if i < len(new_frame.locals):
                                 new_frame.locals[i] = arg_val
@@ -659,6 +727,67 @@ class VakVM:
                         continue
                     else:
                         raise VMError(f"Function not found: {func_name}")
+                elif isinstance(func, tuple) and func[0] == 'coroutine':
+                    # Async function called - create coroutine but don't execute yet
+                    func_name = func[1]
+                    func_bc = frame.bytecode.functions.get(func_name)
+                    if not func_bc:
+                        func_bc = self.frames[0].bytecode.functions.get(func_name)
+                    if func_bc:
+                        # Create new frame for coroutine
+                        new_frame = CallFrame(func_bc)
+                        # Set up arguments (same as regular function)
+                        num_fixed = func_bc.num_params
+                        for i in range(min(len(args), num_fixed)):
+                            arg_val = args[i]
+                            # Apply type checking for coroutine parameters too
+                            if i < len(func_bc.var_names):
+                                p_name = func_bc.var_names[i]
+                                if hasattr(func_bc, 'type_hints') and p_name in func_bc.type_hints:
+                                    expected_type = func_bc.type_hints[p_name]
+                                    actual_type = self.builtins['प्रकार'](arg_val)
+                                    match = False
+                                    if expected_type == actual_type or expected_type == 'कोई_भी':
+                                        match = True
+                                    elif expected_type == 'संख्या' and actual_type in ('पूर्णांक', 'दशमलव'):
+                                        match = True
+                                    if not match:
+                                        raise VakThrowException(f"प्रकार त्रुटि (Type Error): '{p_name}' के लिए '{expected_type}' अपेक्षित था, लेकिन '{actual_type}' मिला।")
+                            if i < len(new_frame.locals):
+                                new_frame.locals[i] = arg_val
+
+                        # Handle varargs
+                        if func_bc.varargs_name:
+                            varargs_list = list(args[num_fixed:])
+                            if num_fixed < len(new_frame.locals):
+                                new_frame.locals[num_fixed] = varargs_list
+
+                        # Apply default arguments
+                        if hasattr(func_bc, 'defaults'):
+                            for i in range(len(args), num_fixed):
+                                if i < len(new_frame.locals) and func_bc.defaults[i] is not None:
+                                    new_frame.locals[i] = func_bc.defaults[i]
+
+                        # Inject closure environment if present
+                        if len(func) == 3:
+                            closure_env = func[2]
+                            new_frame.closure_env = closure_env
+                            for i, name in enumerate(new_frame.bytecode.var_names):
+                                if i >= num_fixed and name in closure_env:
+                                    if isinstance(closure_env[name], Cell):
+                                        new_frame.locals[i] = closure_env[name]
+                                    else:
+                                        if not isinstance(new_frame.locals[i], Cell):
+                                            new_frame.locals[i] = Cell(new_frame.locals[i])
+                                        new_frame.locals[i].value = closure_env[name]
+
+                        # Create coroutine wrapper - do not execute yet
+                        coroutine = VakCoroutine(new_frame, func_bc)
+                        frame.stack.append(coroutine)
+                        frame.pc += 2
+                        continue
+                    else:
+                        raise VMError(f"Coroutine function not found: {func_name}")
                 elif isinstance(func, tuple) and func[0] == 'bound_method':
                     obj = func[1]
                     method_name = func[2]
@@ -1095,12 +1224,20 @@ class VakVM:
                 stdlib_path = os.path.abspath(os.path.join(base_dir, '..', 'stdlib', f"{module_name}.vak"))
                 local_path = os.path.abspath(os.path.join(os.getcwd(), f"{module_name}.vak"))
                 
+                # Check package directory (वाक्_ग्रंथालय) - VakPack integration
+                package_path = os.path.abspath(os.path.join(base_dir, '..', '..', 'वाक्_ग्रंथालय', f"{module_name}.vak"))
+                project_package_path = os.path.abspath(os.path.join(os.getcwd(), 'वाक्_ग्रंथालय', f"{module_name}.vak"))
+
                 target_path = None
                 if os.path.exists(local_path):
                     target_path = local_path
                 elif os.path.exists(stdlib_path):
                     target_path = stdlib_path
-                
+                elif os.path.exists(package_path):
+                    target_path = package_path
+                elif os.path.exists(project_package_path):
+                    target_path = project_package_path
+
                 if not target_path:
                     raise VMError(f"Module not found: {module_name}")
                 
@@ -1172,7 +1309,48 @@ class VakVM:
                 except StopIteration:
                     self._pop() # Remove iterator
                     frame.pc += 3 + offset
+
+            # ── Async/Coroutine ────────────────────────────────────────────────
+            elif op == OpCode.AWAIT.value:
+                # Await a coroutine
+                awaitable = self._pop()
                 
+                if isinstance(awaitable, VakCoroutine):
+                    # It's a VakyaLang coroutine
+                    if awaitable.completed:
+                        # Already completed, just push result
+                        frame.stack.append(awaitable.result)
+                    else:
+                        # Need to execute the coroutine until it completes or yields
+                        result = self._run_coroutine_until_yield(awaitable)
+                        
+                        if awaitable.completed:
+                            # Coroutine finished, push result
+                            frame.stack.append(awaitable.result)
+                        else:
+                            # Coroutine suspended - in a full async implementation,
+                            # we would suspend the current frame too. For now, we
+                            # run the coroutine to completion synchronously.
+                            # The event loop handles proper async scheduling.
+                            while not awaitable.completed and not awaitable.suspended:
+                                result = self._run_coroutine_until_yield(awaitable)
+                            frame.stack.append(awaitable.result if awaitable.completed else awaitable)
+                elif hasattr(awaitable, '__await__'):
+                    # Python awaitable - execute it
+                    import types
+                    if isinstance(awaitable, types.CoroutineType):
+                        # Native Python coroutine - need event loop to run
+                        # For now, just push it back
+                        frame.stack.append(awaitable)
+                    else:
+                        # Other awaitable
+                        frame.stack.append(awaitable)
+                else:
+                    # Not awaitable, just push it back (no-op await)
+                    frame.stack.append(awaitable)
+                
+                frame.pc += 1
+
             # ── I/O ──────────────────────────────────────────────────────────────
             elif op == OpCode.PRINT.value:
                 val = self._pop()
@@ -1203,7 +1381,470 @@ class VakVM:
         if frame.stack:
             return frame.stack[-1]
         return None
+
+    def _run_coroutine_until_yield(self, coroutine: VakCoroutine) -> Any:
+        """
+        Execute a coroutine until it yields (awaits) or completes.
         
+        Returns the result if completed, or None if suspended.
+        
+        This method executes the coroutine's bytecode step-by-step,
+        properly handling AWAIT, RETURN, and RETURN_VOID opcodes.
+        """
+        if coroutine.completed:
+            return coroutine.result
+        
+        # Push the coroutine's frame
+        self.frames.append(coroutine.frame)
+        self.current_frame = coroutine.frame
+        
+        # Save parent frame context
+        parent_frame = self.frames[-2] if len(self.frames) > 1 else None
+        parent_code = parent_frame.bytecode.code if parent_frame else None
+        parent_constants = parent_frame.bytecode.constants if parent_frame else None
+        
+        # Get coroutine's execution context
+        code = coroutine.frame.bytecode.code
+        constants = coroutine.frame.bytecode.constants
+        frame = coroutine.frame
+        
+        # Execute until AWAIT, RETURN, or HALT
+        while frame.pc < len(code):
+            op = code[frame.pc]
+            
+            if op == OpCode.AWAIT.value:
+                # Hit an await - need to await another coroutine
+                # Pop the awaitable
+                awaitable = frame.stack.pop()
+                
+                if isinstance(awaitable, VakCoroutine):
+                    # Nested coroutine - run it recursively until completion
+                    nested_result = self._run_coroutine_until_yield(awaitable)
+                    if awaitable.completed:
+                        frame.stack.append(awaitable.result)
+                        frame.pc += 1
+                        continue
+                    else:
+                        # Nested coroutine suspended - suspend this one too
+                        coroutine.suspended = True
+                        self.frames.pop()
+                        self.current_frame = parent_frame
+                        return None
+                else:
+                    # Not a coroutine, just push back
+                    frame.stack.append(awaitable)
+                    frame.pc += 1
+                    continue
+            
+            elif op == OpCode.RETURN.value:
+                result = frame.stack.pop()
+                coroutine.result = result
+                coroutine.completed = True
+                coroutine.suspended = False
+                self.frames.pop()
+                self.current_frame = parent_frame
+                return result
+            
+            elif op == OpCode.RETURN_VOID.value:
+                coroutine.result = None
+                coroutine.completed = True
+                coroutine.suspended = False
+                self.frames.pop()
+                self.current_frame = parent_frame
+                return None
+            
+            elif op == OpCode.HALT.value:
+                coroutine.completed = True
+                coroutine.suspended = False
+                self.frames.pop()
+                self.current_frame = parent_frame
+                return coroutine.result
+            
+            else:
+                # Execute other opcodes normally
+                self._execute_single_op(frame, code, constants)
+        
+        # Reached end of bytecode
+        coroutine.completed = True
+        self.frames.pop()
+        self.current_frame = parent_frame
+        return coroutine.result
+
+    def _execute_single_op(self, frame: CallFrame, code: bytes, constants: list) -> None:
+        """
+        Execute a single bytecode instruction.
+        
+        This is a helper method extracted from _execute for coroutine stepping.
+        It executes one opcode and advances the PC.
+        """
+        op = code[frame.pc]
+        
+        if op == OpCode.LOAD_CONST.value:
+            idx = (code[frame.pc + 1] << 8) | code[frame.pc + 2]
+            val = constants[idx]
+            # Handle closure creation for functions
+            if isinstance(val, tuple) and len(val) >= 2 and val[0] == 'function':
+                closure_env = {}
+                for i, n in enumerate(frame.bytecode.var_names):
+                    if not isinstance(frame.locals[i], Cell):
+                        frame.locals[i] = Cell(frame.locals[i])
+                    closure_env[n] = frame.locals[i]
+                val = ('function', val[1], closure_env)
+            frame.stack.append(val)
+            frame.pc += 3
+
+        elif op == OpCode.LOAD_VAR.value:
+            slot = code[frame.pc + 1]
+            name = frame.bytecode.var_names[slot]
+            val = frame.locals[slot]
+            # Unwrap Cell
+            if isinstance(val, Cell):
+                val = val.value
+            # Fallback to globals/builtins
+            if val is None:
+                if name in self.globals:
+                    val = self.globals[name]
+                elif name in self.builtins:
+                    val = self.builtins[name]
+            frame.stack.append(val)
+            frame.pc += 2
+
+        elif op == OpCode.STORE_VAR.value:
+            slot = code[frame.pc + 1]
+            val = frame.stack.pop()
+            name = frame.bytecode.var_names[slot]
+            if isinstance(frame.locals[slot], Cell):
+                frame.locals[slot].value = val
+            else:
+                frame.locals[slot] = val
+            if len(self.frames) == 1 or name in frame.bytecode.global_names:
+                self.globals[name] = val
+            frame.pc += 2
+
+        elif op == OpCode.POP.value:
+            frame.stack.pop()
+            frame.pc += 1
+
+        elif op == OpCode.DUP.value:
+            frame.stack.append(frame.stack[-1])
+            frame.pc += 1
+
+        elif op == OpCode.SWAP.value:
+            frame.stack[-1], frame.stack[-2] = frame.stack[-2], frame.stack[-1]
+            frame.pc += 1
+
+        elif op == OpCode.ADD.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(str(a) + str(b) if isinstance(a, str) or isinstance(b, str) else a + b)
+            frame.pc += 1
+
+        elif op == OpCode.SUB.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a - b)
+            frame.pc += 1
+
+        elif op == OpCode.MUL.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a * b)
+            frame.pc += 1
+
+        elif op == OpCode.DIV.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a / b)
+            frame.pc += 1
+
+        elif op == OpCode.IDIV.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a // b)
+            frame.pc += 1
+
+        elif op == OpCode.MOD.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a % b)
+            frame.pc += 1
+
+        elif op == OpCode.POW.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a ** b)
+            frame.pc += 1
+
+        elif op == OpCode.NEG.value:
+            a = frame.stack.pop()
+            frame.stack.append(-a)
+            frame.pc += 1
+
+        elif op == OpCode.EQ.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a == b)
+            frame.pc += 1
+
+        elif op == OpCode.NEQ.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a != b)
+            frame.pc += 1
+
+        elif op == OpCode.LT.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a < b)
+            frame.pc += 1
+
+        elif op == OpCode.GT.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a > b)
+            frame.pc += 1
+
+        elif op == OpCode.LTE.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a <= b)
+            frame.pc += 1
+
+        elif op == OpCode.GTE.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a >= b)
+            frame.pc += 1
+
+        elif op == OpCode.AND.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a and b)
+            frame.pc += 1
+
+        elif op == OpCode.OR.value:
+            b = frame.stack.pop()
+            a = frame.stack.pop()
+            frame.stack.append(a or b)
+            frame.pc += 1
+
+        elif op == OpCode.NOT.value:
+            a = frame.stack.pop()
+            frame.stack.append(not a)
+            frame.pc += 1
+
+        elif op == OpCode.JUMP.value:
+            offset = (code[frame.pc + 1] << 8) | code[frame.pc + 2]
+            if offset > 32767:
+                offset -= 65536
+            frame.pc += 3 + offset
+
+        elif op == OpCode.JUMP_IF_TRUE.value:
+            offset = (code[frame.pc + 1] << 8) | code[frame.pc + 2]
+            if offset > 32767:
+                offset -= 65536
+            cond = frame.stack.pop()
+            frame.pc += 3 + offset if cond else 3
+
+        elif op == OpCode.JUMP_IF_FALSE.value:
+            offset = (code[frame.pc + 1] << 8) | code[frame.pc + 2]
+            if offset > 32767:
+                offset -= 65536
+            cond = frame.stack.pop()
+            frame.pc += 3 + offset if not cond else 3
+
+        elif op == OpCode.GET_ITER.value:
+            obj = frame.stack.pop()
+            frame.stack.append(iter(obj))
+            frame.pc += 1
+
+        elif op == OpCode.FOR_ITER.value:
+            offset = (code[frame.pc + 1] << 8) | code[frame.pc + 2]
+            it = frame.stack[-1]
+            try:
+                val = next(it)
+                frame.stack.append(val)
+                frame.pc += 3
+            except StopIteration:
+                frame.stack.pop()
+                frame.pc += 3 + offset
+
+        elif op == OpCode.PRINT.value:
+            val = frame.stack.pop()
+            print(val, end='')
+            frame.pc += 1
+
+        elif op == OpCode.BUILD_LIST.value:
+            count = code[frame.pc + 1]
+            elements = [frame.stack.pop() for _ in range(count)]
+            elements.reverse()
+            frame.stack.append(elements)
+            frame.pc += 2
+
+        elif op == OpCode.BUILD_DICT.value:
+            count = code[frame.pc + 1]
+            pairs = {}
+            for _ in range(count):
+                val = frame.stack.pop()
+                key = frame.stack.pop()
+                pairs[key] = val
+            frame.stack.append(pairs)
+            frame.pc += 2
+
+        elif op == OpCode.LIST_APPEND.value:
+            val = frame.stack.pop()
+            lst = frame.stack[-2]
+            lst.append(val)
+            frame.pc += 1
+
+        elif op == OpCode.INDEX_GET.value:
+            idx = frame.stack.pop()
+            obj = frame.stack.pop()
+            frame.stack.append(obj[idx])
+            frame.pc += 1
+
+        elif op == OpCode.INDEX_SET.value:
+            val = frame.stack.pop()
+            idx = frame.stack.pop()
+            obj = frame.stack.pop()
+            obj[idx] = val
+            frame.pc += 1
+
+        elif op == OpCode.ATTR_GET.value:
+            idx = (code[frame.pc + 1] << 8) | code[frame.pc + 2]
+            attr_name = constants[idx]
+            obj = frame.stack.pop()
+            if isinstance(obj, VakInstance):
+                if attr_name in obj.attrs:
+                    frame.stack.append(obj.attrs[attr_name])
+                elif attr_name in obj.klass.methods:
+                    frame.stack.append(('bound_method', obj, attr_name))
+                else:
+                    raise VMError(f"Attribute '{attr_name}' not found on {obj.klass.name}")
+            elif isinstance(obj, VakModule):
+                if attr_name in obj.attrs:
+                    frame.stack.append(obj.attrs[attr_name])
+                else:
+                    raise VMError(f"Attribute '{attr_name}' not found in module {obj.name}")
+            else:
+                frame.stack.append(getattr(obj, attr_name))
+            frame.pc += 3
+
+        elif op == OpCode.ATTR_SET.value:
+            idx = (code[frame.pc + 1] << 8) | code[frame.pc + 2]
+            attr_name = constants[idx]
+            val = frame.stack.pop()
+            obj = frame.stack.pop()
+            if isinstance(obj, VakInstance):
+                obj.attrs[attr_name] = val
+            else:
+                setattr(obj, attr_name, val)
+            frame.pc += 3
+
+        elif op == OpCode.CALL_BUILTIN.value:
+            idx = code[frame.pc + 1]
+            argc = code[frame.pc + 2]
+            builtins_list = list(self.builtins.keys())
+            if idx < len(builtins_list):
+                name = builtins_list[idx]
+                func = self.builtins[name]
+                args = [frame.stack.pop() for _ in range(argc)]
+                args.reverse()
+                frame.stack.append(func(*args))
+            else:
+                raise VMError(f"Unknown builtin: {idx}")
+            frame.pc += 3
+
+        elif op == OpCode.SETUP_EXCEPT.value:
+            offset = (code[frame.pc + 1] << 8) | code[frame.pc + 2]
+            frame.blocks.append(frame.pc + 3 + offset)
+            frame.pc += 3
+
+        elif op == OpCode.POP_EXCEPT.value:
+            if frame.blocks:
+                frame.blocks.pop()
+            frame.pc += 1
+
+        elif op == OpCode.THROW.value:
+            exception_val = frame.stack.pop()
+            handled = False
+            while self.frames:
+                current = self.frames[-1]
+                if current.blocks:
+                    catch_pc = current.blocks.pop()
+                    current.pc = catch_pc
+                    current.stack.append(exception_val)
+                    self.current_frame = current
+                    handled = True
+                    break
+                else:
+                    self.frames.pop()
+            if not handled:
+                raise VMError(f"Unhandled exception: {exception_val}")
+
+        else:
+            # For unhandled opcodes in coroutine context, raise error
+            raise VMError(f"Unsupported opcode in coroutine: {op:02X} at PC {frame.pc}")
+
+    def _create_frame(self, bytecode: Bytecode) -> CallFrame:
+        """
+        Create a new CallFrame for the given bytecode.
+        
+        This is a helper method for creating coroutine frames.
+        
+        Args:
+            bytecode: The bytecode to create a frame for
+            
+        Returns:
+            A new CallFrame initialized for the bytecode
+        """
+        return CallFrame(bytecode)
+
+    def create_coroutine(self, func_name: str, args: tuple = None) -> VakCoroutine:
+        """
+        Create a coroutine from a named function.
+        
+        This is a convenience method for creating coroutines from the VM.
+        
+        Args:
+            func_name: Name of the coroutine function
+            args: Arguments to pass to the coroutine
+            
+        Returns:
+            A new VakCoroutine instance
+        """
+        if args is None:
+            args = ()
+        
+        # Get the bytecode for the function
+        if self.frames:
+            func_bc = self.frames[0].bytecode.functions.get(func_name)
+        else:
+            func_bc = None
+        
+        if not func_bc:
+            raise VMError(f"Coroutine function not found: {func_name}")
+        
+        # Create frame and set up arguments
+        frame = CallFrame(func_bc)
+        num_fixed = func_bc.num_params
+        
+        for i in range(min(len(args), num_fixed)):
+            if i < len(frame.locals):
+                frame.locals[i] = args[i]
+        
+        if func_bc.varargs_name:
+            varargs_list = list(args[num_fixed:])
+            if num_fixed < len(frame.locals):
+                frame.locals[num_fixed] = varargs_list
+        
+        if hasattr(func_bc, 'defaults'):
+            for i in range(len(args), num_fixed):
+                if i < len(frame.locals) and func_bc.defaults[i] is not None:
+                    frame.locals[i] = func_bc.defaults[i]
+        
+        return VakCoroutine(frame, func_bc)
+
     def _format_stack_trace(self) -> str:
         """Format call stack for error reporting."""
         lines = ["Stack trace:"]

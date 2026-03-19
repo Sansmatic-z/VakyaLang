@@ -79,11 +79,15 @@ class Parser:
     def _stmt(self) -> Node:
         ln = self.line()
 
+        # Check for macro definition FIRST (Pāṇinian सूत्र)
+        if self.check(TokenType.SUTRA):
+            return self._sutra_decl()
+        
         if self.check(TokenType.VAR):
             return self._var_decl()
         if self.check(TokenType.CONST):
             return self._const_decl()
-        if self.check(TokenType.FUNC):
+        if self.check(TokenType.FUNC, TokenType.ASYNC):
             return self._func_decl()
         if self.check(TokenType.CLASS):
             return self._class_decl()
@@ -133,23 +137,23 @@ class Parser:
         names = [self.expect(TokenType.IDENTIFIER).value]
         while self.match(TokenType.COMMA):
             names.append(self.expect(TokenType.IDENTIFIER).value)
-        
+
         type_hint = None
         if self.match(TokenType.COLON):
             type_hint = self.expect(TokenType.IDENTIFIER).value
-            
+
         value = None
         if self.match(TokenType.ASSIGN):
             # Parse one or more expressions
             exprs = [self._expr()]
             while self.match(TokenType.COMMA):
                 exprs.append(self._expr())
-            
+
             if len(exprs) > 1:
                 value = ListLiteral(elements=exprs, line=ln)
             else:
                 value = exprs[0]
-                
+
         self._end_stmt()
         return VarDecl(names=names, value=value, type_hint=type_hint, line=ln)
 
@@ -164,12 +168,15 @@ class Parser:
 
     def _func_decl(self) -> FuncDecl:
         ln = self.line()
+        # Check for async keyword (अतुल्यकालिक)
+        is_async = self.match(TokenType.ASYNC)
+        
         self.expect(TokenType.FUNC)
         name = self.expect(TokenType.IDENTIFIER).value
         self.expect(TokenType.LPAREN)
         params, defaults, varargs = self._param_list()
         self.expect(TokenType.RPAREN)
-        
+
         return_type = None
         if self.match(TokenType.COLON):
             # Check if it's followed by an identifier (type hint) or an INDENT (block)
@@ -183,10 +190,11 @@ class Parser:
                 pass
         else:
             self.expect(TokenType.COLON)
-            
+
         body = self._block()
         return FuncDecl(name=name, params=params, defaults=defaults,
-                        varargs=varargs, body=body, return_type=return_type, line=ln)
+                        varargs=varargs, body=body, return_type=return_type,
+                        is_async=is_async, line=ln)
 
     def _param_list(self):
         params, defaults = [], []
@@ -199,21 +207,21 @@ class Parser:
                 if not self.check(TokenType.RPAREN):
                     raise ParseError("अनियत तर्क (*args) अंतिम होना चाहिए", self.line())
                 break
-                
+
             # Allow स्वयं (SELF) and अभिभावक (SUPER) as parameter names
             if self.check(TokenType.SELF, TokenType.SUPER):
                 p = self.current.value
                 self.pos += 1
             else:
                 p = self.expect(TokenType.IDENTIFIER).value
-            
+
             # Optional type hint for param
             p_type = None
             if self.match(TokenType.COLON):
                 p_type = self.expect(TokenType.IDENTIFIER).value
-                
+
             params.append((p, p_type))
-            
+
             if self.match(TokenType.ASSIGN):
                 defaults.append(self._expr())
             else:
@@ -322,14 +330,14 @@ class Parser:
         ln = self.line()
         self.expect(TokenType.WITH)
         expr = self._expr()
-        
+
         var_name = None
         if self.match(TokenType.AS):
             var_name = self.expect(TokenType.IDENTIFIER).value
-            
+
         self.expect(TokenType.COLON)
         body = self._block()
-        
+
         return WithStmt(expr=expr, var_name=var_name, body=body, line=ln)
 
     def _throw_stmt(self) -> ThrowStmt:
@@ -342,10 +350,10 @@ class Parser:
     def _import_stmt(self) -> ImportStmt:
         ln = self.line()
         self.expect(TokenType.IMPORT)
-        
+
         # Read the first identifier
         first = self.expect(TokenType.IDENTIFIER).value
-        
+
         # Check for 'से' (FROM) syntax: आयात name से module.submodule
         if self.match(TokenType.FROM):
             names = [first]
@@ -355,7 +363,7 @@ class Parser:
             module = '.'.join(module_parts)
             self._end_stmt()
             return ImportStmt(module=module, names=names, line=ln)
-        
+
         # Check for regular import with potential dots: आयात module.submodule
         module_parts = [first]
         while self.match(TokenType.DOT):
@@ -381,6 +389,40 @@ class Parser:
             names.append(self.expect(TokenType.IDENTIFIER).value)
         self._end_stmt()
         return NonlocalStmt(names=names, line=ln)
+
+    def _sutra_decl(self) -> SutraDecl:
+        """
+        Parse a macro definition (सूत्र).
+        
+        Syntax:
+            सूत्र name(params):
+                अनुवाद -> expansion
+        """
+        ln = self.line()
+        self.expect(TokenType.SUTRA)
+        name = self.expect(TokenType.IDENTIFIER).value
+        
+        # Parse parameters
+        self.expect(TokenType.LPAREN)
+        params = []
+        if not self.check(TokenType.RPAREN):
+            params.append(self.expect(TokenType.IDENTIFIER).value)
+            while self.match(TokenType.COMMA):
+                params.append(self.expect(TokenType.IDENTIFIER).value)
+        self.expect(TokenType.RPAREN)
+        
+        self.expect(TokenType.COLON)
+        self.skip_newlines()
+        
+        # Parse expansion template (अनुवाद)
+        self.expect(TokenType.ANUVADA)
+        self.expect(TokenType.LARROW)  # ->
+        
+        # Parse the expansion expression/statement
+        expansion = self._expr()
+        self._end_stmt()
+        
+        return SutraDecl(name=name, params=params, expansion=expansion, line=ln)
 
     def _expr_stmt(self) -> ExprStmt:
         ln = self.line()
@@ -462,7 +504,7 @@ class Parser:
             TokenType.LTE: '<=', TokenType.GTE: '>=',
             TokenType.IN: 'अन्तर्गत',
         }
-        
+
         while self.current.type in cmp_map:
             op = cmp_map[self.current.type]
             self.pos += 1
@@ -471,9 +513,9 @@ class Parser:
             if isinstance(left, BinaryExpr) and left.op in cmp_map.values():
                 # Note: This simple desugaring evaluates the middle expression twice.
                 # A professional implementation would use a temporary variable.
-                left = BinaryExpr(op='और', 
-                                  left=left, 
-                                  right=BinaryExpr(op=op, left=left.right, right=right, line=ln), 
+                left = BinaryExpr(op='और',
+                                  left=left,
+                                  right=BinaryExpr(op=op, left=left.right, right=right, line=ln),
                                   line=ln)
             else:
                 left = BinaryExpr(op=op, left=left, right=right, line=ln)
@@ -643,6 +685,11 @@ class Parser:
         ln = self.line()
         tok = self.current
 
+        # Handle await expression (प्रतीक्षा)
+        if self.match(TokenType.AWAIT):
+            operand = self._unary()
+            return AwaitExpr(operand=operand, line=ln)
+
         if tok.type == TokenType.NUMBER:
             self.pos += 1
             return NumberLiteral(value=tok.value, line=ln)
@@ -701,16 +748,16 @@ class Parser:
             parts = [self.expect(TokenType.IDENTIFIER).value]
             while self.match(TokenType.DOT):
                 parts.append(self.expect(TokenType.IDENTIFIER).value)
-            
+
             self.expect(TokenType.LPAREN)
             args, kwargs = self._arg_list()
             self.expect(TokenType.RPAREN)
-            
+
             # Construct nested MemberExpr/IdentifierExpr for callee
             callee = IdentifierExpr(name=parts[0], line=ln)
             for i in range(1, len(parts)):
                 callee = MemberExpr(obj=callee, attr=parts[i], line=ln)
-            
+
             return CallExpr(callee=callee, args=args, kwargs=kwargs, line=ln)
 
         if tok.type == TokenType.FUNC:
@@ -721,14 +768,14 @@ class Parser:
                 params, _, varargs = self._param_list() # Discard defaults for lambda
                 self.expect(TokenType.RPAREN)
                 self.expect(TokenType.COLON)
-                
+
                 # A lambda body is a single expression, but it acts like a return
                 expr_body = self._expr()
-                
+
                 # Wrap expression in ReturnStmt inside a Block to match standard func structure
                 return_stmt = ReturnStmt(value=expr_body, line=ln)
                 block = Block(stmts=[return_stmt], line=ln)
-                
+
                 return LambdaExpr(params=params, varargs=varargs, body=block, line=ln)
 
         raise ParseError(
@@ -740,14 +787,14 @@ class Parser:
         ln = self.line()
         self.expect(TokenType.LBRACKET)
         self.skip_newlines()
-        
+
         if self.check(TokenType.RBRACKET):
             self.pos += 1
             return ListLiteral(elements=[], line=ln)
-            
+
         first_expr = self._expr()
         self.skip_newlines()
-        
+
         if self.match(TokenType.FOR):
             self.match(TokenType.VAR)
             var_name = self.expect(TokenType.IDENTIFIER).value
@@ -756,7 +803,7 @@ class Parser:
             self.skip_newlines()
             self.expect(TokenType.RBRACKET)
             return ListComp(expr=first_expr, var_name=var_name, iterable=iterable, line=ln)
-            
+
         elements = [first_expr]
         if self.match(TokenType.COMMA):
             self.skip_newlines()
@@ -766,7 +813,7 @@ class Parser:
                 if not self.match(TokenType.COMMA):
                     break
                 self.skip_newlines()
-                
+
         self.expect(TokenType.RBRACKET)
         return ListLiteral(elements=elements, line=ln)
 
@@ -774,14 +821,14 @@ class Parser:
         ln = self.line()
         self.expect(TokenType.LBRACE)
         self.skip_newlines()
-        
+
         if self.check(TokenType.RBRACE):
             self.pos += 1
             return DictLiteral(pairs=[], line=ln) # Empty {} is a dict
-            
+
         first_expr = self._expr()
         self.skip_newlines()
-        
+
         # If there's a colon, it's a dict. Otherwise, it's a set.
         if self.match(TokenType.COLON):
             # It's a dictionary
@@ -823,20 +870,20 @@ class Parser:
                 if text[pos:]:
                     parts.append(StringLiteral(value=text[pos:], line=line))
                 break
-            
+
             # Handle double {{ as literal {
             if start + 1 < len(text) and text[start+1] == '{':
                 parts.append(StringLiteral(value=text[pos:start+1], line=line))
                 pos = start + 2
                 continue
-                
+
             if start > pos:
                 parts.append(StringLiteral(value=text[pos:start], line=line))
-            
+
             end = text.find('}', start)
             if end == -1:
                 raise ParseError("अपूर्ण f-string (missing '}')", line)
-                
+
             expr_str = text[start+1:end].strip()
             if expr_str:
                 from .lexer import Lexer
@@ -851,7 +898,7 @@ class Parser:
                         parts.append(expr)
                     except Exception as e:
                         raise ParseError(f"f-string में त्रुटि: {e}", line)
-            
+
             pos = end + 1
-            
+
         return FStringExpr(parts=parts, line=line)
