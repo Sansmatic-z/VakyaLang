@@ -1,6 +1,6 @@
 {
   "project_name": "VakyaLang-main",
-  "current_version": "2.1.1",
+  "current_version": "2.16.0",
   "history": [
     {
       "timestamp": "2026-03-17 09:44:41",
@@ -19,6 +19,12 @@
       "type": "improvement",
       "description": "Master Truth Audit Passed",
       "details": "Ran the comprehensive master_test.py validating VM core, Sanskrit Coder namespace, mathematical engines, and Universal Sanskrit Generative Library API. 100% success rate."
+    },
+    {
+      "timestamp": "2026-03-19 09:12:42",
+      "type": "improvement",
+      "description": "Major Upgrade: P\u0101\u1e47inian Macros, Async/Await & VakPack",
+      "details": "Successfully pushed v2.16.0 to GitHub main branch. Includes native Async/Await (\u0905\u0924\u0941\u0932\u094d\u092f\u0915\u093e\u0932\u093f\u0915/\u092a\u094d\u0930\u0924\u0940\u0915\u094d\u0937\u093e), P\u0101\u1e47inian Macro System (\u0938\u0942\u0924\u094d\u0930) for compile-time AST transformations, and VakPack Package Manager (vpm.py). Validated with 100% test pass rate."
     }
   ]
 }
