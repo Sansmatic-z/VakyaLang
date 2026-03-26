@@ -1,0 +1,107 @@
+# वाक् मानक पुस्तकालय — कूटलेखन (Cryptography)
+# Vak Standard Library — Cryptography Utilities
+# Hash functions and basic encryption
+
+# ── आयात (Imports) ────────────────────────────────────────────────────────────
+
+आयात py_bridge
+
+चर _हैशलाइब = पायथन_आयात("hashlib")
+चर _हैश = पायथन_आयात("hmac")
+चर _समय = पायथन_आयात("time")
+
+# ── हैश फंक्शन (Hash Functions) ───────────────────────────────────────────────
+
+कर्म SHA256(तार):
+    टीका Calculate SHA-256 hash of string
+    चर एन्कोडेड = तार.encode('utf-8')
+    चर हैश_वस्तु = _हैशलाइब.sha256(एन्कोडेड)
+    प्रत्यागच्छ हैश_वस्तु.hexdigest()
+
+कर्म SHA512(तार):
+    टीका Calculate SHA-512 hash of string
+    चर एन्कोडेड = तार.encode('utf-8')
+    चर हैश_वस्तु = _हैशलाइब.sha512(एन्कोडेड)
+    प्रत्यागच्छ हैश_वस्तु.hexdigest()
+
+कर्म MD5(तार):
+    टीका Calculate MD5 hash of string (not secure for cryptography!)
+    चर एन्कोडेड = तार.encode('utf-8')
+    चर हैश_वस्तु = _हैशलाइब.md5(एन्कोडेड)
+    प्रत्यागच्छ हैश_वस्तु.hexdigest()
+
+कर्म SHA1(तार):
+    टीका Calculate SHA-1 hash of string (deprecated for security)
+    चर एन्कोडेड = तार.encode('utf-8')
+    चर हैश_वस्तु = _हैशलाइब.sha1(एन्कोडेड)
+    प्रत्यागच्छ हैश_वस्तु.hexdigest()
+
+# ── HMAC (Hash-based Message Authentication Code) ─────────────────────────────
+
+कर्म HMAC_निरूपण(तार, कुंजी):
+    टीका Create HMAC signature
+    चर एन्कोडेड_तार = तार.encode('utf-8')
+    चर एन्कोडेड_कुंजी = कुंजी.encode('utf-8')
+    चर हैश_वस्तु = _हैश.new(एन्कोडेड_कुंजी, एन्कोडेड_तार, _हैशलाइब.sha256)
+    प्रत्यागच्छ हैश_वस्तु.hexdigest()
+
+कर्म HMAC_सत्यापन(तार, कुंजी, हस्ताक्षर):
+    टीका Verify HMAC signature
+    चर गणना_हस्ताक्षर = HMAC_निरूपण(तार, कुंजी)
+    प्रत्यागच्छ गणना_हस्ताक्षर == हस्ताक्षर
+
+# ── पासवर्ड हैशिंग (Password Hashing) ─────────────────────────────────────────
+
+कर्म पासवर्ड_हैश(पासवर्ड, नमक=शून्य):
+    टीका Hash password with salt
+    यदि नमक == शून्य:
+        # Generate random salt
+        चर रैंडम = पायथन_आयात("random")
+        नमक = ""
+        प्रत्येक चर _ अन्तर्गत परास(१६):
+            चर अक्षर = रैंडम.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*")
+            नमक = नमक + अक्षर
+    
+    चर संयुक्त = पासवर्ड + नमक
+    चर हैश_मान = SHA256(संयुक्त)
+    प्रत्यागच्छ [हैश_मान, नमक]
+
+कर्म पासवर्ड_जाँच(पासवर्ड, नमक, संग्रहीत_हैश):
+    टीका Verify password against stored hash
+    चर संयुक्त = पासवर्ड + नमक
+    चर गणना_हैश = SHA256(संयुक्त)
+    प्रत्यागच्छ गणना_हैश == संग्रहीत_हैश
+
+# ── बेस64 एन्कोडिंग (Base64 Encoding) ────────────────────────────────────────
+
+कर्म बेस64_एन्कोड(तार):
+    टीका Encode string to Base64
+    चर base64 = पायथन_आयात("base64")
+    चर एन्कोडेड = तार.encode('utf-8')
+    चर बेस64_बाइट्स = base64.b64encode(एन्कोडेड)
+    प्रत्यागच्छ बेस64_बाइट्स.decode('utf-8')
+
+कर्म बेस64_डिकोड(तार):
+    टीका Decode Base64 string
+    चर base64 = पायथन_आयात("base64")
+    चर एन्कोडेड = तार.encode('utf-8')
+    चर मूल_बाइट्स = base64.b64decode(एन्कोडेड)
+    प्रत्यागच्छ मूल_बाइट्स.decode('utf-8')
+
+# ── यूटिलिटीज (Utilities) ────────────────────────────────────────────────────
+
+कर्म सुरक्षित_टोकन_बनाओ(लंबाई=३२):
+    टीका Generate secure random token
+    चर secrets = पायथन_आयात("secrets")
+    प्रत्यागच्छ secrets.token_hex(लंबाई)
+
+कर्म सुरक्षित_पासवर्ड_बनाओ(लंबाई=१६):
+    टीका Generate secure random password
+    चर secrets = पायथन_आयात("secrets")
+    चर अक्षरमाला = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-="
+    चर पासवर्ड = ""
+    प्रत्येक चर _ अन्तर्गत परास(लंबाई):
+        पासवर्ड = पासवर्ड + secrets.choice(अक्षरमाला)
+    प्रत्यागच्छ पासवर्ड
+
+मुद्रय "कूटलेखन पुस्तकालय लोड हुआ। (Cryptography library loaded.)"

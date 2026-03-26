@@ -1,0 +1,7 @@
+# Print Newline Test
+मुद्रय "Statement 1"
+मुद्रय "Statement 2"
+
+चर f = मुद्रय
+f("Function 1")
+f("Function 2")

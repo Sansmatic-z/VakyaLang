@@ -1,0 +1,22 @@
+Compiled to: compiler/compiler.vakc
+
+=== Bytecode: <module> ===
+Constants: [3.141592653589793, None, 'टोकन', 'लेक्सर', ('function', 'मुख्य', {'पाई': None, 'टोकन': None, 'लेक्सर': None})]
+Variables: ['पाई', 'टोकन', 'लेक्सर', 'मुख्य']
+
+0000: LOAD_CONST          0  ; 3.141592653589793
+0003: STORE_VAR           0
+0005: LOAD_CONST          1  ; None
+0008: LOAD_CONST          2  ; "टोकन"
+0011: BUILD_CLASS
+0012: STORE_VAR           1
+0014: LOAD_CONST          1  ; None
+0017: LOAD_CONST          3  ; "लेक्सर"
+0020: BUILD_CLASS
+0021: STORE_VAR           2
+0023: LOAD_CONST          4  ; ('function', 'मुख्य', {'पाई': None, 'टोकन': None, 'लेक्सर': None})
+0026: STORE_VAR           3
+0028: LOAD_VAR            3
+0030: CALL                0
+0032: POP
+0033: HALT

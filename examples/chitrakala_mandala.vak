@@ -1,0 +1,80 @@
+# चित्रकला — मण्डल जनरेटर (Mandala Generator)
+# Demonstrates radial symmetry patterns with Sanskrit color names
+# © 2026 Raj Mitra (Visionary RM)
+#
+# Signature: Visionary RM (Raj Mitra) ⚡
+# "Sacred Geometry Through Code" 🔥
+
+# Create canvas (1000x1000, black background for contrast)
+कैनवास = _chitra_canvas(1000, 1000, "krishna")
+
+# Mandala parameters
+केंद्र_x = 500
+केंद्र_y = 500
+अधिकतम_त्रिज्या = 400
+पंखुड़ियाँ = 12  # Number of petals
+
+# Sanskrit color palette for mandala
+रंग_चक्र = ["rakta", "pita", "harita", "nila", "padma", "pingala"]
+
+# Draw concentric circles (वेधिका rings)
+चर वृत्त_संख्या = 8
+चर i = 0
+यावत् i < वृत्त_संख्या:
+    चर वर्तमान_त्रिज्या = (i + 1) * (अधिकतम_त्रिज्या / वृत्त_संख्या)
+    चर रंग_इंडेक्स = i % दीर्घता(रंग_चक्र)
+    _chitra_circle(कैनवास, केंद्र_x, केंद्र_y, पूर्णांक_कर(वर्तमान_त्रिज्या), रंग_चक्र[रंग_इंडेक्स], असत्य)
+    चर i = i + 1
+
+# Draw radial petals using lines
+चर कोण_वृद्धि = 6.28318 / पंखुड़ियाँ
+चर p = 0
+यावत् p < पंखुड़ियाँ:
+    चर कोण = p * कोण_वृद्धि
+    चर रंग_इंडेक्स = p % दीर्घता(रंग_चक्र)
+
+    # Calculate petal endpoints using math builtins
+    चर cos_val = _math_cos(कोण)
+    चर sin_val = _math_sin(कोण)
+
+    चर x1 = केंद्र_x + cos_val * (अधिकतम_त्रिज्या * 0.7)
+    चर y1 = केंद्र_y + sin_val * (अधिकतम_त्रिज्या * 0.7)
+    चर x2 = केंद्र_x + cos_val * (अधिकतम_त्रिज्या * 0.9)
+    चर y2 = केंद्र_y + sin_val * (अधिकतम_त्रिज्या * 0.9)
+
+    _chitra_line(कैनवास, पूर्णांक_कर(x1), पूर्णांक_कर(y1), पूर्णांक_कर(x2), पूर्णांक_कर(y2), रंग_चक्र[रंग_इंडेक्स])
+    चर p = p + 1
+
+# Draw small decorative circles around the center
+चर छोटी_पंखुड़ियाँ = 24
+चर छोटा_त्रिज्या = अधिकतम_त्रिज्या * 0.4
+चर कोण_वृद्धि_छोटा = 6.28318 / छोटी_पंखुड़ियाँ
+चर j = 0
+यावत् j < छोटी_पंखुड़ियाँ:
+    चर कोण = j * कोण_वृद्धि_छोटा
+    चर बिन्दु_x = केंद्र_x + _math_cos(कोण) * छोटा_त्रिज्या
+    चर बिन्दु_y = केंद्र_y + _math_sin(कोण) * छोटा_त्रिज्या
+    _chitra_circle(कैनवास, पूर्णांक_कर(बिन्दु_x), पूर्णांक_कर(बिन्दु_y), 5, "pita", सत्य)
+    चर j = j + 1
+
+# Draw center bindu (spiritual center point)
+_chitra_circle(कैनवास, केंद्र_x, केंद्र_y, 30, "श्वेत", सत्य)
+_chitra_circle(कैनवास, केंद्र_x, केंद्र_y, 20, "rakta", सत्य)
+_chitra_circle(कैनवास, केंद्र_x, केंद्र_y, 10, "pita", सत्य)
+
+# Add decorative outer ring
+चर बाहरी_त्रिज्या = अधिकतम_त्रिज्या * 0.95
+_chitra_circle(कैनवास, केंद्र_x, केंद्र_y, पूर्णांक_कर(बाहरी_त्रिज्या), "rajata", असत्य)
+
+# Save the mandala
+_chitra_save(कैनवास, "मण्डल_कला.png")
+
+मुद्रय "═══════════════════════════════════════"
+मुद्रय "🕉️  मण्डल चित्रकला सफल! (Mandala Complete)"
+मुद्रय "═══════════════════════════════════════"
+मुद्रय "कैनवास विस्तार:", _chitra_width(कैनवास)
+मुद्रय "कैनवास ऊंचाई:", _chitra_height(कैनवास)
+मुद्रय "पंखुड़ियाँ:", पंखुड़ियाँ
+मुद्रय "केंद्र बिन्दु: (", केंद्र_x, ",", केंद्र_y, ")"
+मुद्रय "═══════════════════════════════════════"
+मुद्रय "📁 सहेजी गई: मण्डल_कला.png"

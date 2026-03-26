@@ -1,0 +1,60 @@
+name: Python Reference Runtime
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package
+        run: python -m pip install --upgrade pip && python -m pip install -e .[dev]
+
+      - name: Core unit tests
+        run: python -m unittest tests.test_sansmatic_proofs tests.test_runtime_regressions tests.test_bytecode_abi
+
+      - name: Feature integration tests
+        run: python tests/test_month2_3_features.py
+
+      - name: Vak integration smoke
+        run: |
+          python runtime/run.py tests/test_core_builtins.vak
+          python runtime/run.py tests/master_test.vak
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build distributions
+        run: python -m build --sdist --wheel
+
+      - name: Validate distributions
+        run: python -m twine check dist/*

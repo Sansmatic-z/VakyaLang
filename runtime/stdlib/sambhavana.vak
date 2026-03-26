@@ -1,0 +1,419 @@
+# वाक् मानक पुस्तकालय — संभावना और सांख्यिकी (Statistics & Probability)
+# Vak Standard Library — Complete Statistics and Probability
+# शुद्ध वाक् कार्यान्वयन (Pure VakyaLang Implementation)
+# लेखक: Visionary RM (Raj Mitra)
+
+आयात गोल से ganit_vistarit
+आयात बुलबुला_क्रमबद्ध से sangrah_vistarit
+
+# ── वर्णनात्मक सांख्यिकी (Descriptive Statistics) ─────────────────────────
+
+कर्म माध्य(सूची):
+    टीका Arithmetic mean (average)
+    चर n = दीर्घता(सूची)
+    यदि n == ०:
+        प्रत्यागच्छ ०
+    
+    चर योग = ०
+    प्रत्येक चर v अन्तर्गत सूची:
+        योग = योग + v
+    
+    प्रत्यागच्छ योग / n
+
+कर्म माध्यिका(सूची):
+    टीका Median - middle value
+    चर n = दीर्घता(सूची)
+    यदि n == ०:
+        प्रत्यागच्छ ०
+    
+    # Sort the list
+    चर sorted_list = बुलबुला_क्रमबद्ध(सूची)
+    
+    यदि n % २ == १:
+        प्रत्यागच्छ sorted_list[n // २]
+    अन्यथा:
+        चर mid = n // २
+        प्रत्यागच्छ (sorted_list[mid - १] + sorted_list[mid]) / २
+
+कर्म बहुलक(सूची):
+    टीका Mode - most frequent value(s)
+    यदि दीर्घता(सूची) == ०:
+        प्रत्यागच्छ []
+    
+    चर गणना = {}
+    प्रत्येक चर v अन्तर्गत सूची:
+        यदि v in गणना:
+            गणना[v] = गणना[v] + १
+        अन्यथा:
+            गणना[v] = १
+    
+    चर अधिकतम_गणना = ०
+    प्रत्येक चर key अन्तर्गत गणना:
+        यदि गणना[key] > अधिकतम_गणना:
+            अधिकतम_गणना = गणना[key]
+    
+    चर modes = []
+    प्रत्येक चर key अन्तर्गत गणना:
+        यदि गणना[key] == अधिकतम_गणना:
+            modes.जोड़ो(key)
+    
+    प्रत्यागच्छ modes
+
+कर्म परास(सूची):
+    टीका Range - difference between max and min
+    यदि दीर्घता(सूची) == ०:
+        प्रत्यागच्छ ०
+    
+    चर min_val = सूची[०]
+    चर max_val = सूची[०]
+    
+    प्रत्येक चर v अन्तर्गत सूची:
+        यदि v < min_val:
+            min_val = v
+        यदि v > max_val:
+            max_val = v
+    
+    प्रत्यागच्छ max_val - min_val
+
+कर्म प्रसरण(सूची):
+    टीका Variance - average of squared deviations
+    चर n = दीर्घता(सूची)
+    यदि n == ०:
+        प्रत्यागच्छ ०
+    
+    चर mean = माध्य(सूची)
+    चर sum_sq_diff = ०
+    
+    प्रत्येक चर v अन्तर्गत सूची:
+        चर diff = v - mean
+        sum_sq_diff = sum_sq_diff + diff * diff
+    
+    प्रत्यागच्छ sum_sq_diff / n
+
+कर्म मानक_विचलन(सूची):
+    टीका Standard deviation - square root of variance
+    प्रत्यागच्छ वर्गमूल(प्रसरण(सूची))
+
+कर्म चतुर्थक(सूची):
+    टीका Quartiles - Q1, Q2, Q3
+    चर sorted_list = बुलबुला_क्रमबद्ध(सूची)
+    चर n = दीर्घता(sorted_list)
+    
+    यदि n == ०:
+        प्रत्यागच्छ [०, ०, ०]
+    
+    # Q2 (median)
+    चर q2 = माध्यिका(sorted_list)
+    
+    # Q1 (median of lower half)
+    चर mid = n // २
+    चर lower_half = तार_उपतार(sorted_list, ०, mid)
+    चर q1 = माध्यिका(lower_half)
+    
+    # Q3 (median of upper half)
+    यदि n % २ == ०:
+        चर upper_half = तार_उपतार(sorted_list, mid, n)
+    अन्यथा:
+        चर upper_half = तार_उपतार(sorted_list, mid + १, n)
+    चर q3 = माध्यिका(upper_half)
+    
+    प्रत्यागच्छ [q1, q2, q3]
+
+कर्म अंतर_चतुर्थक_परास(सूची):
+    टीका Interquartile Range (IQR)
+    चर quartiles = चतुर्थक(सूची)
+    प्रत्यागच्छ quartiles[२] - quartiles[०]
+
+# ── सहसंबंध और प्रसरण (Correlation and Covariance) ────────────────────────
+
+कर्म प्रसहविवर्तन(सूची_x, सूची_y):
+    टीका Covariance between two variables
+    चर n = दीर्घता(सूची_x)
+    यदि n != दीर्घता(सूची_y) अथवा n == ०:
+        उत्क्षिप "असमान लंबाई या रिक्त सूची"
+    
+    चर mean_x = माध्य(सूची_x)
+    चर mean_y = माध्य(सूची_y)
+    चर sum_product = ०
+    
+    प्रत्येक चर i अन्तर्गत range(n):
+        sum_product = sum_product + (सूची_x[i] - mean_x) * (सूची_y[i] - mean_y)
+    
+    प्रत्यागच्छ sum_product / n
+
+कर्म सहसंबंध_गुणांक(सूची_x, सूची_y):
+    टीका Pearson correlation coefficient
+    चर n = दीर्घता(सूची_x)
+    यदि n != दीर्घता(सूची_y) अथवा n == ०:
+        उत्क्षिप "असमान लंबाई या रिक्त सूची"
+    
+    चर mean_x = माध्य(सूची_x)
+    चर mean_y = माध्य(सूची_y)
+    
+    चर sum_xy = ०
+    चर sum_x2 = ०
+    चर sum_y2 = ०
+    
+    प्रत्येक चर i अन्तर्गत range(n):
+        चर dx = सूची_x[i] - mean_x
+        चर dy = सूची_y[i] - mean_y
+        sum_xy = sum_xy + dx * dy
+        sum_x2 = sum_x2 + dx * dx
+        sum_y2 = sum_y2 + dy * dy
+    
+    चर denominator = वर्गमूल(sum_x2 * sum_y2)
+    यदि denominator == ०:
+        प्रत्यागच्छ ०
+    
+    प्रत्यागच्छ sum_xy / denominator
+
+# ── प्रायिकता मूलक (Probability Fundamentals) ──────────────────────────────
+
+कर्म क्रमचय(n, r):
+    टीका Permutations: P(n,r) = n! / (n-r)!
+    यदि r < ० अथवा r > n:
+        प्रत्यागच्छ ०
+    यदि r == ०:
+        प्रत्यागच्छ १
+    
+    चर परिणाम = १
+    प्रत्येक चर i अन्तर्गत range(r):
+        परिणाम = परिणाम * (n - i)
+    
+    प्रत्यागच्छ परिणाम
+
+कर्म संचय(n, r):
+    टीका Combinations: C(n,r) = n! / (r! * (n-r)!)
+    यदि r < ० अथवा r > n:
+        प्रत्यागच्छ ०
+    यदि r == ०:
+        प्रत्यागच्छ १
+    
+    # Use symmetry: C(n,r) = C(n, n-r)
+    यदि r > n - r:
+        r = n - r
+    
+    चर परिणाम = १
+    प्रत्येक चर i अन्तर्गत range(r):
+        परिणाम = परिणाम * (n - i) / (i + १)
+    
+    प्रत्यागच्छ पूर्णांक_कर(गोल(परिणाम))
+
+कर्म प्रायिकता(अनुकूल_परिणाम, कुल_परिणाम):
+    टीका Basic probability: P(E) = favorable / total
+    यदि कुल_परिणाम == ०:
+        प्रत्यागच्छ ०
+    प्रत्यागच्छ अनुकूल_परिणाम / कुल_परिणाम
+
+कर्म प्रायिकता_योग(प१, प२):
+    टीका P(A or B) = P(A) + P(B) - P(A and B)
+    # For mutually exclusive events
+    प्रत्यागच्छ प१ + प२
+
+कर्म प्रायिकता_गुणन(प१, प२):
+    टीका P(A and B) = P(A) * P(B) for independent events
+    प्रत्यागच्छ प१ * प२
+
+कर्म सप्रतिबंध_प्रायिकता(प_A_और_B, प_B):
+    टीका Conditional probability: P(A|B) = P(A and B) / P(B)
+    यदि प_B == ०:
+        उत्क्षिप "शून्य से भाग नहीं"
+    प्रत्यागच्छ प_A_और_B / प_B
+
+कर्म बेयस_प्रमेय(प_B_दिया_A, प_A, प_B):
+    टीका Bayes' Theorem: P(A|B) = P(B|A) * P(A) / P(B)
+    यदि प_B == ०:
+        उत्क्षिप "शून्य से भाग नहीं"
+    प्रत्यागच्छ (प_B_दिया_A * प_A) / प_B
+
+# ── प्रायिकता वितरण (Probability Distributions) ───────────────────────────
+
+कर्म द्विपद_प्रायिकता(k, n, p):
+    टीका Binomial distribution: P(X=k) in n trials with probability p
+    यदि k < ० अथवा k > n:
+        प्रत्यागच्छ ०
+    
+    चर comb = संचय(n, k)
+    चर p_k = घात(p, k)
+    चर q_nk = घात(१ - p, n - k)
+    
+    प्रत्यागच्छ comb * p_k * q_nk
+
+कर्म द्विपद_माध्य(n, p):
+    टीका Mean of binomial distribution
+    प्रत्यागच्छ n * p
+
+कर्म द्विपद_प्रसरण(n, p):
+    टीका Variance of binomial distribution
+    प्रत्यागच्छ n * p * (१ - p)
+
+कर्म पॉइसन_प्रायिकता(k, lambda):
+    टीका Poisson distribution: P(X=k) with rate lambda
+    यदि k < ०:
+        प्रत्यागच्छ ०
+    
+    चर e_neg_lambda = घात(ई, -lambda)
+    चर lambda_k = घात(lambda, k)
+    चर k_fact = क्रमगुणित(k)
+    
+    प्रत्यागच्छ (e_neg_lambda * lambda_k) / k_fact
+
+कर्म ज्यामितीय_प्रायिकता(k, p):
+    टीका Geometric distribution: P(X=k) first success on kth trial
+    यदि k < १:
+        प्रत्यागच्छ ०
+    
+    प्रत्यागच्छ घात(१ - p, k - १) * p
+
+कर्म ज्यामितीय_माध्य(p):
+    टीका Mean of geometric distribution
+    प्रत्यागच्छ १ / p
+
+# ── सामान्य वितरण (Normal Distribution) ──────────────────────────────────
+
+कर्म सामान्य_घनत्व(x, mean, std_dev):
+    टीका Normal distribution probability density function
+    चर coefficient = १ / (std_dev * वर्गमूल(२ * पाई))
+    चर exponent = -घात(x - mean, २) / (२ * std_dev * std_dev)
+    प्रत्यागच्छ coefficient * घात(ई, exponent)
+
+कर्म मानक_सामान्य_घनत्व(z):
+    टीका Standard normal distribution (mean=0, std=1)
+    प्रत्यागच्छ सामान्य_घनत्व(z, ०, १)
+
+कर्म z_स्कोर(x, mean, std_dev):
+    टीका Z-score: number of standard deviations from mean
+    यदि std_dev == ०:
+        प्रत्यागच्छ ०
+    प्रत्यागच्छ (x - mean) / std_dev
+
+# ── प्रतिचयन वितरण (Sampling Distributions) ──────────────────────────────
+
+कर्म प्रतिचयन_माध्य(जनसंख्या_माध्य, जनसंख्या_std, नमूना_आकार):
+    टीका Sampling distribution of the mean
+    # Mean of sampling distribution = population mean
+    प्रत्यागच्छ जनसंख्या_माध्य
+
+कर्म प्रतिचयन_मानक_त्रुटि(जनसंख्या_std, नमूना_आकार):
+    टीका Standard error of the mean
+    प्रत्यागच्छ जनसंख्या_std / वर्गमूल(नमूना_आकार)
+
+# ── परिकल्पना परीक्षण (Hypothesis Testing) ────────────────────────────────
+
+कर्म z_परीक्षण(नमूना_माध्य, जनसंख्या_माध्य, जनसंख्या_std, नमूना_आकार):
+    टीका Z-test for population mean
+    चर se = प्रतिचयन_मानक_त्रुटि(जनसंख्या_std, नमूना_आकार)
+    यदि se == ०:
+        प्रत्यागच्छ ०
+    प्रत्यागच्छ (नमूना_माध्य - जनसंख्या_माध्य) / se
+
+कर्म t_परीक्षण(नमूना_माध्य, जनसंख्या_माध्य, नमूना_std, नमूना_आकार):
+    टीका T-test for population mean (small samples)
+    चर se = नमूना_std / वर्गमूल(नमूना_आकार)
+    यदि se == ०:
+        प्रत्यागच्छ ०
+    प्रत्यागच्छ (नमूना_माध्य - जनसंख्या_माध्य) / se
+
+# ── काई-वर्ग परीक्षण (Chi-Square Test) ───────────────────────────────────
+
+कर्म काई_वर्ग_सांख्यिकी(प्रेक्षित, अपेक्षित):
+    टीका Chi-square statistic: Σ((O-E)²/E)
+    चर n = दीर्घता(प्रेक्षित)
+    यदि n != दीर्घता(अपेक्षित):
+        उत्क्षिप "असमान लंबाई"
+    
+    चर chi_sq = ०
+    प्रत्येक चर i अन्तर्गत range(n):
+        चर O = प्रेक्षित[i]
+        चर E = अपेक्षित[i]
+        यदि E != ०:
+            chi_sq = chi_sq + घात(O - E, २) / E
+    
+    प्रत्यागच्छ chi_sq
+
+# ── रैंक सांख्यिकी (Rank Statistics) ─────────────────────────────────────
+
+कर्म पदक्रम(सूची):
+    टीका Assign ranks to values
+    चर n = दीर्घता(सूची)
+    चर indexed = []
+    
+    # Create list of (value, index) pairs
+    प्रत्येक चर i अन्तर्गत range(n):
+        indexed.जोड़ो([सूची[i], i])
+    
+    # Sort by value
+    indexed = बुलबुला_क्रमबद्ध(indexed)
+    
+    # Assign ranks
+    चर ranks = []
+    प्रत्येक चर _ अन्तर्गत range(n):
+        ranks.जोड़ो(०)
+    
+    प्रत्येक चर i अन्तर्गत range(n):
+        चर original_index = indexed[i][१]
+        ranks[original_index] = i + १
+    
+    प्रत्यागच्छ ranks
+
+# ── सांख्यिकीय उपयोगिताएँ (Statistical Utilities) ───────────────────────
+
+कर्म पाँच_संख्या_सार(सूची):
+    टीका Five-number summary: min, Q1, median, Q3, max
+    चर sorted_list = बुलबुला_क्रमबद्ध(सूची)
+    चर n = दीर्घता(sorted_list)
+    
+    यदि n == ०:
+        प्रत्यागच्छ [०, ०, ०, ०, ०]
+    
+    चर min_val = sorted_list[०]
+    चर max_val = sorted_list[n - १]
+    चर quartiles = चतुर्थक(सूची)
+    
+    प्रत्यागच्छ [min_val, quartiles[०], quartiles[१], quartiles[२], max_val]
+
+कर्म विचरण_गुणांक(सूची):
+    टीका Coefficient of variation: CV = σ/μ
+    चर mean = माध्य(सूची)
+    यदि mean == ०:
+        प्रत्यागच्छ ०
+    चर std = मानक_विचलन(सूची)
+    प्रत्यागच्छ std / mean
+
+कर्म विषमता(सूची):
+    टीका Skewness - measure of asymmetry
+    चर n = दीर्घता(सूची)
+    यदि n < ३:
+        प्रत्यागच्छ ०
+    
+    चर mean = माध्य(सूची)
+    चर std = मानक_विचलन(सूची)
+    
+    यदि std == ०:
+        प्रत्यागच्छ ०
+    
+    चर sum_cubed = ०
+    प्रत्येक चर v अन्तर्गत सूची:
+        sum_cubed = sum_cubed + घात((v - mean) / std, ३)
+    
+    प्रत्यागच्छ sum_cubed / n
+
+कर्म कुर्टोसिस(सूची):
+    टीका Kurtosis - measure of tailedness
+    चर n = दीर्घता(सूची)
+    यदि n < ४:
+        प्रत्यागच्छ ०
+    
+    चर mean = माध्य(सूची)
+    चर std = मानक_विचलन(सूची)
+    
+    यदि std == ०:
+        प्रत्यागच्छ ०
+    
+    चर sum_fourth = ०
+    प्रत्येक चर v अन्तर्गत सूची:
+        sum_fourth = sum_fourth + घात((v - mean) / std, ४)
+    
+    प्रत्यागच्छ sum_fourth / n - ३  # Excess kurtosis
+
+मुद्रय "संभावना और सांख्यिकी पुस्तकालय लोड हुआ। (Statistics & Probability library loaded.)"

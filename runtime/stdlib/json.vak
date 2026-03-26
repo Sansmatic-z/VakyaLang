@@ -1,0 +1,13 @@
+# वाक् मानक पुस्तकालय — जेसन (JSON Utilities)
+# Vak Standard Library — Serialization module
+
+वर्ग जेसन_उपकरण:
+    कर्म स्ट्रिंग_बनाओ(स्वयं, डेटा):
+        टीका Convert data to JSON string
+        प्रत्यागच्छ जेसन_लिखो(डेटा)
+
+    कर्म डेटा_बनाओ(स्वयं, पाठ):
+        टीका Parse JSON string to data
+        प्रत्यागच्छ जेसन_पढ़ो(पाठ)
+
+मुद्रय "जेसन (JSON) पुस्तकालय लोड हुआ।"

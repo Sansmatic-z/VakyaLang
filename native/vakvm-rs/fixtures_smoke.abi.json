@@ -1,0 +1,103 @@
+{
+  "bytecode": {
+    "code": [
+      1,
+      0,
+      0,
+      3,
+      0,
+      1,
+      0,
+      1,
+      1,
+      0,
+      2,
+      1,
+      0,
+      3,
+      96,
+      3,
+      3,
+      1,
+      1,
+      0,
+      4,
+      1,
+      0,
+      5,
+      18,
+      112,
+      1,
+      0,
+      6,
+      112,
+      2,
+      1,
+      112,
+      1,
+      0,
+      6,
+      112,
+      1,
+      0,
+      2,
+      1,
+      0,
+      3,
+      16,
+      112,
+      1,
+      0,
+      6,
+      112,
+      255
+    ],
+    "constants": [
+      {
+        "kind": "float",
+        "value": 3.141592653589793
+      },
+      {
+        "kind": "int",
+        "value": 1
+      },
+      {
+        "kind": "int",
+        "value": 2
+      },
+      {
+        "kind": "int",
+        "value": 3
+      },
+      {
+        "kind": "int",
+        "value": 7
+      },
+      {
+        "kind": "int",
+        "value": 6
+      },
+      {
+        "kind": "str",
+        "value": "\n"
+      }
+    ],
+    "defaults": [],
+    "functions": {},
+    "global_names": [],
+    "is_async": false,
+    "name": "<module>",
+    "num_params": 0,
+    "param_names": [],
+    "source_path": "C:\\RIZAMD\\vakyalang-upgraded xyz\\vakyalang-upgraded\\native\\vakvm-rs\\fixtures_smoke.vak",
+    "type_hints": {},
+    "var_names": [
+      "पाई",
+      "सूची"
+    ],
+    "varargs_name": null,
+    "vibhakti_signature": null
+  },
+  "format": "vak_bytecode_abi",
+  "version": 1
+}

@@ -1,0 +1,537 @@
+# वाक् मानक पुस्तकालय — मैट्रिक्स गणित (Matrix Mathematics)
+# Vak Standard Library — Complete Matrix Operations
+# शुद्ध वाक् कार्यान्वयन (Pure VakyaLang Implementation)
+# लेखक: Visionary RM (Raj Mitra)
+
+आयात घात, निरपेक्ष, वर्गमूल से ganit_vistarit
+
+कर्म _संख्या_सामान्यीकृत(मान, सहिष्णुता=0.000000000001):
+    """
+    Clean tiny floating-point residue produced by elimination-based algorithms.
+    """
+    यदि प्रकार(मान) != "दशमलव":
+        प्रत्यागच्छ मान
+    
+    यदि निरपेक्ष(मान) < सहिष्णुता:
+        प्रत्यागच्छ 0
+    
+    चर candidate = पूर्णांक_कर(मान)
+    यदि निरपेक्ष(मान - candidate) < सहिष्णुता:
+        प्रत्यागच्छ candidate
+    
+    यदि मान >= candidate:
+        चर adjacent = candidate + 1
+    अन्यथा:
+        चर adjacent = candidate - 1
+    
+    यदि निरपेक्ष(मान - adjacent) < सहिष्णुता:
+        प्रत्यागच्छ adjacent
+    
+    चर doubled = मान * 2
+    चर half_candidate = पूर्णांक_कर(doubled)
+    यदि doubled >= half_candidate:
+        चर half_adjacent = half_candidate + 1
+    अन्यथा:
+        चर half_adjacent = half_candidate - 1
+    
+    यदि निरपेक्ष(doubled - half_candidate) < सहिष्णुता:
+        प्रत्यागच्छ half_candidate / 2
+    यदि निरपेक्ष(doubled - half_adjacent) < सहिष्णुता:
+        प्रत्यागच्छ half_adjacent / 2
+    
+    प्रत्यागच्छ मान
+
+# ── मैट्रिक्स संरचना (Matrix Structure) ─────────────────────────────────────
+
+वर्ग मैट्रिक्स:
+    """
+    Matrix data structure with full linear algebra operations.
+    
+    Usage:
+        चर A = नव मैट्रिक्स(3, 3)  # 3x3 matrix
+        A.सेट(0, 0, 5)              # Set value at row 0, col 0
+        चर val = A.प्राप्त_करो(0, 0) # Get value
+    """
+    
+    कर्म प्रारम्भ(स्वयं, पंक्तियाँ, स्तंभ, मान=0):
+        स्वयं.पंक्तियाँ = पंक्तियाँ
+        स्वयं.स्तंभ = स्तंभ
+        स्वयं.डेटा = []
+        
+        # Initialize with zeros
+        प्रत्येक चर i अन्तर्गत परास(पंक्तियाँ):
+            चर row = []
+            प्रत्येक चर j अन्तर्गत परास(स्तंभ):
+                row.जोड़ो(मान)
+            स्वयं.डेटा.जोड़ो(row)
+    
+    कर्म सेट(स्वयं, row, col, value):
+        """Set value at position"""
+        स्वयं.डेटा[row][col] = value
+    
+    कर्म प्राप्त_करो(स्वयं, row, col):
+        """Get value at position"""
+        प्रत्यागच्छ स्वयं.डेटा[row][col]
+    
+    कर्म पंक्ति(स्वयं, index):
+        """Get row as list"""
+        प्रत्यागच्छ स्वयं.डेटा[index]
+    
+    कर्म स्तंभ(स्वयं, index):
+        """Get column as list"""
+        चर col_data = []
+        प्रत्येक चर i अन्तर्गत परास(स्वयं.पंक्तियाँ):
+            col_data.जोड़ो(स्वयं.डेटा[i][index])
+        प्रत्यागच्छ col_data
+    
+    कर्म आकार(स्वयं):
+        """Return dimensions"""
+        प्रत्यागच्छ [स्वयं.पंक्तियाँ, स्वयं.स्तंभ]
+    
+    कर्म तार_कर(स्वयं):
+        """String representation"""
+        चर result = "मैट्रिक्स(" + पाठ_कर(स्वयं.पंक्तियाँ) + "x" + पाठ_कर(स्वयं.स्तंभ) + "):\n"
+        प्रत्येक चर row अन्तर्गत स्वयं.डेटा:
+            result = result + "  " + पाठ_कर(row) + "\n"
+        प्रत्यागच्छ result
+
+# ── मैट्रिक्स संचालन (Matrix Operations) ───────────────────────────────────
+
+कर्म मैट्रिक्स_बनाओ(डेटा):
+    """
+    Create matrix from 2D list.
+    
+    Usage:
+        चर A = मैट्रिक्स_बनाओ([[1,2],[3,4]])
+    """
+    चर rows = दीर्घता(डेटा)
+    यदि rows == 0:
+        उत्क्षिप "रिक्त मैट्रिक्स"
+    
+    चर cols = दीर्घता(डेटा[0])
+    चर M = नव मैट्रिक्स(rows, cols)
+    
+    प्रत्येक चर i अन्तर्गत परास(rows):
+        प्रत्येक चर j अन्तर्गत परास(cols):
+            M.सेट(i, j, डेटा[i][j])
+    
+    प्रत्यागच्छ M
+
+कर्म मैट्रिक्स_योग(A, B):
+    """
+    Matrix addition: A + B
+    
+    Requirements:
+        - Same dimensions
+    """
+    यदि A.पंक्तियाँ != B.पंक्तियाँ अथवा A.स्तंभ != B.स्तंभ:
+        उत्क्षिप "मैट्रिक्स आयाम असमान"
+    
+    चर C = नव मैट्रिक्स(A.पंक्तियाँ, A.स्तंभ)
+    
+    प्रत्येक चर i अन्तर्गत परास(A.पंक्तियाँ):
+        प्रत्येक चर j अन्तर्गत परास(A.स्तंभ):
+            चर val = A.प्राप्त_करो(i, j) + B.प्राप्त_करो(i, j)
+            C.सेट(i, j, val)
+    
+    प्रत्यागच्छ C
+
+कर्म मैट्रिक्स_व्यवकलन(A, B):
+    """
+    Matrix subtraction: A - B
+    """
+    यदि A.पंक्तियाँ != B.पंक्तियाँ अथवा A.स्तंभ != B.स्तंभ:
+        उत्क्षिप "मैट्रिक्स आयाम असमान"
+    
+    चर C = नव मैट्रिक्स(A.पंक्तियाँ, A.स्तंभ)
+    
+    प्रत्येक चर i अन्तर्गत परास(A.पंक्तियाँ):
+        प्रत्येक चर j अन्तर्गत परास(A.स्तंभ):
+            चर val = A.प्राप्त_करो(i, j) - B.प्राप्त_करो(i, j)
+            C.सेट(i, j, val)
+    
+    प्रत्यागच्छ C
+
+कर्म मैट्रिक्स_अदिश_गुणन(A, scalar):
+    """
+    Scalar multiplication: A * k
+    """
+    चर C = नव मैट्रिक्स(A.पंक्तियाँ, A.स्तंभ)
+    
+    प्रत्येक चर i अन्तर्गत परास(A.पंक्तियाँ):
+        प्रत्येक चर j अन्तर्गत परास(A.स्तंभ):
+            चर val = A.प्राप्त_करो(i, j) * scalar
+            C.सेट(i, j, _संख्या_सामान्यीकृत(val))
+    
+    प्रत्यागच्छ C
+
+कर्म मैट्रिक्स_गुणन(A, B):
+    """
+    Matrix multiplication: A × B
+    
+    Requirements:
+        - A.columns == B.rows
+    """
+    यदि A.स्तंभ != B.पंक्तियाँ:
+        उत्क्षिप "मैट्रिक्स गुणन असंभव: A columns != B rows"
+    
+    चर C = नव मैट्रिक्स(A.पंक्तियाँ, B.स्तंभ)
+    
+    प्रत्येक चर i अन्तर्गत परास(A.पंक्तियाँ):
+        प्रत्येक चर j अन्तर्गत परास(B.स्तंभ):
+            चर sum = 0
+            प्रत्येक चर k अन्तर्गत परास(A.स्तंभ):
+                sum = sum + A.प्राप्त_करो(i, k) * B.प्राप्त_करो(k, j)
+            C.सेट(i, j, _संख्या_सामान्यीकृत(sum))
+    
+    प्रत्यागच्छ C
+
+कर्म मैट्रिक्स_स्थानांतरण(A):
+    """
+    Matrix transpose: A^T
+    """
+    चर B = नव मैट्रिक्स(A.स्तंभ, A.पंक्तियाँ)
+    
+    प्रत्येक चर i अन्तर्गत परास(A.पंक्तियाँ):
+        प्रत्येक चर j अन्तर्गत परास(A.स्तंभ):
+            B.सेट(j, i, A.प्राप्त_करो(i, j))
+    
+    प्रत्यागच्छ B
+
+# ── मैट्रिक्स निर्धारक (Matrix Determinant) ────────────────────────────────
+
+कर्म मैट्रिक्स_निर्धारक(A):
+    """
+    Calculate determinant using LU decomposition.
+    
+    Requirements:
+        - Square matrix
+    """
+    यदि A.पंक्तियाँ != A.स्तंभ:
+        उत्क्षिप "केवल वर्ग मैट्रिक्स का निर्धारक"
+    
+    चर n = A.पंक्तियाँ
+    
+    # Base cases
+    यदि n == 1:
+        प्रत्यागच्छ A.प्राप्त_करो(0, 0)
+    
+    यदि n == 2:
+        चर a = A.प्राप्त_करो(0, 0)
+        चर b = A.प्राप्त_करो(0, 1)
+        चर c = A.प्राप्त_करो(1, 0)
+        चर d = A.प्राप्त_करो(1, 1)
+        प्रत्यागच्छ a * d - b * c
+    
+    # For larger matrices, use cofactor expansion
+    चर det = 0
+    प्रत्येक चर j अन्तर्गत परास(n):
+        # Create minor matrix
+        चर minor = उपमैट्रिक्स(A, 0, j)
+        चर cofactor = घात(-1, j) * मैट्रिक्स_निर्धारक(minor)
+        det = det + A.प्राप्त_करो(0, j) * cofactor
+    
+    प्रत्यागच्छ det
+
+कर्म उपमैट्रिक्स(A, skip_row, skip_col):
+    """
+    Create submatrix by skipping one row and one column.
+    """
+    चर n = A.पंक्तियाँ
+    चर B = नव मैट्रिक्स(n - 1, n - 1)
+    
+    चर new_i = 0
+    प्रत्येक चर i अन्तर्गत परास(n):
+        यदि i == skip_row:
+            continue
+        चर new_j = 0
+        प्रत्येक चर j अन्तर्गत परास(n):
+            यदि j == skip_col:
+                continue
+            B.सेट(new_i, new_j, A.प्राप्त_करो(i, j))
+            new_j = new_j + 1
+        new_i = new_i + 1
+    
+    प्रत्यागच्छ B
+
+# ── मैट्रिक्स व्युत्क्रम (Matrix Inverse) ──────────────────────────────────
+
+कर्म मैट्रिक्स_व्युत्क्रम(A):
+    """
+    Calculate matrix inverse using Gaussian elimination.
+    
+    Requirements:
+        - Square matrix
+        - Non-singular (determinant != 0)
+    """
+    यदि A.पंक्तियाँ != A.स्तंभ:
+        उत्क्षिप "केवल वर्ग मैट्रिक्स का व्युत्क्रम"
+    
+    चर det = मैट्रिक्स_निर्धारक(A)
+    यदि det == 0:
+        उत्क्षिप "विलक्षण मैट्रिक्स, व्युत्क्रम संभव नहीं"
+    
+    चर n = A.पंक्तियाँ
+    
+    यदि n == 2:
+        चर a = A.प्राप्त_करो(0, 0)
+        चर b = A.प्राप्त_करो(0, 1)
+        चर c = A.प्राप्त_करो(1, 0)
+        चर d = A.प्राप्त_करो(1, 1)
+        चर inv_2x2 = नव मैट्रिक्स(2, 2)
+        inv_2x2.सेट(0, 0, _संख्या_सामान्यीकृत(d / det))
+        inv_2x2.सेट(0, 1, _संख्या_सामान्यीकृत(-b / det))
+        inv_2x2.सेट(1, 0, _संख्या_सामान्यीकृत(-c / det))
+        inv_2x2.सेट(1, 1, _संख्या_सामान्यीकृत(a / det))
+        प्रत्यागच्छ inv_2x2
+    
+    # Create augmented matrix [A | I]
+    चर aug = नव मैट्रिक्स(n, 2 * n)
+    
+    # Copy A to left side
+    प्रत्येक चर i अन्तर्गत परास(n):
+        प्रत्येक चर j अन्तर्गत परास(n):
+            aug.सेट(i, j, A.प्राप्त_करो(i, j))
+    
+    # Create identity on right side
+    प्रत्येक चर i अन्तर्गत परास(n):
+        प्रत्येक चर j अन्तर्गत परास(n):
+            यदि i == j:
+                aug.सेट(i, n + j, 1)
+            अन्यथा:
+                aug.सेट(i, n + j, 0)
+    
+    # Gaussian elimination
+    प्रत्येक चर col अन्तर्गत परास(n):
+        # Find pivot
+        चर max_row = col
+        प्रत्येक चर row अन्तर्गत परास(col + 1, n):
+            यदि निरपेक्ष(aug.प्राप्त_करो(row, col)) > निरपेक्ष(aug.प्राप्त_करो(max_row, col)):
+                max_row = row
+        
+        # Swap rows
+        प्रत्येक चर j अन्तर्गत परास(2 * n):
+            चर temp = aug.प्राप्त_करो(col, j)
+            aug.सेट(col, j, aug.प्राप्त_करो(max_row, j))
+            aug.सेट(max_row, j, temp)
+        
+        # Scale pivot row
+        चर pivot = aug.प्राप्त_करो(col, col)
+        प्रत्येक चर j अन्तर्गत परास(2 * n):
+            चर val = aug.प्राप्त_करो(col, j) / pivot
+            aug.सेट(col, j, _संख्या_सामान्यीकृत(val))
+        
+        # Eliminate column
+        प्रत्येक चर row अन्तर्गत परास(n):
+            यदि row != col:
+                चर factor = aug.प्राप्त_करो(row, col)
+                प्रत्येक चर j अन्तर्गत परास(2 * n):
+                    चर val = aug.प्राप्त_करो(row, j) - factor * aug.प्राप्त_करो(col, j)
+                    aug.सेट(row, j, _संख्या_सामान्यीकृत(val))
+    
+    # Extract inverse from right side
+    चर inv = नव मैट्रिक्स(n, n)
+    प्रत्येक चर i अन्तर्गत परास(n):
+        प्रत्येक चर j अन्तर्गत परास(n):
+            inv.सेट(i, j, _संख्या_सामान्यीकृत(aug.प्राप्त_करो(i, n + j)))
+    
+    प्रत्यागच्छ inv
+
+# ── विशेष मैट्रिक्स (Special Matrices) ────────────────────────────────────
+
+कर्म तत्समक_मैट्रिक्स(n):
+    """
+    Create identity matrix I_n.
+    """
+    चर I = नव मैट्रिक्स(n, n)
+    प्रत्येक चर i अन्तर्गत परास(n):
+        I.सेट(i, i, 1)
+    प्रत्यागच्छ I
+
+कर्म शून्य_मैट्रिक्स(rows, cols):
+    """
+    Create zero matrix.
+    """
+    प्रत्यागच्छ नव मैट्रिक्स(rows, cols)
+
+कर्म विकर्ण_मैट्रिक्स(values):
+    """
+    Create diagonal matrix from list of values.
+    """
+    चर n = दीर्घता(values)
+    चर D = नव मैट्रिक्स(n, n)
+    प्रत्येक चर i अन्तर्गत परास(n):
+        D.सेट(i, i, values[i])
+    प्रत्यागच्छ D
+
+# ── मैट्रिक्स अपघटन (Matrix Decomposition) ────────────────────────────────
+
+कर्म LU_अपघटन(A):
+    """
+    LU decomposition: A = L × U
+    
+    Returns:
+        [L, U] matrices
+    """
+    यदि A.पंक्तियाँ != A.स्तंभ:
+        उत्क्षिप "केवल वर्ग मैट्रिक्स"
+    
+    चर n = A.पंक्तियाँ
+    चर L = तत्समक_मैट्रिक्स(n)
+    चर U = नव मैट्रिक्स(n, n)
+    
+    # Copy A to U
+    प्रत्येक चर i अन्तर्गत परास(n):
+        प्रत्येक चर j अन्तर्गत परास(n):
+            U.सेट(i, j, A.प्राप्त_करो(i, j))
+    
+    # Gaussian elimination
+    प्रत्येक चर k अन्तर्गत परास(n):
+        प्रत्येक चर i अन्तर्गत परास(k + 1, n):
+            चर factor = U.प्राप्त_करो(i, k) / U.प्राप्त_करो(k, k)
+            L.सेट(i, k, factor)
+            प्रत्येक चर j अन्तर्गत परास(k, n):
+                चर val = U.प्राप्त_करो(i, j) - factor * U.प्राप्त_करो(k, j)
+                U.सेट(i, j, val)
+    
+    प्रत्यागच्छ [L, U]
+
+# ── रैखिक समीकरण (Linear Equations) ──────────────────────────────────────
+
+कर्म रैखिक_समीकरण_हल(A, b):
+    """
+    Solve Ax = b using Gaussian elimination.
+    
+    Returns:
+        Solution vector x as list
+    """
+    चर n = A.पंक्तियाँ
+    
+    # Create augmented matrix [A | b]
+    चर aug = नव मैट्रिक्स(n, n + 1)
+    
+    प्रत्येक चर i अन्तर्गत परास(n):
+        प्रत्येक चर j अन्तर्गत परास(n):
+            aug.सेट(i, j, A.प्राप्त_करो(i, j))
+        aug.सेट(i, n, b[i])
+    
+    # Forward elimination
+    प्रत्येक चर col अन्तर्गत परास(n):
+        # Find pivot
+        चर max_row = col
+        प्रत्येक चर row अन्तर्गत परास(col + 1, n):
+            यदि निरपेक्ष(aug.प्राप्त_करो(row, col)) > निरपेक्ष(aug.प्राप्त_करो(max_row, col)):
+                max_row = row
+        
+        # Swap rows
+        प्रत्येक चर j अन्तर्गत परास(n + 1):
+            चर temp = aug.प्राप्त_करो(col, j)
+            aug.सेट(col, j, aug.प्राप्त_करो(max_row, j))
+            aug.सेट(max_row, j, temp)
+        
+        # Eliminate
+        प्रत्येक चर row अन्तर्गत परास(col + 1, n):
+            चर factor = aug.प्राप्त_करो(row, col) / aug.प्राप्त_करो(col, col)
+            प्रत्येक चर j अन्तर्गत परास(n + 1):
+                चर val = aug.प्राप्त_करो(row, j) - factor * aug.प्राप्त_करो(col, j)
+                aug.सेट(row, j, val)
+    
+    # Back substitution
+    चर x = []
+    प्रत्येक चर _ अन्तर्गत परास(n):
+        x.जोड़ो(0)
+    
+    चर i = n - 1
+    यावत् i >= 0:
+        चर sum = 0
+        प्रत्येक चर j अन्तर्गत परास(i + 1, n):
+            sum = sum + aug.प्राप्त_करो(i, j) * x[j]
+        x[i] = (aug.प्राप्त_करो(i, n) - sum) / aug.प्राप्त_करो(i, i)
+        i = i - 1
+    
+    प्रत्यागच्छ x
+
+# ── आइगनमान और आइगनसदिश (Eigenvalues and Eigenvectors) ─────────────────
+
+कर्म आइगनमान_समीकरण(A):
+    """
+    Find eigenvalues by solving det(A - λI) = 0.
+    
+    Note: This is a simplified implementation for small matrices.
+    For large matrices, use numerical methods.
+    """
+    यदि A.पंक्तियाँ != A.स्तंभ:
+        उत्क्षिप "केवल वर्ग मैट्रिक्स"
+    
+    चर n = A.पंक्तियाँ
+    
+    यदि n == 2:
+        # For 2x2: λ² - trace(A)λ + det(A) = 0
+        चर trace = A.प्राप्त_करो(0, 0) + A.प्राप्त_करो(1, 1)
+        चर det = मैट्रिक्स_निर्धारक(A)
+        
+        # Quadratic formula: λ = (trace ± √(trace² - 4det)) / 2
+        चर discriminant = trace * trace - 4 * det
+        
+        यदि discriminant < 0:
+            # Complex eigenvalues
+            चर real_part = trace / 2
+            चर imag_part = वर्गमूल(-discriminant) / 2
+            प्रत्यागच्छ [[real_part, imag_part], [real_part, -imag_part]]
+        अन्यथा:
+            चर sqrt_disc = वर्गमूल(discriminant)
+            चर lambda1 = (trace + sqrt_disc) / 2
+            चर lambda2 = (trace - sqrt_disc) / 2
+            प्रत्यागच्छ [[lambda1, 0], [lambda2, 0]]
+    
+    # For larger matrices, would need characteristic polynomial
+    उत्क्षिप "केवल 2x2 मैट्रिक्स समर्थित"
+
+# ── सदिश संचालन (Vector Operations) ──────────────────────────────────────
+
+कर्म सदिश_डॉट(a, b):
+    """
+    Dot product of two vectors.
+    """
+    चर sum = 0
+    प्रत्येक चर i अन्तर्गत परास(दीर्घता(a)):
+        sum = sum + a[i] * b[i]
+    प्रत्यागच्छ sum
+
+कर्म सदिश_क्रॉस(a, b):
+    """
+    Cross product of two 3D vectors.
+    """
+    यदि दीर्घता(a) != 3 अथवा दीर्घता(b) != 3:
+        उत्क्षिप "केवल 3D सदिश"
+    
+    प्रत्यागच्छ [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0]
+    ]
+
+कर्म सदिश_लंबाई(v):
+    """
+    Euclidean length of vector.
+    """
+    चर sum_sq = 0
+    प्रत्येक चर x अन्तर्गत v:
+        sum_sq = sum_sq + x * x
+    प्रत्यागच्छ वर्गमूल(sum_sq)
+
+कर्म सदिश_सामान्यीकृत(v):
+    """
+    Normalize vector to unit length.
+    """
+    चर length = सदिश_लंबाई(v)
+    यदि length == 0:
+        उत्क्षिप "शून्य सदिश को सामान्य नहीं किया जा सकता"
+    
+    चर result = []
+    प्रत्येक चर x अन्तर्गत v:
+        result.जोड़ो(x / length)
+    
+    प्रत्यागच्छ result
+
+मुद्रय "मैट्रिक्स गणित पुस्तकालय लोड हुआ। (Matrix mathematics library loaded.)"

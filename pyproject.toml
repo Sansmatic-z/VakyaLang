@@ -1,0 +1,140 @@
+[build-system]
+requires = ["setuptools>=61.0", "setuptools_scm[toml]>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vakyalang"
+dynamic = ["version"]                    # ← Magic: version comes from git tags
+authors = [{ name = "Raj Mitra" }]
+description = "A Sanskrit-inspired programming language and symbolic computing ecosystem based on Pāṇinian grammar and Nyāya reasoning."
+readme = "README.md"
+requires-python = ">=3.8"
+keywords = [
+    "sanskrit", "programming-language", "compiler", "vm", "nyaya-logic",
+    "panini-grammar", "symbolic-computing", "devanagari", "vakyalang"
+]
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE", "LICENSE_AGPL", "LICENSE_APACHE", "NOTICE"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Compilers",
+    "Topic :: Software Development :: Interpreters",
+    "Natural Language :: Sanskrit",
+]
+
+[project.urls]
+Homepage = "https://github.com/Sansmatic-z/VakyaLang"
+"Bug Tracker" = "https://github.com/Sansmatic-z/VakyaLang/issues"
+"Source" = "https://github.com/Sansmatic-z/VakyaLang"
+
+# ── Optional Dependencies (Extended Capabilities) ─────────────────────────────
+[project.optional-dependencies]
+# HTTP and web scraping
+web = [
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "httpx>=0.25.0"
+]
+# Data science and numerical computing
+data = [
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "polars>=0.19.0"
+]
+# Plotting and visualization
+plotting = [
+    "matplotlib>=3.7.0",
+    "plotly>=5.18.0",
+    "seaborn>=0.13.0"
+]
+# Machine learning
+ml = [
+    "scikit-learn>=1.3.0",
+    "xgboost>=2.0.0",
+    "lightgbm>=4.1.0"
+]
+# Deep learning
+deep-learning = [
+    "torch>=2.1.0",
+    "tensorflow>=2.15.0",
+    "transformers>=4.35.0"
+]
+# Cryptography and security
+security = [
+    "cryptography>=41.0.0",
+    "pycryptodome>=3.19.0"
+]
+# Database connectors
+database = [
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "pymongo>=4.6.0",
+    "redis>=5.0.0"
+]
+# Development and testing
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+    "build>=1.2.0",
+    "twine>=5.0.0",
+    "tomli>=2.0.0; python_version < '3.11'"
+]
+# All dependencies (complete ecosystem)
+all = [
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "httpx>=0.25.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "polars>=0.19.0",
+    "matplotlib>=3.7.0",
+    "plotly>=5.18.0",
+    "seaborn>=0.13.0",
+    "scikit-learn>=1.3.0",
+    "cryptography>=41.0.0",
+    "sqlalchemy>=2.0.0"
+]
+
+[project.scripts]
+vak = "runtime.run:main"
+sanskrit-coder = "sanskrit_coder.main:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["runtime*", "sanskrit_coder*", "sansmatic*", "atmalipi*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+runtime = ["*.vak", "*.md", "stdlib/*.vak", "spec/*", "spec/**/*"]
+sanskrit_coder = ["data/*", "data/**/*"]
+
+[tool.setuptools.exclude-package-data]
+runtime = ["*.png"]
+
+[tool.setuptools_scm]
+version_scheme = "guess-next-dev"
+local_scheme = "node-and-date"          # shows git hash + date in dev mode
+write_to = "runtime/_version.py"        # auto-generates clean __version__ file
+fallback_version = "0.1.0"
+write_to_template = """
+__version__ = '{version}'
+__version_tuple__ = {version_tuple}
+"""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

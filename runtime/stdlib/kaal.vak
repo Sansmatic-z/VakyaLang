@@ -1,0 +1,13 @@
+# वाक् मानक पुस्तकालय — काल (Datetime)
+# Vak Standard Library — Datetime module
+
+वर्ग काल:
+    कर्म वर्तमान(स्वयं):
+        टीका Get current Unix timestamp
+        प्रत्यागच्छ समय()
+
+    कर्म प्रतीक्षा(स्वयं, सेकंड):
+        टीका Sleep for n seconds
+        निद्रा(सेकंड)
+
+मुद्रय "काल (Datetime) पुस्तकालय लोड हुआ।"

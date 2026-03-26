@@ -1,0 +1,458 @@
+# वाक् भाषा — मूल निर्मित (Core Builtins)
+# Vak Language — Core Built-in Functions
+# शुद्ध वाक् कार्यान्वयन (Pure VakyaLang Implementation)
+# लेखक: Visionary RM (Raj Mitra)
+
+# ── मूल स्थिरांक (Core Constants) ───────────────────────────────────────────
+
+# Boolean literals
+स्थिर सत्य = 1
+स्थिर असत्य = 0
+
+# Null value
+स्थिर शून्य = None
+
+# Mathematical constants (re-exported for convenience)
+स्थिर पाई = 3.14159265358979323846264338327950288419716939
+स्थिर ई = 2.71828182845904523536028747135266249775724709
+
+# ── प्रकार रूपांतरण (Type Conversions) ──────────────────────────────────────
+
+कर्म पूर्णांक_कर(x):
+    """
+    Convert value to integer.
+    
+    Supported types:
+    - float → truncate decimal part
+    - string → parse integer from string
+    - bool → 1 for true, 0 for false
+    - None → 0
+    
+    Examples:
+        पूर्णांक_कर(3.7) → 3
+        पूर्णांक_कर("42") → 42
+        पूर्णांक_कर(सत्य) → 1
+    """
+    यदि x == शून्य:
+        प्रत्यागच्छ 0
+
+    प्रत्यागच्छ int(x)
+
+कर्म पाठ_कर(x):
+    """
+    Convert value to string.
+    
+    Supported types:
+    - int → decimal string
+    - float → decimal string with precision
+    - bool → "सत्य" or "असत्य"
+    - None → "शून्य"
+    - list → "[item1, item2, ...]"
+    - dict → "{key: value, ...}"
+    
+    Examples:
+        पाठ_कर(42) → "42"
+        पाठ_कर(सत्य) → "सत्य"
+        पाठ_कर([1,2,3]) → "[1, 2, 3]"
+    """
+    यदि x == शून्य:
+        प्रत्यागच्छ "शून्य"
+
+    यदि type(x) == bool:
+        यदि x:
+            प्रत्यागच्छ "सत्य"
+        अन्यथा:
+            प्रत्यागच्छ "असत्य"
+
+    प्रत्यागच्छ str(x)
+
+कर्म पाठ_कर_कोड(code):
+    """
+    Convert Unicode code point to character.
+    Helper function for पाठ_कर.
+    """
+    # This uses Python's chr() internally
+    # Pure VakyaLang would need Unicode table
+    प्रत्यागच्छ chr(code)
+
+कर्म पाठ_कर_कोड_से(char):
+    """
+    Get Unicode code point of character.
+    """
+    प्रत्यागच्छ ord(char)
+
+# ── संग्रह संचालन (Collection Operations) ───────────────────────────────────
+
+कर्म दीर्घता(x):
+    """
+    Get length of string, list, dict, or range.
+    
+    Examples:
+        दीर्घता("hello") → 5
+        दीर्घता([1,2,3]) → 3
+        दीर्घता({}) → 0
+    """
+    यदि x == शून्य:
+        प्रत्यागच्छ 0
+
+    प्रत्यागच्छ len(x)
+
+कर्म प्रकार(x):
+    """
+    Get type name of value.
+    
+    Returns:
+        "पूर्णांक", "दशमलव", "तार", "सूची", "शब्दकोश", 
+        "बूलियन", "शून्य", "कर्म", "वर्ग"
+    
+    Examples:
+        प्रकार(42) → "पूर्णांक"
+        प्रकार("hello") → "तार"
+    """
+    यदि x == शून्य:
+        प्रत्यागच्छ "शून्य"
+
+    चर py_type = type(x)
+
+    यदि py_type == bool:
+        प्रत्यागच्छ "बूलियन"
+    यदि py_type == int:
+        प्रत्यागच्छ "पूर्णांक"
+    यदि py_type == float:
+        प्रत्यागच्छ "दशमलव"
+    यदि py_type == str:
+        प्रत्यागच्छ "तार"
+    यदि py_type == list:
+        प्रत्यागच्छ "सूची"
+    यदि py_type == dict:
+        प्रत्यागच्छ "शब्दकोश"
+    यदि callable(x):
+        प्रत्यागच्छ "कर्म"
+
+    यदि py_type == tuple और दीर्घता(x) > 0 और x[0] == "function":
+        प्रत्यागच्छ "कर्म"
+
+    प्रत्यागच्छ "वस्तु"
+
+# ── गणितीय संचालक (Mathematical Operators) ─────────────────────────────────
+
+कर्म योग(a, b):
+    """Addition: a + b"""
+    प्रत्यागच्छ a + b
+
+कर्म व्यवकलन(a, b):
+    """Subtraction: a - b"""
+    प्रत्यागच्छ a - b
+
+कर्म गुणन(a, b):
+    """Multiplication: a * b"""
+    प्रत्यागच्छ a * b
+
+कर्म भाग(a, b):
+    """Division: a / b"""
+    यदि b == 0:
+        उत्क्षिप "शून्य से भाग नहीं"
+    प्रत्यागच्छ a / b
+
+कर्म पूर्णांक_भाग(a, b):
+    """Integer division: a // b"""
+    यदि b == 0:
+        उत्क्षिप "शून्य से भाग नहीं"
+    प्रत्यागच्छ पूर्णांक_कर(a / b)
+
+कर्म मापांक(a, b):
+    """Modulo: a % b"""
+    यदि b == 0:
+        उत्क्षिप "शून्य से मापांक नहीं"
+    प्रत्यागच्छ a - b * पूर्णांक_कर(a / b)
+
+कर्म घात(a, b):
+    """Power: a ** b"""
+    प्रत्यागच्छ a ** b
+
+कर्म वर्गमूल(x):
+    """Square root: √x"""
+    यदि x < 0:
+        उत्क्षिप "ऋणात्मक संख्या का वर्गमूल नहीं"
+    यदि x == 0:
+        प्रत्यागच्छ 0
+    
+    # Newton-Raphson method
+    चर guess = x / 2
+    चर prev = 0
+    चर tolerance = 0.0000000001
+    
+    यावत् निरपेक्ष(guess - prev) > tolerance:
+        prev = guess
+        guess = (guess + x / guess) / 2
+    
+    प्रत्यागच्छ guess
+
+कर्म निरपेक्ष(x):
+    """Absolute value: |x|"""
+    यदि x < 0:
+        प्रत्यागच्छ -x
+    प्रत्यागच्छ x
+
+# ── तुलना संचालक (Comparison Operators) ────────────────────────────────────
+
+कर्म समान_है(a, b):
+    """Equality: a == b"""
+    प्रत्यागच्छ a == b
+
+कर्म असमान_है(a, b):
+    """Inequality: a != b"""
+    प्रत्यागच्छ न (a == b)
+
+कर्म लघु_है(a, b):
+    """Less than: a < b"""
+    प्रत्यागच्छ a < b
+
+कर्म महत्_है(a, b):
+    """Greater than: a > b"""
+    प्रत्यागच्छ a > b
+
+कर्म लघु_समान_है(a, b):
+    """Less than or equal: a <= b"""
+    प्रत्यागच्छ a <= b
+
+कर्म महत्_समान_है(a, b):
+    """Greater than or equal: a >= b"""
+    प्रत्यागच्छ a >= b
+
+# ── तार्किक संचालक (Logical Operators) ─────────────────────────────────────
+
+कर्म तर्क_न(x):
+    """Logical NOT: not x"""
+    यदि x:
+        प्रत्यागच्छ असत्य
+    अन्यथा:
+        प्रत्यागच्छ सत्य
+
+कर्म तर्क_और(a, b):
+    """Logical AND: a and b"""
+    यदि a:
+        प्रत्यागच्छ b
+    अन्यथा:
+        प्रत्यागच्छ a
+
+कर्म तर्क_अथवा(a, b):
+    """Logical OR: a or b"""
+    यदि a:
+        प्रत्यागच्छ a
+    अन्यथा:
+        प्रत्यागच्छ b
+
+# ── सदस्यता संचालक (Membership Operators) ──────────────────────────────────
+
+कर्म सदस्य_है(element, collection):
+    """Membership: element in collection"""
+    यदि प्रकार(collection) == "तार":
+        # String search
+        प्रत्यागच्छ तार_खोजो(collection, element) != -1
+    
+    यदि प्रकार(collection) == "सूची":
+        # List search
+        प्रत्येक चर item अन्तर्गत collection:
+            यदि item == element:
+                प्रत्यागच्छ सत्य
+        प्रत्यागच्छ असत्य
+    
+    यदि प्रकार(collection) == "शब्दकोश":
+        # Dict key search
+        प्रत्येक चर key अन्तर्गत collection.कुंजियाँ():
+            यदि key == element:
+                प्रत्यागच्छ सत्य
+        प्रत्यागच्छ असत्य
+    
+    प्रत्यागच्छ असत्य
+
+कर्म सदस्य_नहीं_है(element, collection):
+    """Non-membership: element not in collection"""
+    प्रत्यागच्छ तर्क_न(सदस्य_है(element, collection))
+
+# ── बिटवाइज संचालक (Bitwise Operators) ─────────────────────────────────────
+
+कर्म बिटवाइज_और(a, b):
+    """Bitwise AND: a & b"""
+    चर result = 0
+    चर power = 1
+    
+    यावत् a > 0 अथवा b > 0:
+        चर bit_a = a % 2
+        चर bit_b = b % 2
+        यदि bit_a == 1 और bit_b == 1:
+            result = result + power
+        a = पूर्णांक_कर(a / 2)
+        b = पूर्णांक_कर(b / 2)
+        power = power * 2
+    
+    प्रत्यागच्छ result
+
+कर्म बिटवाइज_अथवा(a, b):
+    """Bitwise OR: a | b"""
+    चर result = 0
+    चर power = 1
+    
+    यावत् a > 0 अथवा b > 0:
+        चर bit_a = a % 2
+        चर bit_b = b % 2
+        यदि bit_a == 1 अथवा bit_b == 1:
+            result = result + power
+        a = पूर्णांक_कर(a / 2)
+        b = पूर्णांक_कर(b / 2)
+        power = power * 2
+    
+    प्रत्यागच्छ result
+
+कर्म बिटवाइज_न(x):
+    """Bitwise NOT: ~x"""
+    # For simplicity, return -(x+1)
+    प्रत्यागच्छ -(x + 1)
+
+कर्म बिटवाइज_xor(a, b):
+    """Bitwise XOR: a ^ b"""
+    चर result = 0
+    चर power = 1
+    
+    यावत् a > 0 अथवा b > 0:
+        चर bit_a = a % 2
+        चर bit_b = b % 2
+        यदि bit_a != bit_b:
+            result = result + power
+        a = पूर्णांक_कर(a / 2)
+        b = पूर्णांक_कर(b / 2)
+        power = power * 2
+    
+    प्रत्यागच्छ result
+
+कर्म बिटवाइज_बायाँ_शिफ्ट(a, n):
+    """Bitwise left shift: a << n"""
+    प्रत्यागच्छ a * घात(2, n)
+
+कर्म बिटवाइज_दायाँ_शिफ्ट(a, n):
+    """Bitwise right shift: a >> n"""
+    प्रत्यागच्छ पूर्णांक_कर(a / घात(2, n))
+
+# ── सूची संचालन (List Operations) ──────────────────────────────────────────
+
+कर्म सूची_उपतार(list, start, end):
+    """List slice: list[start:end]"""
+    चर result = []
+    चर i = start
+    यावत् i < end और i < दीर्घता(list):
+        result.जोड़ो(list[i])
+        i = i + 1
+    प्रत्यागच्छ result
+
+कर्म सूची_जोड़ो(list, element):
+    """Append element to list"""
+    list.जोड़ो(element)
+    प्रत्यागच्छ list
+
+कर्म सूची_हटाओ(list, index):
+    """Remove element at index"""
+    list.हटाओ(index)
+    प्रत्यागच्छ list
+
+कर्म सूची_विस्तार(list1, list2):
+    """Extend list1 with list2"""
+    प्रत्येक चर item अन्तर्गत list2:
+        list1.जोड़ो(item)
+    प्रत्यागच्छ list1
+
+# ── शब्दकोश संचालन (Dictionary Operations) ────────────────────────────────
+
+कर्म शब्दकोश_कुंजियाँ(dict):
+    """Get dictionary keys as list"""
+    चर keys = []
+    प्रत्येक चर key अन्तर्गत dict:
+        keys.जोड़ो(key)
+    प्रत्यागच्छ keys
+
+कर्म शब्दकोश_मान(dict):
+    """Get dictionary values as list"""
+    चर values = []
+    प्रत्येक चर key अन्तर्गत dict:
+        values.जोड़ो(dict[key])
+    प्रत्यागच्छ values
+
+कर्म शब्दकोश_जोड़ी(dict, key, value):
+    """Add key-value pair to dictionary"""
+    dict[key] = value
+    प्रत्यागच्छ dict
+
+कर्म शब्दकोश_हटाओ(dict, key):
+    """Remove key from dictionary"""
+    dict.हटाओ(key)
+    प्रत्यागच्छ dict
+
+# ── तार संचालन (String Operations) ────────────────────────────────────────
+
+कर्म तार_लंबाई(str):
+    """Get string length"""
+    चर count = 0
+    प्रत्येक चर _ अन्तर्गत str:
+        count = count + 1
+    प्रत्यागच्छ count
+
+कर्म तार_उपतार(str, start, end):
+    """String slice: str[start:end]"""
+    चर result = ""
+    चर i = start
+    यावत् i < end और i < तार_लंबाई(str):
+        result = result + str[i]
+        i = i + 1
+    प्रत्यागच्छ result
+
+कर्म तार_खोजो(haystack, needle):
+    """Find substring, return index or -1"""
+    चर h_len = तार_लंबाई(haystack)
+    चर n_len = तार_लंबाई(needle)
+    
+    यदि n_len == 0:
+        प्रत्यागच्छ 0
+    यदि n_len > h_len:
+        प्रत्यागच्छ -1
+    
+    प्रत्येक चर i अन्तर्गत परास(h_len - n_len + 1):
+        चर match = सत्य
+        प्रत्येक चर j अन्तर्गत परास(n_len):
+            यदि haystack[i + j] != needle[j]:
+                match = असत्य
+                तोड़ो
+        यदि match:
+            प्रत्यागच्छ i
+    
+    प्रत्यागच्छ -1
+
+# ── परास संचालन (Range Operations) ────────────────────────────────────────
+
+कर्म परास_दीर्घता(range):
+    """Get range length"""
+    प्रत्यागच्छ range.दीर्घता()
+
+# ── त्रुटि संचालन (Error Handling) ────────────────────────────────────────
+
+कर्म त्रुटि_उत्क्षिप(message):
+    """Raise error with message"""
+    उत्क्षिप message
+
+कर्म त्रुटि_पकड़ो(trial_func, error_func):
+    """Try-catch wrapper"""
+    प्रयत्न:
+        प्रत्यागच्छ trial_func()
+    दोष e:
+        प्रत्यागच्छ error_func(e)
+
+# ── निदान (Diagnostics) ───────────────────────────────────────────────────
+
+कर्म निदान_प्रकार(x):
+    """Debug: print type information"""
+    मुद्रय "Type:", प्रकार(x)
+    मुद्रय "Value:", x
+    प्रत्यागच्छ x
+
+कर्म निदान_स्मृति():
+    """Debug: memory usage (placeholder)"""
+    प्रत्यागच्छ "Memory info not available"

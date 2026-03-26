@@ -1,0 +1,30 @@
+# चित्रकला — उदाहरण कार्यक्रम (Example Program)
+# Demonstrates Chitrakala visual library in VakyaLang
+# © 2026 Raj Mitra
+
+# Create a canvas (800x600, white background)
+कैनवास = _chitra_canvas(800, 600, "श्वेत")
+
+# Draw a filled red circle in the center
+_chitra_circle(कैनवास, 400, 300, 100, "red", सत्य)
+
+# Draw a blue rectangle
+_chitra_rect(कैनवास, 200, 200, 400, 200, "blue", असत्य)
+
+# Draw green lines from corners
+_chitra_line(कैनवास, 0, 0, 800, 600, "green")
+_chitra_line(कैनवास, 0, 600, 800, 0, "green")
+
+# Draw text
+_chitra_text(कैनवास, 300, 50, "नमस्ते विश्व!", "krishna", 2)
+
+# Draw a yellow polygon (triangle)
+बिन्दु = [[400, 50], [350, 150], [450, 150]]
+_chitra_polygon(कैनवास, बिन्दु, "yellow", सत्य)
+
+# Save to file
+_chitra_save(कैनवास, "चित्रकला_उदाहरण.png")
+
+मुद्रय "चित्रकला कार्यक्रम सफल!"
+मुद्रय "कैनवास विस्तार:", _chitra_width(कैनवास)
+मुद्रय "कैनवास ऊंचाई:", _chitra_height(कैनवास)

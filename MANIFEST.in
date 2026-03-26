@@ -1,0 +1,8 @@
+include README.md
+include LICENSE
+include NOTICE
+recursive-include runtime *.vak *.md
+recursive-include runtime/spec *
+recursive-include sanskrit_coder/data *
+recursive-include sansmatic *.py
+recursive-include atmalipi *.py

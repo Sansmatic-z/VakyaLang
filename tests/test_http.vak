@@ -1,0 +1,11 @@
+# HTTP Client Test
+मुद्रय "Testing HTTP GET..."
+चर result = जाल_लाओ("https://httpbin.org/get")
+मुद्रय "GET Result:", result[0:100]
+
+मुद्रय "Testing HTTP POST..."
+चर data = {"नाम": "परीक्षण", "मान": ४२}
+चर postResult = जाल_भेजो("https://httpbin.org/post", data)
+मुद्रय "POST Result:", postResult[0:100]
+
+मुद्रय "HTTP tests complete!"

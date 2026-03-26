@@ -1,0 +1,7 @@
+# Lambda Expression Test
+चर f = कर्म(x): x * २
+मुद्रय f(५)
+
+# Lambda inline test
+चर g = कर्म(x, y): x + y
+मुद्रय g(१०, २०)

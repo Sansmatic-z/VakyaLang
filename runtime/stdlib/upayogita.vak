@@ -1,0 +1,481 @@
+# वाक् मानक पुस्तकालय — उपयोजिता (Utilities)
+# Vak Standard Library — General Purpose Utilities
+# शुद्ध वाक् कार्यान्वयन (Pure VakyaLang Implementation)
+# लेखक: Visionary RM (Raj Mitra)
+
+आयात गोल, घात से ganit_vistarit
+आयात तार_लंबाई, तार_उपतार, तार_प्रतिस्थापन, वर्ण_सूची, विभाजित, बायाँ_पैड से bhasha_prasadan
+
+# ── संख्या प्रणाली रूपांतरण (Number System Conversions) ──────────────────
+
+कर्म दशमलव_से_द्विआधारी(n):
+    टीका Decimal to binary conversion
+    यदि n == ०:
+        प्रत्यागच्छ "0"
+    
+    चर negative = n < ०
+    यदि negative:
+        n = -n
+    
+    चर result = ""
+    यावत् n > ०:
+        result = पाठ_कर(n % २) + result
+        n = n // २
+    
+    यदि negative:
+        result = "-" + result
+    
+    प्रत्यागच्छ result
+
+कर्म द्विआधारी_से_दशमलव(binary_string):
+    टीका Binary to decimal conversion
+    चर result = ०
+    चर power = ०
+    चर i = तार_लंबाई(binary_string) - १
+    
+    यावत् i >= ०:
+        चर digit = पूर्णांक_कर(binary_string[i])
+        result = result + digit * घात(२, power)
+        power = power + १
+        i = i - १
+    
+    प्रत्यागच्छ result
+
+कर्म दशमलव_से_अष्टभुज(n):
+    टीका Decimal to octal conversion
+    यदि n == ०:
+        प्रत्यागच्छ "0"
+    
+    चर negative = n < ०
+    यदि negative:
+        n = -n
+    
+    चर result = ""
+    यावत् n > ०:
+        result = पाठ_कर(n % ८) + result
+        n = n // ८
+    
+    यदि negative:
+        result = "-" + result
+    
+    प्रत्यागच्छ result
+
+कर्म अष्टभुज_से_दशमलव(octal_string):
+    टीका Octal to decimal conversion
+    चर result = ०
+    चर power = ०
+    चर i = तार_लंबाई(octal_string) - १
+    
+    यावत् i >= ०:
+        चर digit = पूर्णांक_कर(octal_string[i])
+        result = result + digit * घात(८, power)
+        power = power + १
+        i = i - १
+    
+    प्रत्यागच्छ result
+
+कर्म दशमलव_से_षोडशभुज(n):
+    टीका Decimal to hexadecimal conversion
+    यदि n == ०:
+        प्रत्यागच्छ "0"
+    
+    चर negative = n < ०
+    यदि negative:
+        n = -n
+    
+    चर hex_digits = ["0", "1", "2", "3", "4", "5", "6", "7", 
+                     "8", "9", "A", "B", "C", "D", "E", "F"]
+    चर result = ""
+    
+    यावत् n > ०:
+        result = hex_digits[n % १६] + result
+        n = n // १६
+    
+    यदि negative:
+        result = "-" + result
+    
+    प्रत्यागच्छ result
+
+कर्म षोडशभुज_से_दशमलव(hex_string):
+    टीका Hexadecimal to decimal conversion
+    चर hex_map = {
+        "0": ०, "1": १, "2": २, "3": ३, "4": ४,
+        "5": ५, "6": ६, "7": ७, "8": ८, "9": ९,
+        "A": १०, "B": ११, "C": १२, "D": १३, "E": १४, "F": १५,
+        "a": १०, "b": ११, "c": १२, "d": १३, "e": १४, "f": १५
+    }
+    
+    चर result = ०
+    चर power = ०
+    चर i = तार_लंबाई(hex_string) - १
+    
+    यावत् i >= ०:
+        चर digit = hex_map[hex_string[i]]
+        result = result + digit * घात(१६, power)
+        power = power + १
+        i = i - १
+    
+    प्रत्यागच्छ result
+
+# ── दिनांक और समय उपयोगिताएँ (Date and Time Utilities) ───────────────────
+
+# Note: These are simulation utilities since VakyaLang doesn't have
+# native time access. For real time, use Python bridge.
+
+कर्म लीप_वर्ष_जाँच(year):
+    टीका Check if year is a leap year
+    यदि year % ४०० == ०:
+        प्रत्यागच्छ सत्य
+    यदि year % १०० == ०:
+        प्रत्यागच्छ असत्य
+    यदि year % ४ == ०:
+        प्रत्यागच्छ सत्य
+    प्रत्यागच्छ असत्य
+
+कर्म महीना_दिन(month, year):
+    टीका Days in a month
+    चर days_in_month = [३१, २८, ३१, ३०, ३१, ३०, ३१, ३१, ३०, ३१, ३०, ३१]
+    
+    यदि month == २ और लीप_वर्ष_जाँच(year):
+        प्रत्यागच्छ २९
+    
+    प्रत्यागच्छ days_in_month[month - १]
+
+कर्म दिनांक_मान्य_है(day, month, year):
+    टीका Validate date
+    यदि month < १ अथवा month > १२:
+        प्रत्यागच्छ असत्य
+    यदि day < १ अथवा day > महीना_दिन(month, year):
+        प्रत्यागच्छ असत्य
+    प्रत्यागच्छ सत्य
+
+कर्म दिन_संख्या(day, month, year):
+    टीका Day of year (1-365/366)
+    चर day_count = ०
+    प्रत्येक चर m अन्तर्गत परास(१, month):
+        day_count = day_count + महीना_दिन(m, year)
+    day_count = day_count + day
+    प्रत्यागच्छ day_count
+
+कर्म सप्ताह_दिन(day, month, year):
+    टीका Day of week using Zeller's congruence (0=Sunday, 6=Saturday)
+    यदि month < ३:
+        month = month + १२
+        year = year - १
+    
+    चर q = day
+    चर m = month
+    चर k = year % १००
+    चर j = year // १००
+    
+    चर h = (q + (१३ * (m + १)) // २५ + k + k // ४ + j // ४ - २ * j) % ७
+    
+    # Adjust to make Sunday = 0
+    चर day_of_week = (h + ६) % ७
+    प्रत्यागच्छ day_of_week
+
+कर्म सप्ताह_दिन_नाम(day_of_week):
+    टीका Get name of weekday
+    चर names = ["रविवार", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार"]
+    प्रत्यागच्छ names[day_of_week]
+
+कर्म दिनांक_फॉर्मेट(day, month, year, format="DD/MM/YYYY"):
+    टीका Format date string
+    चर result = format
+    result = तार_प्रतिस्थापन(result, "DD", बायाँ_पैड(पाठ_कर(day), २, "0"))
+    result = तार_प्रतिस्थापन(result, "MM", बायाँ_पैड(पाठ_कर(month), २, "0"))
+    result = तार_प्रतिस्थापन(result, "YYYY", पाठ_कर(year))
+    result = तार_प्रतिस्थापन(result, "YY", पाठ_कर(year % १००))
+    प्रत्यागच्छ result
+
+# ── समय गणना (Time Calculations) ─────────────────────────────────────────
+
+कर्म सेकंड_से_समय(total_seconds):
+    टीका Convert seconds to hours, minutes, seconds
+    चर hours = total_seconds // ३६००
+    चर remaining = total_seconds % ३६००
+    चर minutes = remaining // ६०
+    चर seconds = remaining % ६०
+    प्रत्यागच्छ [hours, minutes, seconds]
+
+कर्म समय_से_सेकंड(hours, minutes, seconds):
+    टीका Convert hours, minutes, seconds to total seconds
+    प्रत्यागच्छ hours * ३६०० + minutes * ६० + seconds
+
+कर्म समय_फॉर्मेट(hours, minutes, seconds):
+    टीका Format time as HH:MM:SS
+    चर h = बायाँ_पैड(पाठ_कर(hours), २, "0")
+    चर m = बायाँ_पैड(पाठ_कर(minutes), २, "0")
+    चर s = बायाँ_पैड(पाठ_कर(seconds), २, "0")
+    प्रत्यागच्छ h + ":" + m + ":" + s
+
+# ── माप इकाई रूपांतरण (Unit Conversions) ────────────────────────────────
+
+कर्म सेल्सियस_से_फ़ारेनहाइट(celsius):
+    प्रत्यागच्छ celsius * ९ / ५ + ३२
+
+कर्म फ़ारेनहाइट_से_सेल्सियस(fahrenheit):
+    प्रत्यागच्छ (fahrenheit - ३२) * ५ / ९
+
+कर्म किलोमीटर_से_मील(km):
+    प्रत्यागच्छ km * ०.६२१३७१
+
+कर्म मील_से_किलोमीटर(miles):
+    प्रत्यागच्छ miles * १.६०९३४
+
+कर्म किलोग्राम_से_पाउंड(kg):
+    प्रत्यागच्छ kg * २.२०४६२
+
+कर्म पाउंड_से_किलोग्राम(lbs):
+    प्रत्यागच्छ lbs * ०.४५३५९२
+
+कर्म मीटर_से_फीट(meters):
+    प्रत्यागच्छ meters * ३.२८०८४
+
+कर्म फीट_से_मीटर(feet):
+    प्रत्यागच्छ feet * ०.३०४८
+
+कर्म लीटर_से_गैलन(liters):
+    प्रत्यागच्छ liters * ०.२६४१७२
+
+कर्म गैलन_से_लीटर(gallons):
+    प्रत्यागच्छ gallons * ३.७८५४१
+
+# ── मुद्रा रूपांतरण (Currency Conversion - Fixed Rates) ──────────────────
+
+कर्म USD_से_INR(usd):
+    टीका USD to INR (approximate rate: 1 USD = 83 INR)
+    प्रत्यागच्छ usd * ८३
+
+कर्म INR_से_USD(inr):
+    टीका INR to USD
+    प्रत्यागच्छ inr / ८३
+
+कर्म EUR_से_INR(eur):
+    टीका EUR to INR (approximate rate: 1 EUR = 90 INR)
+    प्रत्यागच्छ eur * ९०
+
+कर्म INR_से_EUR(inr):
+    टीका INR to EUR
+    प्रत्यागच्छ inr / ९०
+
+# ── रोमन संख्याएँ (Roman Numerals) ──────────────────────────────────────
+
+कर्म दशमलव_से_रोमन(n):
+    टीका Decimal to Roman numerals
+    यदि n <= ० अथवा n > ३९९९:
+        प्रत्यागच्छ "अमान्य"
+    
+    चर values = [१०००, ९००, ५००, ४००, १००, ९०, ५०, ४०, १०, ९, ५, ४, १]
+    चर numerals = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"]
+    
+    चर result = ""
+    प्रत्येक चर i अन्तर्गत परास(दीर्घता(values)):
+        यावत् n >= values[i]:
+            result = result + numerals[i]
+            n = n - values[i]
+    
+    प्रत्यागच्छ result
+
+कर्म रोमन_से_दशमलव(roman):
+    टीका Roman to decimal numerals
+    चर roman_map = {
+        "I": १, "V": ५, "X": १०, "L": ५०,
+        "C": १००, "D": ५००, "M": १०००
+    }
+    
+    चर result = ०
+    चर prev_value = ०
+    
+    चर i = तार_लंबाई(roman) - १
+    यावत् i >= ०:
+        चर value = roman_map[roman[i]]
+        यदि value < prev_value:
+            result = result - value
+        अन्यथा:
+            result = result + value
+        prev_value = value
+        i = i - १
+    
+    प्रत्यागच्छ result
+
+# ── रंग रूपांतरण (Color Conversions) ────────────────────────────────────
+
+कर्म RGB_से_HEX(r, g, b):
+    टीका RGB to Hex color
+    चर hex_r = दशमलव_से_षोडशभुज(r)
+    चर hex_g = दशमलव_से_षोडशभुज(g)
+    चर hex_b = दशमलव_से_षोडशभुज(b)
+    प्रत्यागच्छ "#" + बायाँ_पैड(hex_r, २, "0") + बायाँ_पैड(hex_g, २, "0") + बायाँ_पैड(hex_b, २, "0")
+
+कर्म HEX_से_RGB(hex_color):
+    टीका Hex to RGB color
+    चर hex = तार_उपतार(hex_color, १, तार_लंबाई(hex_color))
+    चर r = षोडशभुज_से_दशमलव(तार_उपतार(hex, ०, २))
+    चर g = षोडशभुज_से_दशमलव(तार_उपतार(hex, २, ४))
+    चर b = षोडशभुज_से_दशमलव(तार_उपतार(hex, ४, ६))
+    प्रत्यागच्छ [r, g, b]
+
+# ── चेकसम और हैश (Checksums and Simple Hashes) ─────────────────────────
+
+कर्म LUV_checksum(number_string):
+    टीका Luhn algorithm for validating credit card numbers
+    चर digits = वर्ण_सूची(number_string)
+    चर sum = ०
+    चर double = असत्य
+    
+    चर i = दीर्घता(digits) - १
+    यावत् i >= ०:
+        चर d = पूर्णांक_कर(digits[i])
+        यदि double:
+            d = d * २
+            यदि d > ९:
+                d = d - ९
+        sum = sum + d
+        double = न double
+        i = i - १
+    
+    प्रत्यागच्छ sum % १० == ०
+
+कर्म सरल_हैश(तार):
+    टीका Simple hash function
+    चर hash_value = ०
+    प्रत्येक चर char अन्तर्गत तार:
+        hash_value = (hash_value * ३१ + अक्षर_मान(char)) % ४२९४९६७२९६
+    प्रत्यागच्छ hash_value
+
+कर्म CRC8(डेटा):
+    टीका Simple CRC-8 checksum for byte list
+    चर crc = ०
+    प्रत्येक चर byte अन्तर्गत डेटा:
+        crc = crc XOR byte
+        प्रत्येक चर _ अन्तर्गत परास(८):
+            यदि crc % २ == १:
+                crc = (crc // २) XOR १८५
+            अन्यथा:
+                crc = crc // २
+    प्रत्यागच्छ crc
+
+# ── संपीकरण (Simple Compression) ────────────────────────────────────────
+
+कर्म RLE_एन्कोड(तार):
+    टीका Run-Length Encoding
+    यदि तार_लंबाई(तार) == ०:
+        प्रत्यागच्छ ""
+    
+    चर result = ""
+    चर current_char = तार[०]
+    चर count = १
+    
+    प्रत्येक चर i अन्तर्गत परास(१, तार_लंबाई(तार)):
+        यदि तार[i] == current_char:
+            count = count + १
+        अन्यथा:
+            result = result + पाठ_कर(count) + current_char
+            current_char = तार[i]
+            count = १
+    
+    result = result + पाठ_कर(count) + current_char
+    प्रत्यागच्छ result
+
+कर्म RLE_डिकोड(encoded):
+    टीका Run-Length Decoding
+    चर result = ""
+    चर i = ०
+    
+    यावत् i < तार_लंबाई(encoded):
+        चर count_str = ""
+        यावत् i < तार_लंबाई(encoded) और encoded[i] >= "0" और encoded[i] <= "9":
+            count_str = count_str + encoded[i]
+            i = i + १
+        
+        यदि i < तार_लंबाई(encoded):
+            चर char = encoded[i]
+            चर count = पूर्णांक_कर(count_str)
+            प्रत्येक चर _ अन्तर्गत परास(count):
+                result = result + char
+            i = i + १
+    
+    प्रत्यागच्छ result
+
+# ── यादृच्छा संख्या जनरेटर (Pseudo-Random Number Generator) ─────────────
+
+वर्ग यादृच्छा_जनरेटर:
+    टीका Linear Congruential Generator for pseudo-random numbers
+    
+    कर्म प्रारम्भ(स्वयं, seed=१२३४५):
+        स्वयं.state = seed
+        # LCG parameters (same as glibc)
+        स्वयं.a = ११०३५१५२४५
+        स्वयं.c = १२३४५
+        स्वयं.m = २१४७४८३६४८  # 2^31
+    
+    कर्म अगला(स्वयं):
+        टीका Generate next random number
+        स्वयं.state = (स्वयं.a * स्वयं.state + स्वयं.c) % स्वयं.m
+        प्रत्यागच्छ स्वयं.state
+    
+    कर्म यादृच्छा_परास(स्वयं, min, max):
+        टीका Random number in range [min, max]
+        चर value = स्वयं.अगला()
+        प्रत्यागच्छ min + (value % (max - min + १))
+    
+    कर्म यादृच्छा_दशमलव(स्वयं):
+        टीका Random float between 0 and 1
+        प्रत्यागच्छ स्वयं.अगला() / स्वयं.m
+
+# ── फ़ॉर्मेटिंग उपयोगिताएँ (Formatting Utilities) ───────────────────────
+
+कर्म संख्या_फॉर्मेट(number, decimal_places=२):
+    टीका Format number with thousand separators
+    चर str_num = पाठ_कर(number)
+    चर parts = विभाजित(str_num, ".")
+    
+    चर integer_part = parts[०]
+    चर negative = असत्य
+    यदि integer_part[०] == "-":
+        negative = सत्य
+        integer_part = तार_उपतार(integer_part, १, तार_लंबाई(integer_part))
+    
+    चर result = ""
+    चर count = ०
+    
+    चर i = तार_लंबाई(integer_part) - १
+    यावत् i >= ०:
+        यदि count > ० और count % ३ == ०:
+            result = "," + result
+        result = integer_part[i] + result
+        count = count + १
+        i = i - १
+    
+    यदि negative:
+        result = "-" + result
+    
+    यदि दीर्घता(parts) > १:
+        result = result + "." + parts[१]
+    
+    प्रत्यागच्छ result
+
+कर्म वैज्ञानिक_संकेतन(number):
+    टीका Scientific notation
+    यदि number == ०:
+        प्रत्यागच्छ "0e+0"
+    
+    चर negative = number < ०
+    यदि negative:
+        number = -number
+    
+    चर exponent = ०
+    यावत् number >= १०:
+        number = number / १०
+        exponent = exponent + १
+    यावत् number < १:
+        number = number * १०
+        exponent = exponent - १
+    
+    चर mantissa = गोल(number, ४)
+    चर sign = "-" यदि negative अन्यथा ""
+    
+    प्रत्यागच्छ sign + पाठ_कर(mantissa) + "e" + पाठ_कर(exponent)
+
+मुद्रय "उपयोजिता पुस्तकालय लोड हुआ। (Utilities library loaded.)"

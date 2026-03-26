@@ -1,0 +1,99 @@
+# वाक् भाषा — पायथन ब्रिज उदाहरण (Python Bridge Example)
+# Demonstrates: Calling Python libraries from VakyaLang
+
+आयात py_bridge
+
+मुद्रय "═══════════════════════════════════════════════════════════"
+मुद्रय "  पायथन ब्रिज प्रदर्शन (Python Bridge Demo)"
+मुद्रय "═══════════════════════════════════════════════════════════"
+
+# ── Python Math Module ───────────────────────────────────────────
+मुद्रय "\n🔢 Python Math Module:"
+मुद्रय "────────────────────────"
+
+चर math = पायथन_आयात("math")
+
+मुद्रय "π (pi):", math.pi
+मुद्रय "e (Euler):", math.e
+
+चर sqrt_result = math.sqrt(१६)
+मुद्रय "sqrt(16):", sqrt_result
+
+चर sin_result = math.sin(math.pi / २)
+मुद्रय "sin(π/2):", sin_result
+
+चर factorial_result = math.factorial(५)
+मुद्रय "5!:", factorial_result
+
+चर gcd_result = math.gcd(४८, १८)
+मुद्रय "gcd(48, 18):", gcd_result
+
+# ── Python Random Module ─────────────────────────────────────────
+मुद्रय "\n🎲 Python Random Module:"
+मुद्रय "─────────────────────────"
+
+चर random = पायथन_आयात("random")
+
+चर rand_int = random.randint(१, १००)
+मुद्रय "Random int (1-100):", rand_int
+
+चर rand_float = random.random()
+मुद्रय "Random float (0-1):", rand_float
+
+चर choices = [१, २, ३, ४, ५, ६, ७, ८, ९, १०]
+चर choice = random.choice(choices)
+मुद्रय "Random choice from list:", choice
+
+# ── Python JSON Module ───────────────────────────────────────────
+मुद्रय "\n📄 Python JSON Module:"
+मुद्रय "──────────────────────"
+
+चर json = पायथन_आयात("json")
+
+# Parse JSON string
+चर json_string = '{"name": "राज", "age": 30, "city": "मुंबई"}'
+चर parsed = json.loads(json_string)
+मुद्रय "Parsed JSON:", parsed
+मुद्रय "Name:", parsed["name"]
+मुद्रय "Age:", parsed["age"]
+
+# Convert to JSON
+चर data = {"language": "Sanskrit", "version": 1.0}
+चर json_str = json.dumps(data)
+मुद्रय "To JSON:", json_str
+
+# ── Python OS Module ─────────────────────────────────────────────
+मुद्रय "\n💻 Python OS Module:"
+मुद्रय "────────────────────"
+
+चर os = पायथन_आयात("os")
+
+मुद्रय "Current directory:", os.getcwd()
+मुद्रय "OS name:", os.name
+मुद्रय "Python version:", os.popen("python --version").read().strip()
+
+# ── Python Datetime Module ───────────────────────────────────────
+मुद्रय "\n📅 Python Datetime Module:"
+मुद्रय "──────────────────────────"
+
+चर datetime = पायथन_आयात("datetime")
+
+चर now = datetime.datetime.now()
+मुद्रय "Current datetime:", now
+मुद्रय "Year:", now.year
+मुद्रय "Month:", now.month
+मुद्रय "Day:", now.day
+
+# ── Python Collections (Counter) ─────────────────────────────────
+मुद्रय "\n📊 Python Collections - Counter:"
+मुद्रय "────────────────────────────────"
+
+चर collections = पायथन_आयात("collections")
+
+चर text = "संस्कृत भाषा programming language"
+चर counter = collections.Counter(text)
+मुद्रय "Character frequency:", counter.most_common(5)
+
+मुद्रय "\n═══════════════════════════════════════════════════════════"
+मुद्रय "  प्रदर्शन सम्पूर्ण (Demo Complete)"
+मुद्रय "═══════════════════════════════════════════════════════════"

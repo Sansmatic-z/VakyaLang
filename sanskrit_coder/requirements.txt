@@ -1,0 +1,19 @@
+# संस्कृत-कोडकः - आवश्यकताः
+# Sanskrit Coder - Requirements
+
+# Core Python (built-in)
+# No external dependencies required for basic functionality
+
+# Optional: For enhanced mathematical capabilities
+# sympy>=1.12  # Symbolic mathematics
+
+# Optional: For testing
+# pytest>=7.0
+# pytest-cov>=4.0
+
+# Optional: For CLI enhancement
+# click>=8.0
+# rich>=13.0  # Beautiful terminal output
+
+# Note: This system is designed to work with minimal dependencies
+# Core functionality uses only Python standard library

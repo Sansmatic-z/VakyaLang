@@ -1,0 +1,540 @@
+# वाक् मानक पुस्तकालय — उन्नत सांख्यिकी (Advanced Statistics)
+# Vak Standard Library — Complete Advanced Statistical Tests
+# शुद्ध वाक् कार्यान्वयन (Pure VakyaLang Implementation)
+# लेखक: Visionary RM (Raj Mitra)
+
+# ── वितरण फलन (Distribution Functions) ──────────────────────────────────
+
+कर्म t_वितरण_घनत्व(x, degrees_of_freedom):
+    """
+    Student's t-distribution probability density function.
+    
+    Usage:
+        चर pdf = t_वितरण_घनत्व(1.96, 10)
+    """
+    चर n = degrees_of_freedom
+    
+    # Gamma function ratio approximation
+    चर log_gamma_part = प्राकृतिक_लघुगणक(गामा_फलन((n + 1) / 2)) - प्राकृतिक_लघुगणक(गामा_फलन(n / 2))
+    
+    चर coefficient = घात(ई, log_gamma_part) / वर्गमूल(n * पाई)
+    चर exponent = -(n + 1) / 2 * प्राकृतिक_लघुगणक(1 + x * x / n)
+    
+    प्रत्यागच्छ coefficient * घात(ई, exponent)
+
+कर्म गामा_फलन(z):
+    """
+    Gamma function using Lanczos approximation.
+    Γ(z) = (z-1)! for positive integers
+    """
+    यदि z < 0.5:
+        # Reflection formula
+        प्रत्यागच्छ पाई / (साइन(पाई * z) * गामा_फलन(1 - z))
+    
+    z = z - 1
+    
+    # Lanczos coefficients
+    चर g = 7
+    चर c = [
+        0.99999999999980993,
+        676.5203681218851,
+        -1259.1392167224028,
+        771.32342877765313,
+        -176.61502916214059,
+        12.507343278686905,
+        -0.13857109526572012,
+        9.9843695780195716e-6,
+        1.5056327351493116e-7
+    ]
+    
+    चर sum = 0
+    प्रत्येक चर i अन्तर्गत परास(दीर्घता(c)):
+        यदि i == 0:
+            sum = sum + c[i]
+        अन्यथा:
+            sum = sum + c[i] / (z + i)
+    
+    चर t = z + g + 0.5
+    प्रत्यागच्छ वर्गमूल(2 * पाई) * घात(t, z + 0.5) * घात(ई, -t) * sum
+
+कर्म बीटा_फलन(a, b):
+    """
+    Beta function: B(a,b) = Γ(a)Γ(b)/Γ(a+b)
+    """
+    प्रत्यागच्छ गामा_फलन(a) * गामा_फलन(b) / गामा_फलन(a + b)
+
+कर्म असम्पूर्ण_गामा(a, x):
+    """
+    Lower incomplete gamma function.
+    """
+    यदि x < 0:
+        प्रत्यागच्छ 0
+    
+    # Series expansion
+    चर sum = 1 / a
+    चर term = 1 / a
+    प्रत्येक चर n अन्तर्गत परास(1, 100):
+        term = term * x / (a + n)
+        sum = sum + term
+        यदि निरपेक्ष(term) < 0.0000001:
+            तोड़ो
+    
+    प्रत्यागच्छ घात(ई, -x) * घात(x, a) * sum
+
+# ── सांख्यिकीय परीक्षण (Statistical Tests) ──────────────────────────────
+
+कर्म z_परीक्षण_द्विपक्षीय(sample_mean, pop_mean, pop_std, n, alpha=0.05):
+    """
+    Two-tailed Z-test.
+    
+    Returns:
+        [z_statistic, p_value, reject_null]
+    """
+    चर se = pop_std / वर्गमूल(n)
+    चर z = (sample_mean - pop_mean) / se
+    
+    # Two-tailed p-value
+    चर p_value = 2 * (1 - सामान्य_संचयी_वितरण(निरपेक्ष(z)))
+    
+    प्रत्यागच्छ [z, p_value, p_value < alpha]
+
+कर्म t_परीक्षण_एकपक्षीय(sample_mean, pop_mean, sample_std, n, alpha=0.05):
+    """
+    One-tailed T-test.
+    """
+    चर se = sample_std / वर्गमूल(n)
+    चर t = (sample_mean - pop_mean) / se
+    चर df = n - 1
+    
+    # One-tailed p-value from t-distribution
+    चर p_value = 1 - t_वितरण_संचयी(निरपेक्ष(t), df)
+    
+    प्रत्यागच्छ [t, p_value, p_value < alpha]
+
+कर्म t_परीक्षण_द्विपक्षीय(sample_mean, pop_mean, sample_std, n, alpha=0.05):
+    """
+    Two-tailed T-test.
+    """
+    चर se = sample_std / वर्गमूल(n)
+    चर t = (sample_mean - pop_mean) / se
+    चर df = n - 1
+    
+    # Two-tailed p-value
+    चर p_value = 2 * (1 - t_वितरण_संचयी(निरपेक्ष(t), df))
+    
+    प्रत्यागच्छ [t, p_value, p_value < alpha]
+
+कर्म सामान्य_संचयी_वितरण(z):
+    """
+    Standard normal cumulative distribution function Φ(z).
+    Approximation using error function.
+    """
+    # Approximation using polynomial
+    चर t = 1 / (1 + 0.2316419 * निरपेक्ष(z))
+    चर d = 0.3989423 * घात(ई, -z * z / 2)
+    
+    चर prob = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))))
+    
+    यदि z > 0:
+        प्रत्यागच्छ 1 - prob
+    अन्यथा:
+        प्रत्यागच्छ prob
+
+कर्म t_वितरण_संचयी(t, df):
+    """
+    Student's t cumulative distribution function.
+    Approximation for practical use.
+    """
+    # For large df, use normal approximation
+    यदि df > 30:
+        प्रत्यागच्छ सामान्य_संचयी_वितरण(t)
+    
+    # Numerical integration for small df
+    चर sum = 0
+    चर step = 0.01
+    चर x = -10
+    
+    यावत् x <= t:
+        sum = sum + t_वितरण_घनत्व(x, df) * step
+        x = x + step
+    
+    प्रत्यागच्छ sum
+
+कर्म काई_वर्ग_परीक्षण(observed, expected):
+    """
+    Chi-square goodness of fit test.
+    
+    Returns:
+        [chi_square, df, p_value, reject_null]
+    """
+    चर n = दीर्घता(observed)
+    
+    # Calculate chi-square statistic
+    चर chi_sq = 0
+    प्रत्येक चर i अन्तर्गत परास(n):
+        चर O = observed[i]
+        चर E = expected[i]
+        यदि E != 0:
+            chi_sq = chi_sq + घात(O - E, 2) / E
+    
+    # Degrees of freedom
+    चर df = n - 1
+    
+    # P-value from chi-square distribution
+    चर p_value = 1 - काई_वर्ग_संचयी(chi_sq, df)
+    
+    प्रत्यागच्छ [chi_sq, df, p_value, p_value < 0.05]
+
+कर्म काई_वर्ग_संचयी(x, df):
+    """
+    Chi-square cumulative distribution function.
+    """
+    # Use incomplete gamma function
+    प्रत्यागच्छ असम्पूर्ण_गामा(df / 2, x / 2) / गामा_फलन(df / 2)
+
+कर्म F_परीक्षण(var1, var2, n1, n2):
+    """
+    F-test for equality of variances.
+    
+    Returns:
+        [F_statistic, p_value, reject_null]
+    """
+    # F statistic (larger variance / smaller variance)
+    चर F
+    यदि var1 > var2:
+        F = var1 / var2
+        चर df1 = n1 - 1
+        चर df2 = n2 - 1
+    अन्यथा:
+        F = var2 / var1
+        चर df1 = n2 - 1
+        चर df2 = n1 - 1
+    
+    # P-value from F-distribution
+    चर p_value = 2 * (1 - F_वितरण_संचयी(F, df1, df2))
+    
+    प्रत्यागच्छ [F, p_value, p_value < 0.05]
+
+कर्म F_वितरण_संचयी(f, df1, df2):
+    """
+    F-distribution cumulative distribution function.
+    """
+    # Use regularized incomplete beta function
+    चर x = df1 * f / (df1 * f + df2)
+    प्रत्यागच्छ असम्पूर्ण_बीटा(df1 / 2, df2 / 2, x)
+
+कर्म असम्पूर्ण_बीटा(a, b, x):
+    """
+    Regularized incomplete beta function I_x(a,b).
+    """
+    यदि x == 0:
+        प्रत्यागच्छ 0
+    यदि x == 1:
+        प्रत्यागच्छ 1
+    
+    # Continued fraction expansion
+    चर bt = घात(ई, a * प्राकृतिक_लघुगणक(x) + b * प्राकृतिक_लघुगणक(1 - x) - प्राकृतिक_लघुगणक(बीटा_फलन(a, b)))
+    
+    यदि x < (a + 1) / (a + b + 2):
+        प्रत्यागच्छ bt * बीटा_सीएफ(a, b, x) / a
+    अन्यथा:
+        प्रत्यागच्छ 1 - bt * बीटा_सीएफ(b, a, 1 - x) / b
+
+कर्म बीटा_सीएफ(a, b, x):
+    """
+    Continued fraction for incomplete beta function.
+    """
+    चर qab = a + b
+    चर qap = a + 1
+    चर qam = a - 1
+    
+    चर c = 1
+    चर d = 1 - qab * x / qap
+    यदि निरपेक्ष(d) < 0.0000001:
+        d = 0.0000001
+    d = 1 / d
+    चर h = d
+    
+    प्रत्येक चर m अन्तर्गत परास(1, 100):
+        चर m2 = 2 * m
+        
+        # Even step
+        चर aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1 + aa * d
+        यदि निरपेक्ष(d) < 0.0000001:
+            d = 0.0000001
+        c = 1 + aa / c
+        यदि निरपेक्ष(c) < 0.0000001:
+            c = 0.0000001
+        d = 1 / d
+        h = h * d * c
+        
+        # Odd step
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1 + aa * d
+        यदि निरपेक्ष(d) < 0.0000001:
+            d = 0.0000001
+        c = 1 + aa / c
+        यदि निरपेक्ष(c) < 0.0000001:
+            c = 0.0000001
+        d = 1 / d
+        चर del = d * c
+        h = h * del
+        
+        यदि निरपेक्ष(del - 1) < 0.0000001:
+            तोड़ो
+    
+    प्रत्यागच्छ h
+
+# ── ANOVA (Analysis of Variance) ────────────────────────────────────────
+
+कर्म एक_कारक_ANOVA(groups):
+    """
+    One-way ANOVA for comparing means of 3+ groups.
+    
+    Input:
+        groups = [[group1_data], [group2_data], ...]
+    
+    Returns:
+        [F_statistic, p_value, reject_null]
+    """
+    चर k = दीर्घता(groups)  # Number of groups
+    चर N = 0  # Total observations
+    चर grand_sum = 0
+    
+    # Calculate totals
+    प्रत्येक चर group अन्तर्गत groups:
+        N = N + दीर्घता(group)
+        प्रत्येक चर val अन्तर्गत group:
+            grand_sum = grand_sum + val
+    
+    चर grand_mean = grand_sum / N
+    
+    # Between-group sum of squares
+    चर SS_between = 0
+    प्रत्येक चर group अन्तर्गत groups:
+        चर n_i = दीर्घता(group)
+        चर group_mean = माध्य(group)
+        SS_between = SS_between + n_i * घात(group_mean - grand_mean, 2)
+    
+    # Within-group sum of squares
+    चर SS_within = 0
+    प्रत्येक चर group अन्तर्गत groups:
+        चर group_mean = माध्य(group)
+        प्रत्येक चर val अन्तर्गत group:
+            SS_within = SS_within + घात(val - group_mean, 2)
+    
+    # Degrees of freedom
+    चर df_between = k - 1
+    चर df_within = N - k
+    
+    # Mean squares
+    चर MS_between = SS_between / df_between
+    चर MS_within = SS_within / df_within
+    
+    # F statistic
+    चर F = MS_between / MS_within
+    
+    # P-value
+    चर p_value = 1 - F_वितरण_संचयी(F, df_between, df_within)
+    
+    प्रत्यागच्छ [F, p_value, p_value < 0.05]
+
+# ── सहसंबंध परीक्षण (Correlation Tests) ─────────────────────────────────
+
+कर्म पियर्सन_सहसंबंध_परीक्षण(x, y):
+    """
+    Pearson correlation coefficient with significance test.
+    
+    Returns:
+        [r, t_statistic, p_value, reject_null]
+    """
+    चर n = दीर्घता(x)
+    
+    # Calculate correlation
+    चर r = सहसंबंध_गुणांक(x, y)
+    
+    # T-statistic
+    चर t = r * वर्गमूल((n - 2) / (1 - r * r))
+    चर df = n - 2
+    
+    # P-value (two-tailed)
+    चर p_value = 2 * (1 - t_वितरण_संचयी(निरपेक्ष(t), df))
+    
+    प्रत्यागच्छ [r, t, p_value, p_value < 0.05]
+
+कर्म स्पीयरमैन_श्रेणी_सहसंबंध(x, y):
+    """
+    Spearman's rank correlation coefficient.
+    """
+    चर n = दीर्घता(x)
+    
+    # Convert to ranks
+    चर rank_x = पदक्रम(x)
+    चर rank_y = पदक्रम(y)
+    
+    # Calculate Pearson correlation on ranks
+    प्रत्यागच्छ सहसंबंध_गुणांक(rank_x, rank_y)
+
+कर्म केन्डल_टाउ(x, y):
+    """
+    Kendall's tau rank correlation.
+    """
+    चर n = दीर्घता(x)
+    चर concordant = 0
+    चर discordant = 0
+    
+    प्रत्येक चर i अन्तर्गत परास(n):
+        प्रत्येक चर j अन्तर्गत परास(i + 1, n):
+            चर x_diff = x[i] - x[j]
+            चर y_diff = y[i] - y[j]
+            
+            चर product = x_diff * y_diff
+            
+            यदि product > 0:
+                concordant = concordant + 1
+            अन्यथा यदि product < 0:
+                discordant = discordant + 1
+    
+    चर total_pairs = n * (n - 1) / 2
+    प्रत्यागच्छ (concordant - discordant) / total_pairs
+
+# ── प्रतिगमन (Regression Analysis) ──────────────────────────────────────
+
+कर्म सरल_रैखिक_प्रतिगमन(x, y):
+    """
+    Simple linear regression: y = a + b*x
+    
+    Returns:
+        [slope, intercept, r_squared, std_error]
+    """
+    चर n = दीर्घता(x)
+    
+    चर mean_x = माध्य(x)
+    चर mean_y = माध्य(y)
+    
+    # Calculate slope
+    चर numerator = 0
+    चर denominator = 0
+    प्रत्येक चर i अन्तर्गत परास(n):
+        numerator = numerator + (x[i] - mean_x) * (y[i] - mean_y)
+        denominator = denominator + घात(x[i] - mean_x, 2)
+    
+    चर slope = numerator / denominator
+    चर intercept = mean_y - slope * mean_x
+    
+    # Calculate R²
+    चर ss_tot = 0
+    चर ss_res = 0
+    प्रत्येक चर i अन्तर्गत परास(n):
+        ss_tot = ss_tot + घात(y[i] - mean_y, 2)
+        चर y_pred = intercept + slope * x[i]
+        ss_res = ss_res + घात(y[i] - y_pred, 2)
+    
+    चर r_squared = 1 - ss_res / ss_tot
+    
+    # Standard error
+    चर std_error = वर्गमूल(ss_res / (n - 2))
+    
+    प्रत्यागच्छ [slope, intercept, r_squared, std_error]
+
+कर्म बहु_प्रतिगमन(X, y):
+    """
+    Multiple linear regression using normal equations.
+    y = Xβ + ε
+    
+    Input:
+        X = [[1, x11, x12, ...], [1, x21, x22, ...], ...]
+        y = [y1, y2, ...]
+    
+    Returns:
+        [coefficients, r_squared]
+    """
+    # β = (X'X)⁻¹X'y
+    चर X_T = मैट्रिक्स_स्थानांतरण(मैट्रिक्स_बनाओ(X))
+    चर X_mat = मैट्रिक्स_बनाओ(X)
+    चर y_vec = y
+    
+    # X'X
+    चर XtX = मैट्रिक्स_गुणन(X_T, X_mat)
+    
+    # (X'X)⁻¹
+    चर XtX_inv = मैट्रिक्स_व्युत्क्रम(XtX)
+    
+    # X'y
+    चर y_mat = नव मैट्रिक्स(दीर्घता(y), 1)
+    प्रत्येक चर i अन्तर्गत परास(दीर्घता(y)):
+        y_mat.सेट(i, 0, y[i])
+    
+    चर Xty = मैट्रिक्स_गुणन(X_T, y_mat)
+    
+    # β = (X'X)⁻¹X'y
+    चर beta = मैट्रिक्स_गुणन(XtX_inv, Xty)
+    
+    # Extract coefficients
+    चर coeffs = []
+    प्रत्येक चर i अन्तर्गत परास(beta.पंक्तियाँ):
+        coeffs.जोड़ो(beta.प्राप्त_करो(i, 0))
+    
+    # Calculate R²
+    चर mean_y = माध्य(y)
+    चर ss_tot = 0
+    चर ss_res = 0
+    
+    प्रत्येक चर i अन्तर्गत परास(दीर्घता(y)):
+        चर y_pred = 0
+        प्रत्येक चर j अन्तर्गत परास(दीर्घता(coeffs)):
+            y_pred = y_pred + coeffs[j] * X[i][j]
+        ss_res = ss_res + घात(y[i] - y_pred, 2)
+        ss_tot = ss_tot + घात(y[i] - mean_y, 2)
+    
+    चर r_squared = 1 - ss_res / ss_tot
+    
+    प्रत्यागच्छ [coeffs, r_squared]
+
+# ── समय श्रृंखला (Time Series Analysis) ─────────────────────────────────
+
+कर्म चल_माध्य(data, window):
+    """
+    Moving average smoothing.
+    """
+    चर result = []
+    चर n = दीर्घता(data)
+    
+    प्रत्येक चर i अन्तर्गत परास(n - window + 1):
+        चर sum = 0
+        प्रत्येक चर j अन्तर्गत परास(window):
+            sum = sum + data[i + j]
+        result.जोड़ो(sum / window)
+    
+    प्रत्यागच्छ result
+
+कर्म स्वतः_सहसंबंध(data, lag):
+    """
+    Autocorrelation at specified lag.
+    """
+    चर n = दीर्घता(data)
+    चर mean = माध्य(data)
+    
+    # Numerator
+    चर numerator = 0
+    प्रत्येक चर i अन्तर्गत परास(n - lag):
+        numerator = numerator + (data[i] - mean) * (data[i + lag] - mean)
+    
+    # Denominator
+    चर denominator = 0
+    प्रत्येक चर i अन्तर्गत परास(n):
+        denominator = denominator + घात(data[i] - mean, 2)
+    
+    प्रत्यागच्छ numerator / denominator
+
+कर्म स्वतः_सहसंबंध_फलन(data, max_lag):
+    """
+    Autocorrelation function for lags 0 to max_lag.
+    """
+    चर acf = []
+    प्रत्येक चर lag अन्तर्गत परास(max_lag + 1):
+        acf.जोड़ो(स्वतः_सहसंबंध(data, lag))
+    प्रत्यागच्छ acf
+
+मुद्रय "उन्नत सांख्यिकी पुस्तकालय लोड हुआ। (Advanced statistics library loaded.)"

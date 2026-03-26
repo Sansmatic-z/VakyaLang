@@ -1,0 +1,48 @@
+# वाक् मानक पुस्तकालय — यादृच्छा (Random Number Generation)
+# Vak Standard Library — Random Utilities
+# Uses Python's random module via bridge
+
+# ── आयात और सेटअप (Imports & Setup) ───────────────────────────────────────────
+
+# Python bridge import (assumes Python interop is available)
+आयात py_bridge
+
+# ── रैंडम संख्या जनरेटर (Random Number Generators) ────────────────────────────
+
+कर्म यादृच्छा_पूर्णांक(न्यूनतम, अधिकतम):
+    टीका Random integer between min and max (inclusive)
+    प्रत्यागच्छ py_bridge.यादृच्छा_पूर्णांक(न्यूनतम, अधिकतम)
+
+कर्म यादृच्छा_दशमलव():
+    टीका Random float between 0.0 and 1.0
+    प्रत्यागच्छ py_bridge.यादृच्छा_दशमलव()
+
+कर्म यादृच्छा_परास(न्यूनतम, अधिकतम):
+    टीका Random float between min and max
+    प्रत्यागच्छ py_bridge.यादृच्छा_परास(न्यूनतम, अधिकतम)
+
+कर्म यादृच्छा_गॉसियन(माध्य, मानक_विचलन):
+    टीका Random number from Gaussian (normal) distribution
+    प्रत्यागच्छ py_bridge.यादृच्छा_गॉसियन(माध्य, मानक_विचलन)
+
+# ── सूची संचालन (List Operations) ─────────────────────────────────────────────
+
+कर्म यादृच्छा_चयन(सूची):
+    टीका Random choice from list
+    प्रत्यागच्छ py_bridge.यादृच्छा_चयन(सूची)
+
+कर्म यादृच्छा_नमूना(सूची, k):
+    टीका Random sample of k elements from list (without replacement)
+    प्रत्यागच्छ py_bridge.यादृच्छा_नमूना(सूची, k)
+
+कर्म यादृच्छा_मिश्रण(सूची):
+    टीका Shuffle list in place
+    प्रत्यागच्छ py_bridge.यादृच्छा_मिश्रण(सूची)
+
+# ── बीज सेटिंग (Seed Setting) ─────────────────────────────────────────────────
+
+कर्म यादृच्छा_बीज(बीज):
+    टीका Set random seed for reproducibility
+    प्रत्यागच्छ py_bridge.यादृच्छा_बीज(बीज)
+
+मुद्रय "यादृच्छा पुस्तकालय लोड हुआ। (Random utilities library loaded.)"
