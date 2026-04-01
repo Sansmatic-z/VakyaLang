@@ -1,0 +1,50 @@
+# 🌳 प्रत्यावर्ती वृक्ष (Recursive Tree) - Algorithmic Art in VakyaLang
+# Exploring fractal geometry with Sanskrit keywords
+
+# 🎨 Setup Canvas (1000x800)
+कैनवास = _chitra_canvas(1000, 800, "krishna")
+
+# 🌲 Recursive Function: ड्रा_वृक्ष (Draw Tree)
+# क_x, क_y: Start coordinates
+# कोण: Branching angle (radians)
+# लंबाई: Branch length
+# मोटाई: Branch thickness
+# स्तर: Recursion depth
+कर्म ड्रा_वृक्ष(क_x, क_y, कोण, लंबाई, मोटाई, स्तर):
+    यदि स्तर <= 0:
+        प्रत्यागच्छ
+
+    # 📏 Calculate endpoint
+    चर ख_x = क_x + _math_cos(कोण) * लंबाई
+    चर ख_y = क_y + _math_sin(कोण) * लंबाई
+
+    # 🎨 Choose color based on depth
+    # levels 8-10: brown (trunk), 1-7: varying shades of green (leaves)
+    चर रंग = "harita"
+    यदि स्तर > 6:
+        चर रंग = "kapila" # Brown-ish
+    यदि स्तर > 8:
+        चर रंग = "pingala" # Bronze/Brown
+
+    # ✍️ Draw the branch
+    _chitra_line(कैनवास, पूर्णांक_कर(क_x), पूर्णांक_कर(क_y), पूर्णांक_कर(ख_x), पूर्णांक_कर(ख_y), रंग)
+
+    # 🌿 Branch out (left and right)
+    चर नया_लंबाई = लंबाई * 0.75
+    चर नया_मोटाई = मोटाई * 0.7
+    चर नया_स्तर = स्तर - 1
+
+    ड्रा_वृक्ष(ख_x, ख_y, कोण - 0.45, नया_लंबाई, नया_मोटाई, नया_स्तर) # Left branch
+    ड्रा_वृक्ष(ख_x, ख_y, कोण + 0.45, नया_लंबाई, नया_मोटाई, नया_स्तर) # Right branch
+
+# 🚀 Initial call (Starting from bottom center, growing upwards)
+मुद्रय "═══════════════════════════════════════"
+मुद्रय "🌱 वृक्ष चित्रकला प्रारम्भ..."
+ड्रा_वृक्ष(500, 800, -1.5708, 180, 15, 10)
+
+# 📁 Save the result
+_chitra_save(कैनवास, "वृक्ष_कला.png")
+
+मुद्रय "🌳 वृक्ष चित्रकला सफल! (Fractal Tree Complete)"
+मुद्रय "═══════════════════════════════════════"
+मुद्रय "📁 सहेजी गई: वृक्ष_कला.png"
