@@ -48,6 +48,14 @@ class TypeSystemV1Tests(unittest.TestCase):
         with self.assertRaisesRegex(CompileError, "तर्क 'x'"):
             self.compile_source(source)
 
+    def test_function_with_declared_return_must_return_on_all_paths(self):
+        source = """
+कर्म उत्तर() → संख्या:
+    मान x = १
+"""
+        with self.assertRaisesRegex(CompileError, "सभी मार्गों में"):
+            self.compile_source(source)
+
     def test_result_unwrap_flows_into_annotated_variable(self):
         source = """
 मान मान: संख्या = फल_खोलो(सिद्ध(४२))
@@ -78,6 +86,24 @@ class TypeSystemV1Tests(unittest.TestCase):
                 """
 मान संख्या_सूची = [१, २, ३]
 मान शब्द: तार = संख्या_सूची[०]
+                """
+            )
+
+    def test_if_condition_requires_bool(self):
+        with self.assertRaisesRegex(CompileError, "यदि की शर्त"):
+            self.compile_source(
+                """
+यदि १:
+    मुद्रय १
+"""
+            )
+
+    def test_while_condition_requires_bool(self):
+        with self.assertRaisesRegex(CompileError, "यावत् की शर्त"):
+            self.compile_source(
+                """
+यावत् "हाँ":
+    विराम
 """
             )
 
@@ -104,6 +130,18 @@ class TypeSystemV1Tests(unittest.TestCase):
         with self.assertRaisesRegex(CompileError, "तर्क 'x'"):
             self.compile_source(source)
 
+    def test_instance_field_assignment_uses_inferred_init_type(self):
+        source = """
+वर्ग बक्सा:
+    कर्म __init__(स्वयं):
+        स्वयं.मान = १
+
+मान box = बक्सा()
+box.मान = "गलत"
+"""
+        with self.assertRaisesRegex(CompileError, "सदस्य 'मान'"):
+            self.compile_source(source)
+
     def test_generic_list_annotation_is_checked(self):
         source = """
 मान संख्याएँ: सूची[संख्या] = [१, २, ३]
@@ -114,6 +152,27 @@ class TypeSystemV1Tests(unittest.TestCase):
     def test_generic_list_annotation_rejects_mixed_types(self):
         with self.assertRaisesRegex(CompileError, "सूची\\[संख्या\\]"):
             self.compile_source('मान संख्याएँ: सूची[संख्या] = [१, "दो"]')
+
+    def test_refinement_annotation_accepts_compile_time_proven_literal(self):
+        source = """
+मान अभाज्य: परिशुद्ध[संख्या, अभाज्य_है] = १७
+मुद्रय अभाज्य + १
+"""
+        self.assertEqual(self.run_source(source).strip(), "18")
+
+    def test_refinement_annotation_rejects_value_that_fails_predicate(self):
+        with self.assertRaisesRegex(CompileError, "अभाज्य_है"):
+            self.compile_source('मान अभाज्य: परिशुद्ध[संख्या, अभाज्य_है] = १८')
+
+    def test_refinement_annotation_requires_compile_time_proof(self):
+        source = """
+कर्म पहचान(x: संख्या) → संख्या:
+    वापस x
+
+मान अभाज्य: परिशुद्ध[संख्या, अभाज्य_है] = पहचान(१७)
+"""
+        with self.assertRaisesRegex(CompileError, "compile-time सिद्ध"):
+            self.compile_source(source)
 
     def test_generic_dict_annotation_is_checked(self):
         source = """
@@ -128,6 +187,25 @@ class TypeSystemV1Tests(unittest.TestCase):
 मुद्रय फल_खोलो(उत्तर)
 """
         self.assertEqual(self.run_source(source).strip(), "42")
+
+    def test_refinement_parameter_is_enforced_at_call_site(self):
+        source = """
+कर्म अगला(x: परिशुद्ध[संख्या, धनात्मक_है]) → संख्या:
+    वापस x + १
+
+मुद्रय अगला(५)
+"""
+        self.assertEqual(self.run_source(source).strip(), "6")
+
+    def test_refinement_parameter_rejects_non_matching_argument(self):
+        source = """
+कर्म अगला(x: परिशुद्ध[संख्या, धनात्मक_है]) → संख्या:
+    वापस x + १
+
+मुद्रय अगला(-१)
+"""
+        with self.assertRaisesRegex(CompileError, "धनात्मक_है"):
+            self.compile_source(source)
 
     def test_union_annotation_accepts_null_and_number(self):
         source = """
@@ -146,12 +224,103 @@ class TypeSystemV1Tests(unittest.TestCase):
 """
             )
 
+    def test_refinement_return_type_is_enforced(self):
+        source = """
+कर्म अभाज्य() → परिशुद्ध[संख्या, अभाज्य_है]:
+    वापस १९
+
+मुद्रय अभाज्य() + १
+"""
+        self.assertEqual(self.run_source(source).strip(), "20")
+
+    def test_refinement_return_type_rejects_invalid_value(self):
+        source = """
+कर्म अभाज्य() → परिशुद्ध[संख्या, अभाज्य_है]:
+    वापस २०
+"""
+        with self.assertRaisesRegex(CompileError, "अभाज्य_है"):
+            self.compile_source(source)
+
     def test_map_inference_produces_typed_list(self):
         source = """
 मान दुगुना: सूची[संख्या] = map(lambda x: x * २, [१, २, ३])
 मुद्रय दुगुना[१]
 """
         self.assertEqual(self.run_source(source).strip(), "4")
+
+    def test_default_value_type_mismatch_is_rejected(self):
+        source = """
+कर्म जोड़(x: संख्या = "१") → संख्या:
+    वापस x
+"""
+        with self.assertRaisesRegex(CompileError, "डिफ़ॉल्ट मान"):
+            self.compile_source(source)
+
+    def test_duplicate_positional_and_keyword_argument_is_rejected(self):
+        source = """
+कर्म जोड़(x: संख्या, y: संख्या) → संख्या:
+    वापस x + y
+
+मुद्रय जोड़(१, x=२, y=३)
+"""
+        with self.assertRaisesRegex(CompileError, "बार-बार"):
+            self.compile_source(source)
+
+    def test_conditional_expression_requires_bool_condition(self):
+        with self.assertRaisesRegex(CompileError, "शर्तीय अभिव्यक्ति"):
+            self.compile_source('मान x = १ यदि २ अन्यथा ३')
+
+    def test_list_comprehension_filter_requires_bool(self):
+        with self.assertRaisesRegex(CompileError, "सूची comprehension filter"):
+            self.compile_source('मान x = [क प्रति क में [१, २] यदि ५]')
+
+    def test_match_guard_requires_bool(self):
+        with self.assertRaisesRegex(CompileError, "प्रत्यभिज्ञा guard"):
+            self.compile_source(
+                """
+प्रत्यभिज्ञा १:
+    x यदि ५:
+        मुद्रय x
+    _:
+        मुद्रय ०
+"""
+            )
+
+    def test_list_index_assignment_checks_element_type(self):
+        with self.assertRaisesRegex(CompileError, "सूची तत्व"):
+            self.compile_source(
+                """
+मान xs: सूची[संख्या] = [१, २]
+xs[०] = "गलत"
+"""
+            )
+
+    def test_refinement_assignment_is_rechecked_on_update(self):
+        with self.assertRaisesRegex(CompileError, "धनात्मक_है"):
+            self.compile_source(
+                """
+मान x: परिशुद्ध[संख्या, धनात्मक_है] = ५
+x = -२
+"""
+            )
+
+    def test_list_index_assignment_enforces_refinement_element_type(self):
+        with self.assertRaisesRegex(CompileError, "धनात्मक_है"):
+            self.compile_source(
+                """
+मान xs: सूची[परिशुद्ध[संख्या, धनात्मक_है]] = [१, २]
+xs[०] = -१
+"""
+            )
+
+    def test_dict_index_assignment_checks_value_type(self):
+        with self.assertRaisesRegex(CompileError, "शब्दकोश मान"):
+            self.compile_source(
+                """
+मान d: शब्दकोश[तार, संख्या] = {"क": १}
+d["क"] = "गलत"
+"""
+            )
 
     def test_data_decl_variants_match_exhaustively_without_catchall(self):
         source = """

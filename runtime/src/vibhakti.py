@@ -342,7 +342,12 @@ class VibhaktiProof:
         This is intentionally narrower than a full theorem prover, but it is no
         longer a placeholder: proof success depends on the declared role pattern.
         """
-        engine = SansmaticEngine(verbose=False)
+        from sansmatic.src.config import SansmaticSettings
+
+        engine = SansmaticEngine(
+            verbose=False,
+            settings=SansmaticSettings.from_env(),
+        )
         statement = f"{self.function_name}.{self.proof_type}"
         reason = ""
 

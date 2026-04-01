@@ -32,6 +32,31 @@ PACKAGE_DIR = "वाक्_ग्रंथालय"
 PYTHON_DEPS_MARKER = ".python_deps.json"
 
 
+def _safe_print(*args, **kwargs):
+    file = kwargs.pop("file", sys.stdout)
+    sep = kwargs.pop("sep", " ")
+    end = kwargs.pop("end", "\n")
+    flush = kwargs.pop("flush", False)
+    if kwargs:
+        raise TypeError(f"Unsupported print kwargs: {', '.join(kwargs)}")
+
+    text = sep.join(str(arg) for arg in args) + end
+    try:
+        file.write(text)
+    except UnicodeEncodeError:
+        encoding = getattr(file, "encoding", None) or "utf-8"
+        safe_text = text.encode(encoding, errors="backslashreplace").decode(
+            encoding,
+            errors="replace",
+        )
+        file.write(safe_text)
+    if flush and hasattr(file, "flush"):
+        file.flush()
+
+
+print = _safe_print
+
+
 class VakPackageManager:
     """
     VakyaLang Package Manager (VakPack).
@@ -52,7 +77,63 @@ class VakPackageManager:
         self.cwd = cwd or os.getcwd()
         self.package_dir = os.path.join(self.cwd, PACKAGE_DIR)
         self.manifest_path = os.path.join(self.cwd, "vakya.json")
-        self.registry_url = DEFAULT_REGISTRY
+        self.registry_url = os.getenv("VPM_REGISTRY", DEFAULT_REGISTRY)
+        if not self.registry_url.endswith("/"):
+            self.registry_url += "/"
+
+    def _ensure_package_dir(self) -> None:
+        os.makedirs(self.package_dir, exist_ok=True)
+
+    def _safe_relative_path(self, path: str) -> str:
+        normalized = os.path.normpath(path).replace("\\", "/")
+        if not normalized or normalized in {".", ".."}:
+            raise ValueError("Empty package path is not allowed")
+        if normalized.startswith("../") or normalized.startswith("/") or os.path.isabs(path):
+            raise ValueError(f"Unsafe package path: {path}")
+        return normalized
+
+    def _safe_join(self, root: str, relative_path: str) -> str:
+        normalized = self._safe_relative_path(relative_path)
+        root_abs = os.path.abspath(root)
+        candidate = os.path.abspath(os.path.join(root_abs, normalized))
+        if os.path.commonpath([root_abs, candidate]) != root_abs:
+            raise ValueError(f"Unsafe package path: {relative_path}")
+        return candidate
+
+    def _sync_module_entrypoint(self, package_name: str, metadata: Dict[str, Any], package_path: str) -> None:
+        init_path = os.path.join(package_path, "__init__.vak")
+        if os.path.exists(init_path):
+            return
+
+        files = metadata.get("फाइलें", [])
+        entry_relative = None
+        preferred_names = (
+            f"{package_name}.vak",
+            "main.vak",
+        )
+        for preferred in preferred_names:
+            for file_path in files:
+                normalized = self._safe_relative_path(file_path)
+                if os.path.basename(normalized) == preferred:
+                    entry_relative = normalized
+                    break
+            if entry_relative is not None:
+                break
+        if entry_relative is None:
+            for file_path in files:
+                normalized = self._safe_relative_path(file_path)
+                if normalized.endswith(".vak") and "/" not in normalized:
+                    entry_relative = normalized
+                    break
+        if entry_relative is None:
+            return
+
+        source_path = self._safe_join(package_path, entry_relative)
+        if not os.path.exists(source_path):
+            return
+
+        alias_path = os.path.join(self.package_dir, f"{package_name}.vak")
+        shutil.copyfile(source_path, alias_path)
     
     def init(self) -> bool:
         """
@@ -84,7 +165,7 @@ class VakPackageManager:
             json.dump(manifest, f, indent=2, ensure_ascii=False)
         
         # Create package directory
-        os.makedirs(self.package_dir, exist_ok=True)
+        self._ensure_package_dir()
         
         print(f"✅ Initialized vakya.json in {self.cwd}")
         print(f"📦 Package directory: {PACKAGE_DIR}/")
@@ -104,6 +185,7 @@ class VakPackageManager:
         # Check if installing from local file
         if package_name.endswith('.tar.gz') or package_name.endswith('.vakpkg'):
             return self.install_from_file(package_name, save)
+        self._ensure_package_dir()
         
         # Load manifest
         manifest = self._load_manifest()
@@ -177,6 +259,7 @@ class VakPackageManager:
             return False
         
         print(f"📦 Installing from local package: {file_path}")
+        self._ensure_package_dir()
         
         try:
             # Extract the package
@@ -189,15 +272,23 @@ class VakPackageManager:
                 
                 # Root directory in archive
                 root_dir = members[0].name.split('/')[0]
+                if not root_dir:
+                    print("❌ Invalid package archive layout")
+                    return False
                 
                 # Extract to package directory
-                extract_path = os.path.join(self.package_dir, root_dir)
+                extract_path = self._safe_join(self.package_dir, root_dir)
                 
                 # Remove existing installation
                 if os.path.exists(extract_path):
                     shutil.rmtree(extract_path)
                 
-                # Extract all files
+                for member in members:
+                    try:
+                        self._safe_join(self.package_dir, member.name)
+                    except ValueError as error:
+                        print(f"❌ Unsafe package archive: {error}")
+                        return False
                 tar.extractall(self.package_dir)
             
             # Read package metadata
@@ -210,6 +301,7 @@ class VakPackageManager:
                 pkg_version = pkg_metadata.get('संस्करण', 'unknown')
                 
                 print(f"✅ Installed {pkg_name}@{pkg_version}")
+                self._sync_module_entrypoint(pkg_name, pkg_metadata, extract_path)
                 
                 # Save to project manifest
                 if save:
@@ -327,12 +419,15 @@ class VakPackageManager:
     def remove(self, package_name: str) -> bool:
         """Remove an installed package."""
         package_path = os.path.join(self.package_dir, package_name)
+        alias_path = os.path.join(self.package_dir, f"{package_name}.vak")
         
         if not os.path.exists(package_path):
             print(f"❌ Package not found: {package_name}")
             return False
         
         shutil.rmtree(package_path)
+        if os.path.exists(alias_path):
+            os.remove(alias_path)
         print(f"✅ Removed {package_name}")
         
         # Remove from manifest
@@ -396,9 +491,11 @@ class VakPackageManager:
         """Load vakya.json manifest."""
         if not os.path.exists(self.manifest_path):
             return None
-        
-        with open(self.manifest_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        try:
+            with open(self.manifest_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"Invalid vakya.json: {error}") from error
     
     def _fetch_package_metadata(self, package_name: str, version: str = None) -> Dict[str, Any]:
         """Fetch package metadata from registry."""
@@ -428,6 +525,7 @@ class VakPackageManager:
     
     def _download_package(self, package_name: str, metadata: Dict, package_path: str):
         """Download package files."""
+        self._ensure_package_dir()
         os.makedirs(package_path, exist_ok=True)
         
         # Download main package file
@@ -435,13 +533,16 @@ class VakPackageManager:
         
         for file_path in files:
             try:
+                normalized = self._safe_relative_path(file_path)
                 url = f"{self.registry_url}packages/{package_name}/{file_path}"
                 req = urllib.request.Request(url, headers={'User-Agent': 'VakPack/1.0'})
                 with urllib.request.urlopen(req) as response:
                     content = response.read().decode('utf-8')
                 
-                dest_path = os.path.join(package_path, file_path)
-                os.makedirs(os.path.dirname(dest_path) if os.path.dirname(dest_path) else '.', exist_ok=True)
+                dest_path = self._safe_join(package_path, normalized)
+                parent_dir = os.path.dirname(dest_path)
+                if parent_dir:
+                    os.makedirs(parent_dir, exist_ok=True)
                 with open(dest_path, 'w', encoding='utf-8') as f:
                     f.write(content)
                     
@@ -452,6 +553,7 @@ class VakPackageManager:
         metadata_path = os.path.join(package_path, "vakya.json")
         with open(metadata_path, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
+        self._sync_module_entrypoint(package_name, metadata, package_path)
     
     def _get_installed_version(self, package_name: str) -> Optional[str]:
         """Get version of installed package."""
@@ -609,7 +711,11 @@ Examples:
         success = True
     elif args.command == 'bundle':
         # Import packager
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        repo_root = os.path.dirname(os.path.abspath(__file__))
+        dev_root = os.path.join(repo_root, "dev")
+        sys.path.insert(0, repo_root)
+        if os.path.isdir(dev_root):
+            sys.path.insert(0, dev_root)
         from package_lib import VakPackageBuilder
         
         builder = VakPackageBuilder(output_dir=args.output)

@@ -1,4 +1,4 @@
-# VakyaLang v2.16.0+ - Complete Upgrade Documentation
+# VakyaLang v2.17.0 - Complete Upgrade Documentation
 
 **Author:** Visionary RM (Raj Mitra)  
 **Date:** March 17, 2026  

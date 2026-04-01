@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -16,8 +17,10 @@ from runtime.export_abi import compile_file
 class RustVmSmokeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cargo = Path(r"C:\Users\Admin\.cargo\bin\cargo.exe")
-        assert cargo.exists(), "cargo.exe not found"
+        cargo_path = shutil.which("cargo") or r"C:\Users\Admin\.cargo\bin\cargo.exe"
+        cargo = Path(cargo_path)
+        if not cargo.exists():
+            raise unittest.SkipTest("cargo.exe not found")
 
         cls.crate_dir = PROJECT_ROOT / "native" / "vakvm-rs"
         subprocess.run(

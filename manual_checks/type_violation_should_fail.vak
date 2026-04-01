@@ -1,0 +1,5 @@
+# वाक् प्रकार-परीक्षा — यह संकलन स्तर पर विफल होना चाहिए
+# Type enforcement demo — this must fail at compile time
+
+मान गणना: संख्या = "यह_तार_है"
+मुद्रय गणना

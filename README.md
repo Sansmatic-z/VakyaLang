@@ -1,5 +1,98 @@
 ![3XZXa](https://github.com/user-attachments/assets/180ff2ab-d2c0-4f84-bf64-068c80e1fc77)
-# वाक्-पैकेज (VakPack) - VakyaLang Package Manager
+# VakyaLang and Sansmatic
+
+VakyaLang is a Sanskrit-inspired programming language and execution stack built
+around Paninian form and Nyaya-style reasoning. Sansmatic is the proof
+subsystem that validates proof declarations, issues proof certificates, and
+enforces proof obligations inside the runtime.
+
+## Architecture
+
+```text
+VakyaLang source / macros
+        |
+        v
+NyayaProofVerifier
+- compile-time proof policy
+- sandboxed evidence execution
+        |
+        v
+Sansmatic core
+- fact and statement model
+- rule engine and contradiction detection
+- proof registry and certificates
+- env-configured trust policy
+        |
+   +----+----+
+   |         |
+   v         v
+Runtime/VM   Delivery
+- builtins   - tests
+- bytecode   - CI workflows
+- audit      - Docker / compose
+```
+
+## Setup
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install -e .[dev]
+```
+
+Optional native VM build:
+
+```bash
+cd native/vakvm-rs
+cargo build
+```
+
+## Run
+
+```bash
+python vak.py examples/unified_test.vak
+python vpm.py list
+```
+
+## Test
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+python master_test.py
+```
+
+## Environment
+
+Copy `.env.example` to `.env` and set proof policy for the target environment.
+
+Recommended production settings:
+
+```env
+SANSMATIC_CERTIFICATE_MODE=hmac-sha256
+SANSMATIC_CERTIFICATE_SECRET=replace-with-a-long-random-secret
+SANSMATIC_ALLOW_LEGACY_CERTIFICATES=false
+SANSMATIC_STRICT_PROOF_REGISTRATION=true
+SANSMATIC_LOG_LEVEL=INFO
+```
+
+## Containers
+
+```bash
+docker build -t vakyalang .
+docker compose up --build
+```
+
+## Documentation
+
+- [Sansmatic production architecture](docs/sansmatic_production_architecture.md)
+- [Sansmatic API](docs/sansmatic_api.md)
+- [Standard library docs](STD_LIB_DOCUMENTATION.md)
+- [Feature overview](FEATURES.md)
+
+## VakPack
+
+### वाक्-पैकेज (VakPack) - VakyaLang Package Manager
 
 > **"Packages Flow Like Speech"** 🔥
 

@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from runtime.src.interpreter import VakInterpreter
-from runtime.src.errors import VakError
+from runtime.src.errors import VakError, format_vak_error
 
 def main():
     parser = argparse.ArgumentParser(
@@ -27,24 +27,25 @@ Examples:
     parser.add_argument('--debug', '-d', action='store_true', help='Enable debug mode')
     parser.add_argument('--compile', '-c', action='store_true', help='Compile only, do not run')
     parser.add_argument('--disassemble', action='store_true', help='Show bytecode disassembly')
-    parser.add_argument('--version', '-v', action='version', version='%(prog)s 2.0.0')
+    parser.add_argument('--version', '-v', action='version', version='%(prog)s 2.17.0')
     
     args = parser.parse_args()
     interpreter = VakInterpreter()
     
     if args.file:
         try:
-            source = Path(args.file).read_text(encoding='utf-8')
+            source_path = Path(args.file).resolve()
+            source = source_path.read_text(encoding='utf-8')
             
             if args.compile:
-                bytecode = interpreter.compile_only(source)
-                output_file = Path(args.file).with_suffix('.vakc')
+                bytecode = interpreter.compile_only(source, filename=str(source_path))
+                output_file = source_path.with_suffix('.vakc')
                 output_file.write_bytes(bytecode.to_bytes())
                 print(f"Compiled to: {output_file}")
                 if args.disassemble:
                     print("\n" + bytecode.disassemble())
             else:
-                result = interpreter.run(source, debug=args.debug)
+                result = interpreter.run(source, debug=args.debug, filename=str(source_path))
                 if result is not None:
                     print(result)
                     
@@ -52,10 +53,10 @@ Examples:
             print(f"Error: File not found: {args.file}", file=sys.stderr)
             sys.exit(1)
         except VakError as e:
-            print(f"Error: {e}", file=sys.stderr)
+            print(format_vak_error(e), file=sys.stderr)
             sys.exit(1)
         except Exception as e:
-            print(f"Internal error: {e}", file=sys.stderr)
+            print(format_vak_error(e), file=sys.stderr)
             if args.debug:
                 import traceback
                 traceback.print_exc()

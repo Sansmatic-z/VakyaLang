@@ -7,12 +7,13 @@ unified_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if unified_root not in sys.path:
     sys.path.insert(0, unified_root)
 
+from sansmatic.src.config import SansmaticSettings
 from sansmatic.src.engine import SansmaticEngine, ProofError
 from ..errors import VakRuntimeError
 
 
 # One global engine per वाक् program run
-_engine = SansmaticEngine(verbose=True)
+_engine = SansmaticEngine(verbose=True, settings=SansmaticSettings.from_env())
 
 
 def register_sansmatic_bridge(globals_env):

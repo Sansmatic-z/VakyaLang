@@ -11,11 +11,12 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 import copy
-import hashlib
-import json
+import logging
 import math
 import re
 
+from .certificates import CertificateAuthority
+from .config import SansmaticSettings
 
 Fact = Tuple[str, str, str]
 Rule = Tuple[Fact, Fact]
@@ -55,8 +56,20 @@ class SansmaticEngine:
     _ASCII_VAR_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
     _CALL_RE = re.compile(r"^([^\s(]+)\((.*)\)$")
 
-    def __init__(self, verbose: bool = True):
+    def __init__(
+        self,
+        verbose: bool = True,
+        *,
+        settings: Optional[SansmaticSettings] = None,
+        logger: Optional[logging.Logger] = None,
+    ):
         self.verbose = verbose
+        self.settings = settings or SansmaticSettings.from_env()
+        self.logger = logger or logging.getLogger("sansmatic.engine")
+        if not self.logger.handlers:
+            self.logger.addHandler(logging.NullHandler())
+        self.logger.setLevel(self.settings.log_level)
+        self.certificate_authority = CertificateAuthority(self.settings)
         self.definitions: Dict[str, Set[str]] = {}
         self.facts: Set[Fact] = set()
         self.rules: List[Rule] = []
@@ -73,7 +86,11 @@ class SansmaticEngine:
 
     def clone(self, verbose: Optional[bool] = None) -> "SansmaticEngine":
         """Create a deep copy for sandboxed proof evaluation."""
-        cloned = SansmaticEngine(self.verbose if verbose is None else verbose)
+        cloned = SansmaticEngine(
+            self.verbose if verbose is None else verbose,
+            settings=self.settings,
+            logger=self.logger,
+        )
         cloned.definitions = {name: set(props) for name, props in self.definitions.items()}
         cloned.facts = set(self.facts)
         cloned.rules = list(self.rules)
@@ -94,6 +111,12 @@ class SansmaticEngine:
     def register_proof(self, proof_id: str, statement: Any = None) -> None:
         """Register a trusted proof reference for one statement or many."""
         key = self._normalize_text(proof_id)
+        if not key:
+            raise ProofError("Proof ID cannot be empty")
+        if statement is None and self.settings.strict_proof_registration:
+            raise ProofError(
+                "Unscoped proof registration is disabled; register one or more supported statements"
+            )
         supports: Set[str] = set()
         if statement is None:
             supports = set()
@@ -299,6 +322,7 @@ class SansmaticEngine:
         confidence: float,
         certificate_hint: Optional[str] = None,
         reason: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Generate a verifiable proof certificate payload."""
         payload: Dict[str, Any] = {
@@ -322,28 +346,25 @@ class SansmaticEngine:
             "obligations": [dict(item) for item in self.obligations],
             "contradictions": [list(item) for item in self.contradictions],
         }
-        payload["hash"] = self._certificate_hash(payload)
+        if metadata:
+            payload["metadata"] = copy.deepcopy(metadata)
+        payload = self.certificate_authority.issue(payload)
         self.issued_certificates[payload["hash"]] = copy.deepcopy(payload)
         return payload
 
     @classmethod
-    def verify_certificate(cls, certificate: Any) -> bool:
+    def verify_certificate(
+        cls,
+        certificate: Any,
+        settings: Optional[SansmaticSettings] = None,
+    ) -> bool:
         """Validate a certificate payload or legacy string certificate."""
-        if isinstance(certificate, str):
-            return certificate.startswith("PROOF_") or certificate.startswith("AXIOMATIC_")
-
-        if not isinstance(certificate, dict):
+        try:
+            resolved_settings = settings or SansmaticSettings.from_env()
+        except ValueError:
             return False
-
-        if certificate.get("kind") != "sansmatic_certificate":
-            return False
-        expected_hash = certificate.get("hash")
-        if not expected_hash:
-            return False
-
-        payload = {key: value for key, value in certificate.items() if key != "hash"}
-        actual_hash = cls._certificate_hash(payload)
-        return actual_hash == expected_hash and bool(certificate.get("verified"))
+        authority = CertificateAuthority(resolved_settings)
+        return authority.verify(certificate)
 
     def parse_statement(self, statement: Any) -> Dict[str, Any]:
         """Parse a statement into fact / predicate / raw text form."""
@@ -690,12 +711,19 @@ class SansmaticEngine:
             return False
         return cls._ASCII_VAR_RE.match(token) is not None
 
-    @classmethod
-    def _certificate_hash(cls, payload: Dict[str, Any]) -> str:
-        blob = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-        return hashlib.sha256(blob.encode("utf-8")).hexdigest()
-
     def _log(self, message: str) -> None:
         self.proof_log.append(message)
+        self.logger.info(message)
         if self.verbose:
-            print(message)
+            import sys
+
+            try:
+                sys.stdout.write(f"{message}\n")
+            except UnicodeEncodeError:
+                encoding = sys.stdout.encoding or "utf-8"
+                safe_message = message.encode(encoding, errors="backslashreplace").decode(
+                    encoding,
+                    errors="replace",
+                )
+                sys.stdout.write(f"{safe_message}\n")
+            sys.stdout.flush()

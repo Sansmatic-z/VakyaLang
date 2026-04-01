@@ -164,7 +164,10 @@ class EventLoop:
         self._process_sleeping_tasks()
 
         # Get active tasks
-        active_tasks = [t for t in self.tasks if not t.cancelled and not t.coro.completed]
+        active_tasks = [
+            t for t in self.tasks
+            if not t.cancelled and not t.coro.completed and not getattr(t.coro, "suspended", False)
+        ]
 
         if not active_tasks:
             return
@@ -188,11 +191,15 @@ class EventLoop:
         Wake up tasks that have finished sleeping.
         """
         now = time.time()
-        for wake_time, task in self._sleeping_tasks[:]:
+        remaining = []
+        for wake_time, task in self._sleeping_tasks:
             if now >= wake_time:
                 # Task should wake up
-                task.suspended = False
-                self._sleeping_tasks.remove((wake_time, task))
+                if task is not None and getattr(task, "coro", None) is not None:
+                    task.coro.suspended = False
+            else:
+                remaining.append((wake_time, task))
+        self._sleeping_tasks = remaining
     
     def _run_task(self, task: Task):
         """
@@ -326,7 +333,8 @@ class EventLoop:
         timers that have fired.
         """
         now = time.time()
-        for timer in self.timers[:]:
+        remaining = []
+        for timer in self.timers:
             if timer.cancelled:
                 continue
             if now >= timer.next_fire:
@@ -341,9 +349,13 @@ class EventLoop:
                 if timer.repeat:
                     # Schedule next fire
                     timer.next_fire = now + timer.delay
+                    remaining.append(timer)
                 else:
-                    # Remove one-shot timer
-                    self.timers.remove(timer)
+                    # One-shot timers drop out after firing
+                    pass
+            else:
+                remaining.append(timer)
+        self.timers = remaining
 
     def _schedule_sleep(self, wake_time: float, task: Task):
         """

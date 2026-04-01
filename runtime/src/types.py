@@ -81,6 +81,15 @@ class ResultType(VakType):
 
 
 @dataclass(frozen=True)
+class RefinementType(VakType):
+    base_type: VakType
+    predicate: str
+
+    def __str__(self) -> str:
+        return f"परिशुद्ध[{self.base_type}, {self.predicate}]"
+
+
+@dataclass(frozen=True)
 class FunctionType(VakType):
     param_types: tuple[VakType, ...]
     return_type: VakType
@@ -274,6 +283,10 @@ def _parse_generic_type(text: str) -> VakType | None:
         ok_type = parsed_args[0] if len(parsed_args) >= 1 else ANY
         err_type = parsed_args[1] if len(parsed_args) >= 2 else ANY
         return ResultType(ok_type, err_type)
+    if base in ("परिशुद्ध", "शोधन", "Refine", "refine"):
+        if len(args) < 2:
+            return None
+        return RefinementType(parse_type_hint(args[0]), args[1].strip())
     if base in ADT_REGISTRY:
         return ADTType(base, tuple(parsed_args))
     return InstanceType(f"{base}[{', '.join(args)}]")
@@ -317,6 +330,11 @@ def instantiate_type(template: VakType, bindings: dict[str, VakType]) -> VakType
             instantiate_type(template.ok_type, bindings),
             instantiate_type(template.err_type, bindings),
         )
+    if isinstance(template, RefinementType):
+        return RefinementType(
+            instantiate_type(template.base_type, bindings),
+            template.predicate,
+        )
     if isinstance(template, ADTType):
         return ADTType(template.name, tuple(instantiate_type(arg, bindings) for arg in template.type_args))
     if isinstance(template, VariantValueType):
@@ -346,6 +364,10 @@ def bind_typevars(pattern: VakType, actual: VakType, bindings: dict[str, VakType
         return all(bind_typevars(src, dst, bindings) for src, dst in zip(pattern.element_types, actual.element_types))
     if isinstance(pattern, ResultType) and isinstance(actual, ResultType):
         return bind_typevars(pattern.ok_type, actual.ok_type, bindings) and bind_typevars(pattern.err_type, actual.err_type, bindings)
+    if isinstance(pattern, RefinementType):
+        if isinstance(actual, RefinementType):
+            return pattern.predicate == actual.predicate and bind_typevars(pattern.base_type, actual.base_type, bindings)
+        return bind_typevars(pattern.base_type, actual, bindings)
     if isinstance(pattern, ADTType) and isinstance(actual, ADTType) and pattern.name == actual.name and len(pattern.type_args) == len(actual.type_args):
         return all(bind_typevars(src, dst, bindings) for src, dst in zip(pattern.type_args, actual.type_args))
     return is_assignable(actual, pattern)
@@ -380,6 +402,14 @@ def combine_types(*types: VakType) -> VakType:
             combine_types(*(item.ok_type for item in result_types)),
             combine_types(*(item.err_type for item in result_types)),
         )
+    refinement_types = [item for item in unique if isinstance(item, RefinementType)]
+    if refinement_types and len(refinement_types) == len(unique):
+        predicate = refinement_types[0].predicate
+        if all(item.predicate == predicate for item in refinement_types):
+            return RefinementType(
+                combine_types(*(item.base_type for item in refinement_types)),
+                predicate,
+            )
     list_types = [item for item in unique if isinstance(item, ListType)]
     if len(list_types) == len(unique):
         return ListType(combine_types(*(item.element_type for item in list_types)))
@@ -427,6 +457,15 @@ def is_assignable(value_type: VakType, target_type: VakType) -> bool:
         return True
     if value_type == NEVER:
         return True
+    if isinstance(target_type, RefinementType):
+        if isinstance(value_type, RefinementType):
+            return (
+                value_type.predicate == target_type.predicate
+                and is_assignable(value_type.base_type, target_type.base_type)
+            )
+        return is_assignable(value_type, target_type.base_type)
+    if isinstance(value_type, RefinementType):
+        return is_assignable(value_type.base_type, target_type)
     if isinstance(target_type, TypeVarType):
         return True
     if isinstance(value_type, TypeVarType):
@@ -510,6 +549,8 @@ def is_assignable(value_type: VakType, target_type: VakType) -> bool:
 def iterable_element_type(value_type: VakType) -> VakType:
     if value_type == ANY:
         return ANY
+    if isinstance(value_type, RefinementType):
+        return iterable_element_type(value_type.base_type)
     if value_type == RANGE:
         return INT
     if value_type == STR:

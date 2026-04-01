@@ -53,3 +53,22 @@ class MacroError(VakError):
     def __init__(self, message: str, line: int = 0):
         self.line = line
         super().__init__(f"Macro Error: {message} at line {line}" if line else f"Macro Error: {message}")
+
+
+def format_vak_error(error: Exception) -> str:
+    """Render exceptions with Vak-facing bilingual labels."""
+    if isinstance(error, LexerError):
+        prefix = "शब्द-विश्लेषण त्रुटि (Lexer Error)"
+    elif isinstance(error, ParseError):
+        prefix = "वाक्यरचना त्रुटि (Parse Error)"
+    elif isinstance(error, CompileError):
+        prefix = "संकलन त्रुटि (Compile Error)"
+    elif isinstance(error, (VMError, VakRuntimeError)):
+        prefix = "चालना त्रुटि (Runtime Error)"
+    elif isinstance(error, MacroError):
+        prefix = "सूत्र त्रुटि (Macro Error)"
+    elif isinstance(error, VakError):
+        prefix = "वाक् त्रुटि (Vak Error)"
+    else:
+        prefix = "आन्तरिक त्रुटि (Internal Error)"
+    return f"{prefix}: {error}"

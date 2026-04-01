@@ -220,6 +220,7 @@ pub struct VakModule {
 
 #[derive(Debug, Clone)]
 pub enum Value {
+    MissingDefault,
     Null,
     Bool(bool),
     Int(i64),
@@ -247,6 +248,7 @@ pub enum Value {
 impl Value {
     fn from_abi(value: &AbiValue) -> Result<Self, VmError> {
         match value {
+            AbiValue::NoDefault => Ok(Self::MissingDefault),
             AbiValue::Null => Ok(Self::Null),
             AbiValue::Bool { value } => Ok(Self::Bool(*value)),
             AbiValue::Int { value } => Ok(Self::Int(*value)),
@@ -296,6 +298,7 @@ impl Value {
 
     fn truthy(&self) -> bool {
         match self {
+            Self::MissingDefault => true,
             Self::Null => false,
             Self::Bool(value) => *value,
             Self::Int(value) => *value != 0,
@@ -512,6 +515,7 @@ impl Value {
 
     fn type_name(&self) -> &'static str {
         match self {
+            Self::MissingDefault => "missing_default",
             Self::Null => "null",
             Self::Bool(_) => "bool",
             Self::Int(_) => "int",
@@ -532,6 +536,7 @@ impl Value {
 
     fn classify(&self) -> String {
         match self {
+            Self::MissingDefault => "आन्तरिक".to_string(),
             Self::Null => "शून्य".to_string(),
             Self::Bool(_) => "बूलियन".to_string(),
             Self::Int(_) | Self::Float(_) => "संख्या".to_string(),
@@ -566,6 +571,7 @@ impl Value {
 
     fn stringify(&self) -> String {
         match self {
+            Self::MissingDefault => "<missing-default>".to_string(),
             Self::Null => "None".to_string(),
             Self::Bool(true) => "True".to_string(),
             Self::Bool(false) => "False".to_string(),
@@ -1313,7 +1319,7 @@ impl Vm {
             .map(Value::from_abi)
             .collect::<Result<Vec<_>, _>>()?;
         if defaults.len() < num_params {
-            let mut padded = vec![Value::Null; num_params - defaults.len()];
+            let mut padded = vec![Value::MissingDefault; num_params - defaults.len()];
             padded.extend(defaults);
             defaults = padded;
         } else if defaults.len() > num_params {
@@ -1325,8 +1331,11 @@ impl Vm {
                 continue;
             }
             let local_index = self_offset + index;
-            let default_value = defaults.get(local_index).cloned().unwrap_or(Value::Null);
-            if !default_value.is_null() {
+            let default_value = defaults
+                .get(local_index)
+                .cloned()
+                .unwrap_or(Value::MissingDefault);
+            if !matches!(default_value, Value::MissingDefault) {
                 locals[local_index] = default_value;
             } else {
                 let name = param_names

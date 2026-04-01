@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from sansmatic.src.config import SansmaticSettings
+from sansmatic.src.engine import SansmaticEngine
+
 from .ast_nodes import *
 from .errors import CompileError
 from .types import (
@@ -23,6 +26,7 @@ from .types import (
     ListType,
     ModuleType,
     ResultType,
+    RefinementType,
     SetType,
     TupleType,
     TypeVarType,
@@ -38,12 +42,15 @@ from .types import (
     register_adt_type,
 )
 
+_NO_STATIC_VALUE = object()
+
 
 @dataclass
 class FunctionContext:
     name: str
     declared_return: VakType
     observed_return: VakType = NEVER
+    owner_class: str | None = None
 
 
 @dataclass
@@ -64,13 +71,25 @@ class TypeEnv:
         self.parent = parent
         self.values: dict[str, VakType] = {}
         self.fixed_names: set[str] = set()
+        self.static_values: dict[str, Any] = {}
 
-    def define(self, name: str, value_type: VakType, *, fixed: bool = False) -> None:
+    def define(
+        self,
+        name: str,
+        value_type: VakType,
+        *,
+        fixed: bool = False,
+        static_value: Any = _NO_STATIC_VALUE,
+    ) -> None:
         self.values[name] = value_type
         if fixed:
             self.fixed_names.add(name)
         else:
             self.fixed_names.discard(name)
+        if static_value is _NO_STATIC_VALUE:
+            self.static_values.pop(name, None)
+        else:
+            self.static_values[name] = static_value
 
     def lookup(self, name: str) -> VakType | None:
         if name in self.values:
@@ -79,14 +98,27 @@ class TypeEnv:
             return self.parent.lookup(name)
         return None
 
-    def assign(self, name: str, value_type: VakType) -> None:
+    def lookup_static(self, name: str) -> Any:
+        if name in self.static_values:
+            return self.static_values[name]
+        if self.parent is not None:
+            return self.parent.lookup_static(name)
+        return _NO_STATIC_VALUE
+
+    def assign(self, name: str, value_type: VakType, *, static_value: Any = _NO_STATIC_VALUE) -> None:
         if name in self.values:
             self.values[name] = value_type
+            if static_value is _NO_STATIC_VALUE:
+                self.static_values.pop(name, None)
+            else:
+                self.static_values[name] = static_value
             return
         if self.parent is not None and self.parent.lookup(name) is not None:
-            self.parent.assign(name, value_type)
+            self.parent.assign(name, value_type, static_value=static_value)
             return
         self.values[name] = value_type
+        if static_value is not _NO_STATIC_VALUE:
+            self.static_values[name] = static_value
 
     def is_fixed(self, name: str) -> bool:
         if name in self.values:
@@ -103,8 +135,14 @@ class TypeChecker:
     def __init__(self):
         self.globals = TypeEnv()
         self.class_methods: dict[str, dict[str, FunctionType]] = {}
+        self.class_fields: dict[str, dict[str, VakType]] = {}
         self.data_types: dict[str, DataInfo] = {}
         self.variant_constructors: dict[str, tuple[DataInfo, DataVariantInfo]] = {}
+        self._function_stack: list[FunctionContext] = []
+        self.sansmatic = SansmaticEngine(
+            verbose=False,
+            settings=SansmaticSettings.from_env(),
+        )
         self._install_builtins()
 
     def check(self, node: Node) -> None:
@@ -257,13 +295,36 @@ class TypeChecker:
                     f"चर '{stmt.names[0]}' को {declared_type} चाहिए, मिला {value_type}",
                     stmt.line,
                 )
+            self._require_refinement_constraint(
+                stmt.value,
+                value_type,
+                declared_type,
+                env,
+                stmt.line,
+                f"चर '{stmt.names[0]}'",
+            )
             final_type = declared_type if declared_type != ANY else value_type
+            static_value = self._static_value(stmt.value, env) if stmt.value is not None else None
             if len(stmt.names) == 1:
-                env.define(stmt.names[0], final_type, fixed=declared_type != ANY)
+                env.define(
+                    stmt.names[0],
+                    final_type,
+                    fixed=declared_type != ANY,
+                    static_value=static_value,
+                )
             else:
                 element_types = self._destructure_types(final_type, len(stmt.names))
-                for name, element_type in zip(stmt.names, element_types):
-                    env.define(name, element_type, fixed=declared_type != ANY)
+                if isinstance(static_value, (list, tuple)) and len(static_value) == len(stmt.names):
+                    static_items = list(static_value)
+                else:
+                    static_items = [_NO_STATIC_VALUE] * len(stmt.names)
+                for name, element_type, item_static in zip(stmt.names, element_types, static_items):
+                    env.define(
+                        name,
+                        element_type,
+                        fixed=declared_type != ANY,
+                        static_value=item_static,
+                    )
             return
 
         if isinstance(stmt, ConstDecl):
@@ -274,7 +335,20 @@ class TypeChecker:
                     f"स्थिर '{stmt.name}' को {declared_type} चाहिए, मिला {value_type}",
                     stmt.line,
                 )
-            env.define(stmt.name, declared_type if declared_type != ANY else value_type, fixed=True)
+            self._require_refinement_constraint(
+                stmt.value,
+                value_type,
+                declared_type,
+                env,
+                stmt.line,
+                f"स्थिर '{stmt.name}'",
+            )
+            env.define(
+                stmt.name,
+                declared_type if declared_type != ANY else value_type,
+                fixed=True,
+                static_value=self._static_value(stmt.value, env),
+            )
             return
 
         if isinstance(stmt, ExprStmt):
@@ -295,21 +369,41 @@ class TypeChecker:
                     f"कर्म '{fn_ctx.name}' को {fn_ctx.declared_return} लौटाना था, मिला {value_type}",
                     stmt.line,
                 )
+            self._require_refinement_constraint(
+                stmt.value,
+                value_type,
+                fn_ctx.declared_return,
+                env,
+                stmt.line,
+                f"कर्म '{fn_ctx.name}' का return",
+            )
             fn_ctx.observed_return = combine_types(fn_ctx.observed_return, value_type)
             return
 
         if isinstance(stmt, IfStmt):
-            self._infer_expr(stmt.condition, env)
+            self._require_bool(
+                self._infer_expr(stmt.condition, env),
+                stmt.line,
+                "यदि की शर्त",
+            )
             self._check_block(stmt.then_body.stmts, env.child(), fn_ctx)
             for cond, body in stmt.elif_clauses:
-                self._infer_expr(cond, env)
+                self._require_bool(
+                    self._infer_expr(cond, env),
+                    getattr(cond, "line", stmt.line),
+                    "अन्ययदि की शर्त",
+                )
                 self._check_block(body.stmts, env.child(), fn_ctx)
             if stmt.else_body:
                 self._check_block(stmt.else_body.stmts, env.child(), fn_ctx)
             return
 
         if isinstance(stmt, WhileStmt):
-            self._infer_expr(stmt.condition, env)
+            self._require_bool(
+                self._infer_expr(stmt.condition, env),
+                stmt.line,
+                "यावत् की शर्त",
+            )
             self._check_block(stmt.body.stmts, env.child(), fn_ctx)
             return
 
@@ -339,7 +433,11 @@ class TypeChecker:
                 for name, binding_type in self._pattern_bindings(case.pattern, subject_type).items():
                     case_env.define(name, binding_type)
                 if case.guard is not None:
-                    self._infer_expr(case.guard, case_env)
+                    self._require_bool(
+                        self._infer_expr(case.guard, case_env),
+                        getattr(case.guard, "line", stmt.line),
+                        "प्रत्यभिज्ञा guard",
+                    )
                 self._check_block(case.body.stmts, case_env, fn_ctx)
                 if case.guard is None:
                     coverage = self._pattern_coverage(case.pattern, subject_type)
@@ -373,7 +471,11 @@ class TypeChecker:
             expr_type = self._infer_expr(stmt.expr, env)
             with_env = env.child()
             if stmt.var_name:
-                with_env.define(stmt.var_name, expr_type)
+                with_env.define(
+                    stmt.var_name,
+                    expr_type,
+                    static_value=self._static_value(stmt.expr, env),
+                )
             self._check_block(stmt.body.stmts, with_env, fn_ctx)
             return
 
@@ -403,12 +505,30 @@ class TypeChecker:
             return
         class_env = env.child()
         class_env.define(node.name, ClassType(node.name), fixed=True)
+        self.class_fields.setdefault(node.name, {})
         for stmt in node.body.stmts:
             if isinstance(stmt, FuncDecl):
                 self._check_function(stmt, class_env, class_name=node.name)
 
     def _check_function(self, node: FuncDecl, env: TypeEnv, class_name: str | None = None) -> None:
         signature = self._signature_from_func(node, class_name=class_name)
+        for name, default_expr, expected_type in zip(signature.param_names, node.defaults, signature.param_types):
+            if default_expr is None:
+                continue
+            default_type = self._infer_expr(default_expr, env)
+            if expected_type != ANY and not is_assignable(default_type, expected_type):
+                raise CompileError(
+                    f"परिमाण '{name}' का डिफ़ॉल्ट मान {expected_type} चाहिए, मिला {default_type}",
+                    getattr(default_expr, "line", node.line),
+                )
+            self._require_refinement_constraint(
+                default_expr,
+                default_type,
+                expected_type,
+                env,
+                getattr(default_expr, "line", node.line),
+                f"परिमाण '{name}'",
+            )
         fn_env = env.child()
         for name, value_type in zip(signature.param_names, signature.param_types):
             fn_env.define(name, value_type, fixed=True)
@@ -417,11 +537,24 @@ class TypeChecker:
         fn_ctx = FunctionContext(
             name=node.name,
             declared_return=signature.return_type,
+            owner_class=class_name,
         )
-        self._check_block(node.body.stmts, fn_env, fn_ctx)
+        self._function_stack.append(fn_ctx)
+        try:
+            self._check_block(node.body.stmts, fn_env, fn_ctx)
+        finally:
+            self._function_stack.pop()
         final_return = signature.return_type if signature.return_type != ANY else (
             fn_ctx.observed_return if fn_ctx.observed_return != NEVER else NULL
         )
+        if (
+            signature.return_type not in (ANY, NULL)
+            and not self._block_guarantees_exit(node.body.stmts)
+        ):
+            raise CompileError(
+                f"कर्म '{node.name}' को सभी मार्गों में {signature.return_type} लौटाना आवश्यक है",
+                node.line,
+            )
         env.assign(
             node.name,
             FunctionType(
@@ -433,6 +566,271 @@ class TypeChecker:
                 signature.is_async,
             ),
         )
+
+    def _require_refinement_constraint(
+        self,
+        expr: Any,
+        actual_type: VakType,
+        expected_type: VakType,
+        env: TypeEnv,
+        line: int,
+        context: str,
+    ) -> None:
+        if not isinstance(expected_type, RefinementType):
+            return
+        if isinstance(actual_type, RefinementType):
+            if (
+                actual_type.predicate == expected_type.predicate
+                and is_assignable(actual_type.base_type, expected_type.base_type)
+            ):
+                return
+        static_value = self._static_value(expr, env)
+        if static_value is _NO_STATIC_VALUE:
+            raise CompileError(
+                f"{context} के refinement '{expected_type.predicate}' को compile-time सिद्ध करना आवश्यक है",
+                line,
+            )
+        if not self._prove_refinement(expected_type, static_value):
+            raise CompileError(
+                f"{context} refinement '{expected_type.predicate}' को संतुष्ट नहीं करता",
+                line,
+            )
+
+    def _prove_refinement(self, refinement: RefinementType, value: Any) -> bool:
+        statement = f"{refinement.predicate}({self._serialize_refinement_value(value)})"
+        probe = self.sansmatic.clone(verbose=False)
+        return probe.verify_statement(statement)
+
+    def _serialize_refinement_value(self, value: Any) -> str:
+        if value is True:
+            return "सत्य"
+        if value is False:
+            return "असत्य"
+        if value is None:
+            return "शून्य"
+        if isinstance(value, str):
+            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+            return f'"{escaped}"'
+        if isinstance(value, tuple):
+            inner = ", ".join(self._serialize_refinement_value(item) for item in value)
+            return f"({inner})"
+        if isinstance(value, list):
+            inner = ", ".join(self._serialize_refinement_value(item) for item in value)
+            return f"[{inner}]"
+        if isinstance(value, set):
+            inner = ", ".join(self._serialize_refinement_value(item) for item in sorted(value, key=repr))
+            return f"{{{inner}}}"
+        if isinstance(value, dict):
+            parts = [
+                f"{self._serialize_refinement_value(key)}: {self._serialize_refinement_value(val)}"
+                for key, val in value.items()
+            ]
+            return f"{{{', '.join(parts)}}}"
+        return str(value)
+
+    def _static_value(self, expr: Any, env: TypeEnv) -> Any:
+        if expr is None:
+            return None
+        method = getattr(self, f"_static_{type(expr).__name__}", None)
+        if method is None:
+            return _NO_STATIC_VALUE
+        return method(expr, env)
+
+    def _static_NumberLiteral(self, expr: NumberLiteral, env: TypeEnv) -> Any:
+        return expr.value
+
+    def _static_StringLiteral(self, expr: StringLiteral, env: TypeEnv) -> Any:
+        return expr.value
+
+    def _static_FStringExpr(self, expr: FStringExpr, env: TypeEnv) -> Any:
+        parts: list[str] = []
+        for part in expr.parts:
+            if isinstance(part, str):
+                parts.append(part)
+                continue
+            value = self._static_value(part, env)
+            if value is _NO_STATIC_VALUE:
+                return _NO_STATIC_VALUE
+            parts.append(str(value))
+        return "".join(parts)
+
+    def _static_BoolLiteral(self, expr: BoolLiteral, env: TypeEnv) -> Any:
+        return expr.value
+
+    def _static_NullLiteral(self, expr: NullLiteral, env: TypeEnv) -> Any:
+        return None
+
+    def _static_IdentifierExpr(self, expr: IdentifierExpr, env: TypeEnv) -> Any:
+        if expr.name == "सत्य":
+            return True
+        if expr.name == "असत्य":
+            return False
+        return env.lookup_static(expr.name)
+
+    def _static_ListLiteral(self, expr: ListLiteral, env: TypeEnv) -> Any:
+        values = []
+        for element in expr.elements:
+            value = self._static_value(element, env)
+            if value is _NO_STATIC_VALUE:
+                return _NO_STATIC_VALUE
+            values.append(value)
+        return values
+
+    def _static_SetLiteral(self, expr: SetLiteral, env: TypeEnv) -> Any:
+        values = []
+        for element in expr.elements:
+            value = self._static_value(element, env)
+            if value is _NO_STATIC_VALUE:
+                return _NO_STATIC_VALUE
+            values.append(value)
+        return set(values)
+
+    def _static_TupleLiteral(self, expr: TupleLiteral, env: TypeEnv) -> Any:
+        values = []
+        for element in expr.elements:
+            value = self._static_value(element, env)
+            if value is _NO_STATIC_VALUE:
+                return _NO_STATIC_VALUE
+            values.append(value)
+        return tuple(values)
+
+    def _static_DictLiteral(self, expr: DictLiteral, env: TypeEnv) -> Any:
+        values: dict[Any, Any] = {}
+        for key_expr, value_expr in expr.pairs:
+            key = self._static_value(key_expr, env)
+            value = self._static_value(value_expr, env)
+            if key is _NO_STATIC_VALUE or value is _NO_STATIC_VALUE:
+                return _NO_STATIC_VALUE
+            values[key] = value
+        return values
+
+    def _static_UnaryExpr(self, expr: UnaryExpr, env: TypeEnv) -> Any:
+        operand = self._static_value(expr.operand, env)
+        if operand is _NO_STATIC_VALUE:
+            return _NO_STATIC_VALUE
+        try:
+            if expr.op == "+":
+                return +operand
+            if expr.op == "-":
+                return -operand
+            if expr.op in ("न", "not"):
+                return not operand
+            if expr.op == "~":
+                return ~operand
+        except Exception:
+            return _NO_STATIC_VALUE
+        return _NO_STATIC_VALUE
+
+    def _static_BinaryExpr(self, expr: BinaryExpr, env: TypeEnv) -> Any:
+        left = self._static_value(expr.left, env)
+        right = self._static_value(expr.right, env)
+        if left is _NO_STATIC_VALUE or right is _NO_STATIC_VALUE:
+            return _NO_STATIC_VALUE
+        try:
+            if expr.op == "+":
+                return left + right
+            if expr.op == "-":
+                return left - right
+            if expr.op == "*":
+                return left * right
+            if expr.op == "/":
+                return left / right
+            if expr.op == "//":
+                return left // right
+            if expr.op == "%":
+                return left % right
+            if expr.op == "**":
+                return left ** right
+            if expr.op == "==":
+                return left == right
+            if expr.op == "!=":
+                return left != right
+            if expr.op == "<":
+                return left < right
+            if expr.op == "<=":
+                return left <= right
+            if expr.op == ">":
+                return left > right
+            if expr.op == ">=":
+                return left >= right
+            if expr.op == "और":
+                return left and right
+            if expr.op == "अथवा":
+                return left or right
+            if expr.op == "|":
+                return left | right
+            if expr.op == "&":
+                return left & right
+            if expr.op == "^":
+                return left ^ right
+            if expr.op == "<<":
+                return left << right
+            if expr.op == ">>":
+                return left >> right
+            if expr.op == "in":
+                return left in right
+            if expr.op == "not in":
+                return left not in right
+        except Exception:
+            return _NO_STATIC_VALUE
+        return _NO_STATIC_VALUE
+
+    def _static_ConditionalExpr(self, expr: ConditionalExpr, env: TypeEnv) -> Any:
+        condition = self._static_value(expr.condition, env)
+        if condition is _NO_STATIC_VALUE:
+            return _NO_STATIC_VALUE
+        branch = expr.then_expr if condition else expr.else_expr
+        return self._static_value(branch, env)
+
+    def _static_IndexExpr(self, expr: IndexExpr, env: TypeEnv) -> Any:
+        obj = self._static_value(expr.obj, env)
+        index = self._static_value(expr.index, env)
+        if obj is _NO_STATIC_VALUE or index is _NO_STATIC_VALUE:
+            return _NO_STATIC_VALUE
+        try:
+            return obj[index]
+        except Exception:
+            return _NO_STATIC_VALUE
+
+    def _require_bool(self, value_type: VakType, line: int, context: str) -> None:
+        if value_type != ANY and not is_assignable(value_type, BOOL):
+            raise CompileError(f"{context} के लिए बूल चाहिए, मिला {value_type}", line)
+
+    def _base_type(self, value_type: VakType) -> VakType:
+        while isinstance(value_type, RefinementType):
+            value_type = value_type.base_type
+        return value_type
+
+    def _block_guarantees_exit(self, stmts: list[Any]) -> bool:
+        for stmt in stmts:
+            if self._stmt_guarantees_exit(stmt):
+                return True
+        return False
+
+    def _stmt_guarantees_exit(self, stmt: Node) -> bool:
+        if isinstance(stmt, (ReturnStmt, ThrowStmt)):
+            return True
+        if isinstance(stmt, Block):
+            return self._block_guarantees_exit(stmt.stmts)
+        if isinstance(stmt, IfStmt):
+            branches = [stmt.then_body, *(body for _, body in stmt.elif_clauses)]
+            return stmt.else_body is not None and all(
+                self._block_guarantees_exit(branch.stmts)
+                for branch in [*branches, stmt.else_body]
+            )
+        if isinstance(stmt, MatchStmt):
+            return bool(getattr(stmt, "exhaustive", False)) and all(
+                self._block_guarantees_exit(case.body.stmts)
+                for case in stmt.cases
+            )
+        if isinstance(stmt, TryStmt):
+            if stmt.finally_body is not None and self._block_guarantees_exit(stmt.finally_body.stmts):
+                return True
+            return bool(stmt.handlers) and self._block_guarantees_exit(stmt.try_body.stmts) and all(
+                self._block_guarantees_exit(handler.body.stmts)
+                for handler in stmt.handlers
+            )
+        return False
 
     def _destructure_types(self, value_type: VakType, count: int) -> list[VakType]:
         if isinstance(value_type, TupleType) and len(value_type.element_types) == count:
@@ -603,36 +1001,55 @@ class TypeChecker:
         loop_env = env.child()
         loop_env.define(expr.var_name, iterable_element_type(self._infer_expr(expr.iterable, env)))
         if expr.filter_expr is not None:
-            self._infer_expr(expr.filter_expr, loop_env)
+            self._require_bool(
+                self._infer_expr(expr.filter_expr, loop_env),
+                getattr(expr.filter_expr, "line", expr.line),
+                "सूची comprehension filter",
+            )
         return ListType(self._infer_expr(expr.expr, loop_env))
 
     def _infer_DictComp(self, expr: DictComp, env: TypeEnv) -> VakType:
         loop_env = env.child()
         loop_env.define(expr.var_name, iterable_element_type(self._infer_expr(expr.iterable, env)))
         if expr.filter_expr is not None:
-            self._infer_expr(expr.filter_expr, loop_env)
+            self._require_bool(
+                self._infer_expr(expr.filter_expr, loop_env),
+                getattr(expr.filter_expr, "line", expr.line),
+                "शब्दकोश comprehension filter",
+            )
         return DictType(
             self._infer_expr(expr.key_expr, loop_env),
             self._infer_expr(expr.value_expr, loop_env),
         )
 
     def _infer_IndexExpr(self, expr: IndexExpr, env: TypeEnv) -> VakType:
-        obj_type = self._infer_expr(expr.obj, env)
-        self._infer_expr(expr.index, env)
+        obj_type = self._base_type(self._infer_expr(expr.obj, env))
+        index_type = self._infer_expr(expr.index, env)
         if isinstance(obj_type, ListType):
+            if index_type != ANY and not is_assignable(index_type, INT):
+                raise CompileError(f"सूची अनुक्रमण के लिए संख्या चाहिए, मिला {index_type}", expr.line)
             return obj_type.element_type
         if isinstance(obj_type, SetType):
             return obj_type.element_type
         if isinstance(obj_type, TupleType):
+            if index_type != ANY and not is_assignable(index_type, INT):
+                raise CompileError(f"tuple अनुक्रमण के लिए संख्या चाहिए, मिला {index_type}", expr.line)
             return combine_types(*obj_type.element_types)
         if isinstance(obj_type, DictType):
+            if index_type != ANY and not is_assignable(index_type, obj_type.key_type):
+                raise CompileError(
+                    f"शब्दकोश कुंजी को {obj_type.key_type} चाहिए, मिला {index_type}",
+                    expr.line,
+                )
             return obj_type.value_type
         if obj_type == STR:
+            if index_type != ANY and not is_assignable(index_type, INT):
+                raise CompileError(f"तार अनुक्रमण के लिए संख्या चाहिए, मिला {index_type}", expr.line)
             return STR
         return ANY
 
     def _infer_SliceExpr(self, expr: SliceExpr, env: TypeEnv) -> VakType:
-        obj_type = self._infer_expr(expr.obj, env)
+        obj_type = self._base_type(self._infer_expr(expr.obj, env))
         for part in (expr.start, expr.stop, expr.step):
             if part is not None:
                 self._infer_expr(part, env)
@@ -643,10 +1060,13 @@ class TypeChecker:
         return ANY
 
     def _infer_MemberExpr(self, expr: MemberExpr, env: TypeEnv) -> VakType:
-        obj_type = self._infer_expr(expr.obj, env)
+        obj_type = self._base_type(self._infer_expr(expr.obj, env))
         if isinstance(obj_type, ModuleType):
             return ANY
         if isinstance(obj_type, InstanceType):
+            field_type = self.class_fields.get(obj_type.name, {}).get(expr.attr)
+            if field_type is not None:
+                return field_type
             methods = self.class_methods.get(obj_type.name, {})
             method = methods.get(expr.attr)
             if method is not None and method.param_types:
@@ -662,14 +1082,15 @@ class TypeChecker:
 
     def _infer_UnaryExpr(self, expr: UnaryExpr, env: TypeEnv) -> VakType:
         operand = self._infer_expr(expr.operand, env)
+        operand_base = self._base_type(operand)
         if expr.op in ("-", "+"):
-            if operand != ANY and operand not in (INT, FLOAT):
+            if operand_base != ANY and operand_base not in (INT, FLOAT):
                 raise CompileError(f"एकपदीय '{expr.op}' को संख्या चाहिए, मिला {operand}", expr.line)
-            return operand if operand != ANY else ANY
+            return operand_base if operand_base != ANY else ANY
         if expr.op in ("न", "not"):
             return BOOL
         if expr.op == "~":
-            if operand != ANY and operand != INT:
+            if operand_base != ANY and operand_base != INT:
                 raise CompileError(f"एकपदीय '~' को पूर्णांक चाहिए, मिला {operand}", expr.line)
             return INT
         return ANY
@@ -677,32 +1098,38 @@ class TypeChecker:
     def _infer_BinaryExpr(self, expr: BinaryExpr, env: TypeEnv) -> VakType:
         left = self._infer_expr(expr.left, env)
         right = self._infer_expr(expr.right, env)
+        left_base = self._base_type(left)
+        right_base = self._base_type(right)
         if expr.op in ("==", "!=", "<", "<=", ">", ">=", "in", "not in"):
             return BOOL
         if expr.op in ("और", "अथवा"):
-            return BOOL if left == BOOL and right == BOOL else combine_types(left, right)
+            return BOOL if left_base == BOOL and right_base == BOOL else combine_types(left_base, right_base)
         if expr.op in ("+", "-", "*", "/", "//", "%", "**"):
-            if expr.op == "+" and left == STR and right == STR:
+            if expr.op == "+" and left_base == STR and right_base == STR:
                 return STR
-            if expr.op == "+" and isinstance(left, ListType) and isinstance(right, ListType):
-                return ListType(combine_types(left.element_type, right.element_type))
-            if left != ANY and right != ANY and left not in (INT, FLOAT) and right not in (INT, FLOAT):
+            if expr.op == "+" and isinstance(left_base, ListType) and isinstance(right_base, ListType):
+                return ListType(combine_types(left_base.element_type, right_base.element_type))
+            if left_base != ANY and right_base != ANY and left_base not in (INT, FLOAT) and right_base not in (INT, FLOAT):
                 raise CompileError(f"'{expr.op}' संख्याओं पर चाहिए, मिला {left} और {right}", expr.line)
             if expr.op == "/":
                 return FLOAT
-            if left == FLOAT or right == FLOAT:
+            if left_base == FLOAT or right_base == FLOAT:
                 return FLOAT
-            return INT if left != ANY and right != ANY else ANY
+            return INT if left_base != ANY and right_base != ANY else ANY
         if expr.op in ("|", "&", "^", "<<", ">>"):
-            if left != ANY and left != INT:
+            if left_base != ANY and left_base != INT:
                 raise CompileError(f"'{expr.op}' के लिए पूर्णांक चाहिए, मिला {left}", expr.line)
-            if right != ANY and right != INT:
+            if right_base != ANY and right_base != INT:
                 raise CompileError(f"'{expr.op}' के लिए पूर्णांक चाहिए, मिला {right}", expr.line)
             return INT
         return ANY
 
     def _infer_ConditionalExpr(self, expr: ConditionalExpr, env: TypeEnv) -> VakType:
-        self._infer_expr(expr.condition, env)
+        self._require_bool(
+            self._infer_expr(expr.condition, env),
+            expr.line,
+            "शर्तीय अभिव्यक्ति",
+        )
         return combine_types(
             self._infer_expr(expr.then_expr, env),
             self._infer_expr(expr.else_expr, env),
@@ -710,6 +1137,7 @@ class TypeChecker:
 
     def _infer_AssignExpr(self, expr: AssignExpr, env: TypeEnv) -> VakType:
         value_type = self._infer_expr(expr.value, env)
+        static_value = self._static_value(expr.value, env)
         if isinstance(expr.target, IdentifierExpr):
             current = env.lookup(expr.target.name)
             if expr.op == "=" or expr.op == ":=":
@@ -725,7 +1153,15 @@ class TypeChecker:
                     final_type = value_type
                 else:
                     final_type = combine_types(current, value_type)
-                env.assign(expr.target.name, final_type)
+                self._require_refinement_constraint(
+                    expr.value,
+                    value_type,
+                    final_type,
+                    env,
+                    expr.line,
+                    f"'{expr.target.name}'",
+                )
+                env.assign(expr.target.name, final_type, static_value=static_value)
                 return final_type
             if current not in (ANY, INT, FLOAT, STR, None):
                 raise CompileError(
@@ -736,9 +1172,115 @@ class TypeChecker:
                 BinaryExpr(op=expr.op[:-1], left=expr.target, right=expr.value, line=expr.line),
                 env,
             )
-        if isinstance(expr.target, (MemberExpr, IndexExpr)):
-            return value_type
+        if isinstance(expr.target, MemberExpr):
+            return self._check_member_assignment(expr.target, expr.value, value_type, expr.line, env)
+        if isinstance(expr.target, IndexExpr):
+            return self._check_index_assignment(expr.target, expr.value, value_type, expr.line, env)
         return ANY
+
+    def _check_member_assignment(
+        self,
+        target: MemberExpr,
+        value_expr: Any,
+        value_type: VakType,
+        line: int,
+        env: TypeEnv,
+    ) -> VakType:
+        obj_type = self._infer_expr(target.obj, env)
+        if not isinstance(obj_type, InstanceType):
+            return value_type
+
+        known_fields = self.class_fields.setdefault(obj_type.name, {})
+        known_type = known_fields.get(target.attr)
+        current_fn = self._function_stack[-1] if self._function_stack else None
+        is_self_init_assignment = (
+            current_fn is not None
+            and current_fn.owner_class == obj_type.name
+            and current_fn.name == "__init__"
+            and isinstance(target.obj, IdentifierExpr)
+            and target.obj.name in ("स्वयं", "self")
+        )
+
+        if known_type is None and is_self_init_assignment:
+            known_fields[target.attr] = value_type
+            return value_type
+
+        if known_type is not None and known_type != ANY and not is_assignable(value_type, known_type):
+            raise CompileError(
+                    f"सदस्य '{target.attr}' को {known_type} चाहिए, मिला {value_type}",
+                    line,
+                )
+
+        target_type = known_type if known_type not in (None, ANY) else value_type
+        self._require_refinement_constraint(
+            value_expr,
+            value_type,
+            target_type,
+            env,
+            line,
+            f"सदस्य '{target.attr}'",
+        )
+        return target_type
+
+    def _check_index_assignment(
+        self,
+        target: IndexExpr,
+        value_expr: Any,
+        value_type: VakType,
+        line: int,
+        env: TypeEnv,
+    ) -> VakType:
+        obj_type = self._base_type(self._infer_expr(target.obj, env))
+        index_type = self._infer_expr(target.index, env)
+
+        if isinstance(obj_type, ListType):
+            if index_type != ANY and not is_assignable(index_type, INT):
+                raise CompileError(f"सूची अनुक्रमण के लिए संख्या चाहिए, मिला {index_type}", line)
+            if obj_type.element_type != ANY and not is_assignable(value_type, obj_type.element_type):
+                raise CompileError(
+                    f"सूची तत्व को {obj_type.element_type} चाहिए, मिला {value_type}",
+                    line,
+                )
+            target_type = obj_type.element_type if obj_type.element_type != ANY else value_type
+            self._require_refinement_constraint(
+                value_expr,
+                value_type,
+                target_type,
+                env,
+                line,
+                "सूची तत्व",
+            )
+            return target_type
+
+        if isinstance(obj_type, DictType):
+            if index_type != ANY and not is_assignable(index_type, obj_type.key_type):
+                raise CompileError(
+                    f"शब्दकोश कुंजी को {obj_type.key_type} चाहिए, मिला {index_type}",
+                    line,
+                )
+            if obj_type.value_type != ANY and not is_assignable(value_type, obj_type.value_type):
+                raise CompileError(
+                    f"शब्दकोश मान को {obj_type.value_type} चाहिए, मिला {value_type}",
+                    line,
+                )
+            target_type = obj_type.value_type if obj_type.value_type != ANY else value_type
+            self._require_refinement_constraint(
+                value_expr,
+                value_type,
+                target_type,
+                env,
+                line,
+                "शब्दकोश मान",
+            )
+            return target_type
+
+        if isinstance(obj_type, TupleType):
+            raise CompileError("tuple अपरिवर्तनीय है; अनुक्रमित नियोजन संभव नहीं", line)
+
+        if obj_type == STR:
+            raise CompileError("तार अपरिवर्तनीय है; अनुक्रमित नियोजन संभव नहीं", line)
+
+        return value_type
 
     def _infer_CallExpr(self, expr: CallExpr, env: TypeEnv) -> VakType:
         callee_type = self._infer_expr(expr.callee, env)
@@ -748,7 +1290,15 @@ class TypeChecker:
         if isinstance(expr.callee, IdentifierExpr):
             if expr.callee.name in self.variant_constructors:
                 return self._infer_variant_constructor_call(expr.callee.name, arg_types, kwarg_types, expr.line)
-            builtin = self._infer_builtin_call(expr.callee.name, arg_types, kwarg_types, expr.line)
+            builtin = self._infer_builtin_call(
+                expr.callee.name,
+                arg_types,
+                kwarg_types,
+                expr.line,
+                arg_exprs=expr.args,
+                kwarg_exprs=expr.kwargs,
+                env=env,
+            )
             if builtin is not None:
                 return builtin
 
@@ -756,7 +1306,15 @@ class TypeChecker:
             return InstanceType(callee_type.name)
 
         if isinstance(callee_type, FunctionType):
-            self._validate_function_call(callee_type, arg_types, kwarg_types, expr.line)
+            self._validate_function_call(
+                callee_type,
+                arg_types,
+                kwarg_types,
+                expr.line,
+                arg_exprs=expr.args,
+                kwarg_exprs=expr.kwargs,
+                env=env,
+            )
             return callee_type.return_type
         return ANY
 
@@ -815,6 +1373,10 @@ class TypeChecker:
         arg_types: list[VakType],
         kwarg_types: dict[str, VakType],
         line: int,
+        *,
+        arg_exprs: list[Any] | None = None,
+        kwarg_exprs: dict[str, Any] | None = None,
+        env: TypeEnv | None = None,
     ) -> VakType | None:
         if name in ("सिद्ध", "असिद्ध"):
             inner = arg_types[0] if arg_types else ANY
@@ -880,7 +1442,15 @@ class TypeChecker:
             return NULL
         builtin_type = self.globals.lookup(name)
         if isinstance(builtin_type, FunctionType):
-            self._validate_function_call(builtin_type, arg_types, kwarg_types, line)
+            self._validate_function_call(
+                builtin_type,
+                arg_types,
+                kwarg_types,
+                line,
+                arg_exprs=arg_exprs,
+                kwarg_exprs=kwarg_exprs,
+                env=env,
+            )
             return builtin_type.return_type
         return None
 
@@ -890,7 +1460,13 @@ class TypeChecker:
         arg_types: list[VakType],
         kwarg_types: dict[str, VakType],
         line: int,
+        *,
+        arg_exprs: list[Any] | None = None,
+        kwarg_exprs: dict[str, Any] | None = None,
+        env: TypeEnv | None = None,
     ) -> None:
+        arg_exprs = [] if arg_exprs is None else arg_exprs
+        kwarg_exprs = {} if kwarg_exprs is None else kwarg_exprs
         max_args = signature.max_args
         if max_args is not None and len(arg_types) > max_args:
             raise CompileError(
@@ -902,6 +1478,11 @@ class TypeChecker:
         if unknown_kwargs:
             names = ", ".join(sorted(unknown_kwargs))
             raise CompileError(f"अज्ञात नामित तर्क: {names}", line)
+        positional_names = set(signature.param_names[:min(len(arg_types), len(signature.param_names))])
+        duplicate_args = positional_names & provided_named
+        if duplicate_args:
+            names = ", ".join(sorted(duplicate_args))
+            raise CompileError(f"तर्क बार-बार दिया गया: {names}", line)
 
         required = signature.min_args
         provided_total = len(arg_types) + len(kwarg_types)
@@ -915,11 +1496,20 @@ class TypeChecker:
             if index >= len(signature.param_types):
                 break
             expected = signature.param_types[index]
+            param_name = signature.param_names[index] if index < len(signature.param_names) else f"arg{index + 1}"
             if expected != ANY and not is_assignable(arg_type, expected):
-                param_name = signature.param_names[index] if index < len(signature.param_names) else f"arg{index + 1}"
                 raise CompileError(
                     f"तर्क '{param_name}' को {expected} चाहिए, मिला {arg_type}",
                     line,
+                )
+            if env is not None and index < len(arg_exprs):
+                self._require_refinement_constraint(
+                    arg_exprs[index],
+                    arg_type,
+                    expected,
+                    env,
+                    getattr(arg_exprs[index], "line", line),
+                    f"तर्क '{param_name}'",
                 )
 
         for name, arg_type in kwarg_types.items():
@@ -931,4 +1521,14 @@ class TypeChecker:
                 raise CompileError(
                     f"तर्क '{name}' को {expected} चाहिए, मिला {arg_type}",
                     line,
+                )
+            if env is not None and name in kwarg_exprs:
+                kw_expr = kwarg_exprs[name]
+                self._require_refinement_constraint(
+                    kw_expr,
+                    arg_type,
+                    expected,
+                    env,
+                    getattr(kw_expr, "line", line),
+                    f"तर्क '{name}'",
                 )

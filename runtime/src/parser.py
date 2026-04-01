@@ -777,6 +777,8 @@ class Parser:
         statement = self._expr_to_string(statement_expr)
         
         self.skip_newlines()
+        if not self.check(TokenType.INDENT):
+            raise ParseError("सिद्धि के लिए प्रमाण: ब्लॉक आवश्यक है", self.current.line)
         self.expect(TokenType.INDENT)
         self.skip_newlines()
         
@@ -784,12 +786,14 @@ class Parser:
         evidence_body = None
         certificate = None
         
-        if self.check(TokenType.PRAMANA):
-            self.expect(TokenType.PRAMANA)
-            self.expect(TokenType.COLON)
-            self.skip_newlines()
-            evidence_body = self._block()
-            self.skip_newlines()
+        if not self.check(TokenType.PRAMANA):
+            raise ParseError("सिद्धि के भीतर प्रमाण: अपेक्षित है", self.current.line)
+
+        self.expect(TokenType.PRAMANA)
+        self.expect(TokenType.COLON)
+        self.skip_newlines()
+        evidence_body = self._block()
+        self.skip_newlines()
         
         # Parse optional proof certificate (प्रमाण_पत्र)
         if self.check(TokenType.PRAMANA_PATRA):

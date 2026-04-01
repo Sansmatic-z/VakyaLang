@@ -1,0 +1,13 @@
+# सान्समैटिक विरोध-परीक्षा — यह चालना स्तर पर रुकना चाहिए
+# Sansmatic contradiction demo — this must halt with a contradiction
+
+मुद्रय "━━ Sansmatic विरोध-परीक्षा ━━"
+
+परिभाषय("अग्नि", ["उष्ण", "दीप्त"])
+
+# This second definition adds a contrary fact that should halt execution.
+परिभाषय("अग्नि", ["NOT उष्ण"])
+
+# If execution reaches here, contradiction blocking is broken.
+मूल्यांकन("अग्नि", "HAS", "उष्ण")
+मुद्रय "त्रुटि: विरोध के बाद भी कार्यक्रम चलता रहा"

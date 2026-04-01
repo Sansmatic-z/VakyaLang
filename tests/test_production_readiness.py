@@ -88,6 +88,26 @@ class ProductionReadinessTests(unittest.TestCase):
         self.assertIn("vak.interpreter.run.start", event_names)
         self.assertIn("vak.interpreter.run.complete", event_names)
 
+    def test_proof_audit_events_are_emitted_for_compile_time_verification(self):
+        start = len(self._audit_events)
+        interpreter = VakInterpreter()
+        source = """
+सिद्धि: अभाज्य_है(१७)
+    प्रमाण:
+        मान x = २
+        यावत् x < ५:
+            यदि १७ % x == ०:
+                उत्क्षिप "भाजक मिला"
+            x = x + १
+"""
+        bytecode = interpreter.compile_only(source, filename="proof_test.vak")
+        self.assertIsNotNone(bytecode)
+
+        events = self._audit_events[start:]
+        event_names = [name for name, _ in events]
+        self.assertIn("vak.proof.verify.start", event_names)
+        self.assertIn("vak.proof.verify.complete", event_names)
+
     def test_pyproject_includes_runtime_dependency_packages_and_resources(self):
         pyproject_path = os.path.join(PROJECT_ROOT, "pyproject.toml")
         with open(pyproject_path, "rb") as handle:
@@ -102,6 +122,22 @@ class ProductionReadinessTests(unittest.TestCase):
         self.assertIn("stdlib/*.vak", package_data["runtime"])
         self.assertTrue(any(dep.startswith("build") for dep in dev_deps))
         self.assertTrue(any(dep.startswith("twine") for dep in dev_deps))
+
+    def test_production_scaffolding_files_exist(self):
+        required_paths = [
+            ".env.example",
+            "Dockerfile",
+            "docker-compose.yml",
+            os.path.join(".github", "workflows", "sansmatic-production.yml"),
+            os.path.join("docs", "sansmatic_production_architecture.md"),
+            os.path.join("docs", "sansmatic_api.md"),
+        ]
+
+        for relative_path in required_paths:
+            self.assertTrue(
+                os.path.exists(os.path.join(PROJECT_ROOT, relative_path)),
+                relative_path,
+            )
 
 
 if __name__ == "__main__":

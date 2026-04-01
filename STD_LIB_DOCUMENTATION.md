@@ -1,7 +1,7 @@
 # 🕉️ वाक् मानक पुस्तकालय — पूर्ण दस्तावेज़ीकरण
 # VakyaLang Standard Library — Complete Documentation
 
-**संस्करण (Version):** 2.0.0  
+**संस्करण (Version):** 2.17.0  
 **रचना दिनांक (Created):** March 19, 2026  
 **लेखक (Author):** Visionary RM (Raj Mitra)  
 **लाइसेंस (License):** AGPL-3.0

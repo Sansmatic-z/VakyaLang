@@ -1,0 +1,11 @@
+{
+  "name": "tree_sentinel",
+  "version": "1.0.0",
+  "api_version": "1",
+  "kind": "validation",
+  "entrypoint": "branches.tree_sentinel",
+  "capabilities": ["observe_program", "before_compile", "after_typecheck", "after_compile"],
+  "depends_on": [],
+  "conflicts_with": [],
+  "default_activation": false
+}

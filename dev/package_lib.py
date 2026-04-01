@@ -235,7 +235,7 @@ The bundle includes `py_bridge.py` for Python interoperability:
 
 ## Requirements
 
-- VakyaLang Runtime v0.1.0+
+- VakyaLang Runtime v2.17.0+
 - Python 3.8+ (for py_bridge)
 
 ## License

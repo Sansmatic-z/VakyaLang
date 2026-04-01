@@ -1,0 +1,11 @@
+{
+  "name": "chitrakala",
+  "version": "1.0.0",
+  "api_version": "1",
+  "kind": "runtime",
+  "entrypoint": "branches.chitrakala",
+  "capabilities": ["vm_builtins"],
+  "depends_on": [],
+  "conflicts_with": [],
+  "default_activation": true
+}

@@ -1,12 +1,15 @@
 # वाक् भाषा - दुभाषिया (Interpreter)
 # Vak Language - High-level interface (Lexer → Parser → Compiler → VM)
 
+from typing import Any, Optional
+
 from .lexer import Lexer
 from .parser import Parser
 from .compiler import Compiler, CompileError
 from .vm import VakVM, VMError
-from .errors import VakError
+from .errors import VakError, format_vak_error
 from .audit import emit_audit_event
+from .branching import BranchActivationError
 
 class VakInterpreter:
     """
@@ -14,9 +17,33 @@ class VakInterpreter:
     Source Code → Lexer → Parser → AST → Compiler → Bytecode → VM → Result
     """
     
-    def __init__(self):
-        self.vm = VakVM()
+    def __init__(
+        self,
+        *,
+        active_branches: Optional[list[str]] = None,
+        branch_registry: Any = None,
+    ):
         self.debug = False
+        self.branch_runtime = None
+        if active_branches:
+            registry = branch_registry
+            if registry is None:
+                from branches.registry import create_default_registry
+
+                registry = create_default_registry()
+            self.branch_runtime = registry.create_runtime(
+                list(active_branches),
+                include_defaults=True,
+            )
+        self.vm = VakVM(
+            branch_runtime=self.branch_runtime,
+            branch_registry=branch_registry,
+        )
+
+    def get_branch_report(self) -> dict[str, dict[str, Any]]:
+        if self.branch_runtime is None:
+            return {}
+        return self.branch_runtime.report()
 
     def _debug_print(self, text: str) -> None:
         try:
@@ -62,13 +89,22 @@ class VakInterpreter:
                 self._debug_print("\n=== Stage 2: Parsing ===")
             parser = Parser(tokens)
             ast = parser.parse()
+            if self.branch_runtime is not None:
+                self.branch_runtime.on_program_parsed(
+                    ast,
+                    filename=filename,
+                    interpreter=self,
+                )
             if debug:
                 self._debug_print(f"AST generated: {type(ast).__name__}")
                 
             # Step 3: Compilation
             if debug:
                 self._debug_print("\n=== Stage 3: Compilation ===")
-            compiler = Compiler()
+            compiler = Compiler(
+                branch_runtime=self.branch_runtime,
+                source_path=filename,
+            )
             bytecode = compiler.compile(ast)
             bytecode.source_path = filename
             emit_audit_event(
@@ -98,6 +134,9 @@ class VakInterpreter:
         except VakError as e:
             emit_audit_event("vak.interpreter.run.error", filename or "<memory>", str(e))
             raise
+        except BranchActivationError as e:
+            emit_audit_event("vak.interpreter.run.error", filename or "<memory>", str(e))
+            raise
         # except Exception as e:
             # raise VakError(f"Execution error: {e}")
             
@@ -108,7 +147,16 @@ class VakInterpreter:
         tokens = lexer.tokenize()
         parser = Parser(tokens)
         ast = parser.parse()
-        compiler = Compiler()
+        if self.branch_runtime is not None:
+            self.branch_runtime.on_program_parsed(
+                ast,
+                filename=filename,
+                interpreter=self,
+            )
+        compiler = Compiler(
+            branch_runtime=self.branch_runtime,
+            source_path=filename,
+        )
         bytecode = compiler.compile(ast)
         bytecode.source_path = filename
         emit_audit_event(
@@ -123,6 +171,24 @@ class VakInterpreter:
         """Execute pre-compiled bytecode."""
         emit_audit_event("vak.interpreter.bytecode.run", getattr(bytecode, "name", "<unknown>"))
         return self.vm.run(bytecode)
+
+    def _read_repl_source(self) -> str | None:
+        line = input("वाक्> ")
+        stripped = line.strip()
+        if stripped in {'exit', 'quit'}:
+            return None
+        if not stripped:
+            return ""
+        if not stripped.endswith(':'):
+            return line
+
+        lines = [line]
+        while True:
+            continuation = input("... ")
+            if not continuation.strip():
+                break
+            lines.append(continuation)
+        return "\n".join(lines)
         
     def repl(self, banner: str = None):
         """Interactive REPL."""
@@ -130,21 +196,22 @@ class VakInterpreter:
             print(banner)
         else:
             print("🕉️ वाक् भाषा - आभासी यन्त्र (VakyaLang VM)")
-            print("Type 'debug' to toggle debug mode, 'exit' to quit\n")
+            print("Type 'debug' to toggle debug mode, 'exit' to quit")
+            print("End an indented block with an empty line.\n")
         
         while True:
             try:
-                line = input("वाक्> ")
-                if line.strip() == 'exit':
+                source = self._read_repl_source()
+                if source is None:
                     break
-                if line.strip() == 'debug':
+                if source.strip() == 'debug':
                     self.debug = not self.debug
                     print(f"Debug mode: {'ON' if self.debug else 'OFF'}")
                     continue
-                if not line.strip():
+                if not source.strip():
                     continue
                     
-                result = self.run(line, debug=self.debug)
+                result = self.run(source, debug=self.debug, filename="<repl>")
                 if result is not None:
                     print(f"=> {result}")
                     
@@ -152,7 +219,7 @@ class VakInterpreter:
                 print("\nUse 'exit' to quit")
             except EOFError:
                 break
-            # except Exception as e:
-                print(f"त्रुटि (Error): {e}")
+            except Exception as e:
+                print(format_vak_error(e))
                 
         print("\nनमस्ते (Goodbye)!")

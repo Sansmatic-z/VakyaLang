@@ -3,6 +3,7 @@ import io
 import os
 import sys
 import tempfile
+import time
 import unittest
 import contextlib
 from pathlib import Path
@@ -20,12 +21,23 @@ from runtime.src.vm import VakClass, VakVM
 
 
 class RuntimeRegressionTests(unittest.TestCase):
+    ZERO_DIVISION_MESSAGES = (
+        "integer division or modulo by zero",
+        "division by zero",
+    )
+
     def run_source(self, source: str):
         buffer = io.StringIO()
         interpreter = VakInterpreter()
         with contextlib.redirect_stdout(buffer):
             result = interpreter.run(source)
         return result, buffer.getvalue()
+
+    def assert_zero_division_output(self, output: str) -> None:
+        self.assertTrue(
+            any(message in output for message in self.ZERO_DIVISION_MESSAGES),
+            msg=f"unexpected zero-division output: {output!r}",
+        )
 
     def test_keyword_aliases_work_in_core_statements(self):
         source = """
@@ -79,7 +91,7 @@ class RuntimeRegressionTests(unittest.TestCase):
     मुद्रय पाठ_कर(e)
 """
         _, output = self.run_source(source)
-        self.assertIn("integer division or modulo by zero", output)
+        self.assert_zero_division_output(output)
 
     def test_boolean_literal_argument_is_preserved(self):
         source = """
@@ -170,7 +182,7 @@ class RuntimeRegressionTests(unittest.TestCase):
     मुद्रय "wrong"
 """
         _, output = self.run_source(source)
-        self.assertIn("integer division or modulo by zero", output)
+        self.assert_zero_division_output(output)
 
     def test_try_stmt_falls_through_to_later_generic_handler(self):
         source = """
@@ -182,7 +194,7 @@ class RuntimeRegressionTests(unittest.TestCase):
     मुद्रय पाठ_कर(त्रुटि)
 """
         _, output = self.run_source(source)
-        self.assertIn("integer division or modulo by zero", output)
+        self.assert_zero_division_output(output)
 
     def test_anyaatha_yadi_spelling_works_as_elif(self):
         source = """
@@ -562,6 +574,66 @@ bst.जोड़ो(७०)
 """
         _, output = self.run_source(source)
         self.assertTrue(output.strip().isdigit())
+
+    def test_kootlekh_password_hash_and_verify_round_trip(self):
+        source = """
+आयात kootlekh
+मान hashed = पासवर्ड_हैश("secret")
+मुद्रय दीर्घता(hashed[०])
+मुद्रय दीर्घता(hashed[१])
+मुद्रय पासवर्ड_जाँच("secret", hashed[१], hashed[०])
+मुद्रय पासवर्ड_जाँच("wrong", hashed[१], hashed[०])
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.splitlines(), ["64", "16", "True", "False"])
+
+    def test_py_bridge_natural_log_maps_to_python_log(self):
+        source = """
+आयात py_bridge
+मुद्रय प्राकृतिक_लघुगणक(ई())
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.strip(), "1.0")
+
+    def test_tasks_example_runs_and_persists_data_file(self):
+        tasks_path = Path(PROJECT_ROOT) / "examples" / "tasks.vak"
+        source = tasks_path.read_text(encoding="utf-8")
+
+        buffer = io.StringIO()
+        interpreter = VakInterpreter()
+        original_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            try:
+                os.chdir(temp_dir)
+                with contextlib.redirect_stdout(buffer):
+                    interpreter.run(source, filename=os.path.join(temp_dir, "tasks.vak"))
+            finally:
+                os.chdir(original_cwd)
+
+            data_path = Path(temp_dir) / "kaarya_soochi.txt"
+            self.assertTrue(data_path.exists())
+            self.assertIn("वाक् भाषा का अध्ययन करें", data_path.read_text(encoding="utf-8"))
+            self.assertIn("यह एक वास्तविक सॉफ्टवेयर अनुप्रयोग है।", buffer.getvalue())
+
+    def test_event_loop_does_not_run_sleeping_task_until_woken(self):
+        from runtime.src.event_loop import EventLoop
+
+        class FakeCoro:
+            def __init__(self):
+                self.completed = False
+                self.suspended = True
+
+        loop = EventLoop()
+        task = loop.create_task(FakeCoro(), name="sleeping")
+        called = []
+        loop._run_task = lambda queued_task: called.append(queued_task.name)
+
+        loop._run_once()
+        self.assertEqual(called, [])
+
+        loop._schedule_sleep(time.time() - 0.01, task)
+        loop._process_sleeping_tasks()
+        self.assertFalse(task.coro.suspended)
 
     def test_sutra_block_form_parses(self):
         source = """

@@ -4,7 +4,7 @@
 
 VakyaLang (वाक् भाषा) is a Sanskrit-inspired programming language that combines ancient Indian grammatical and logical traditions with modern computing. Built on Pāṇinian grammar and Nyāya logic, it offers unique features unavailable in any other programming language.
 
-**Version:** 2.16.0+  
+**Version:** 2.17.0  
 **Status:** ✅ Production Ready (100% tests passing)  
 **Author:** Visionary RM (Raj Mitra)  
 **License:** AGPL-3.0-or-later

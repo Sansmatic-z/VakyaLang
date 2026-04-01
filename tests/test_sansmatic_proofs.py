@@ -8,16 +8,24 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from sansmatic.src.engine import SansmaticEngine
+from sansmatic.src.config import SansmaticSettings
+from sansmatic.src.engine import ProofError, SansmaticEngine
 from runtime.src.compiler import CompileError
 from runtime.src.interpreter import VakInterpreter
 from runtime.src.macro_expander import SansmaticMacroEngine
 from runtime.src.ast_nodes import Program
+from runtime.src.errors import ParseError
 from runtime.src.nyaya_verifier import NyayaProofVerifier
 from runtime.src.vm import VakVM, VMError
 
 
 class SansmaticProofTests(unittest.TestCase):
+    def test_engine_rejects_unscoped_proof_registration_by_default(self):
+        engine = SansmaticEngine(verbose=False)
+
+        with self.assertRaisesRegex(ProofError, "Unscoped proof registration"):
+            engine.register_proof("proof_unsafe")
+
     def test_engine_records_obligations_instead_of_proving_unknown_claims(self):
         engine = SansmaticEngine(verbose=False)
 
@@ -43,6 +51,14 @@ class SansmaticProofTests(unittest.TestCase):
 
         self.assertFalse(certificate.verified)
         self.assertIn("not derivable", certificate.reason)
+
+    def test_verifier_rejects_predicate_claim_without_explicit_statement_expression(self):
+        verifier = NyayaProofVerifier()
+
+        certificate = verifier.verify_proof("अभाज्य_है(१७)", 4)
+
+        self.assertFalse(certificate.verified)
+        self.assertIn("statement expression", certificate.reason)
 
     def test_compile_time_proof_succeeds_for_derived_fact(self):
         source = """
@@ -82,6 +98,34 @@ class SansmaticProofTests(unittest.TestCase):
         bytecode = interpreter.compile_only(source)
 
         self.assertTrue(any(isinstance(item, dict) and item.get("verified") for item in bytecode.constants))
+        certificate = next(
+            item for item in bytecode.constants
+            if isinstance(item, dict) and item.get("kind") == "sansmatic_certificate"
+        )
+        metadata = certificate.get("metadata", {})
+        self.assertEqual(metadata.get("verified_by"), "NyayaProofVerifier")
+        self.assertIn("policy", metadata)
+        self.assertGreaterEqual(metadata.get("evidence_steps", 0), 1)
+
+    def test_compile_time_predicate_proof_rejects_trivial_evidence_block(self):
+        source = """
+सिद्धि: अभाज्य_है(१७)
+    प्रमाण:
+        १
+"""
+        interpreter = VakInterpreter()
+
+        with self.assertRaisesRegex(CompileError, "Predicate proof evidence is too weak"):
+            interpreter.compile_only(source)
+
+    def test_proof_declaration_requires_explicit_pramana_block(self):
+        source = """
+सिद्धि: अभाज्य_है(१७)
+"""
+        interpreter = VakInterpreter()
+
+        with self.assertRaisesRegex(ParseError, "प्रमाण: ब्लॉक आवश्यक है"):
+            interpreter.compile_only(source)
 
     def test_runtime_rejects_tampered_proof_certificate(self):
         source = """
@@ -104,6 +148,55 @@ class SansmaticProofTests(unittest.TestCase):
         with self.assertRaises(VMError):
             VakVM().run(bytecode)
 
+    def test_legacy_certificate_verification_remains_backward_compatible(self):
+        engine = SansmaticEngine(verbose=False)
+        certificate = engine.issue_certificate(
+            "entity IS Alive",
+            True,
+            pramana="ANUMANA",
+            confidence=0.9,
+        )
+
+        self.assertTrue(SansmaticEngine.verify_certificate(certificate))
+
+    def test_hmac_certificate_verification_rejects_tampering(self):
+        settings = SansmaticSettings(
+            certificate_mode="hmac-sha256",
+            certificate_secret="test-secret",
+            allow_legacy_certificates=False,
+        )
+        engine = SansmaticEngine(verbose=False, settings=settings)
+        certificate = engine.issue_certificate(
+            "entity IS Alive",
+            True,
+            pramana="ANUMANA",
+            confidence=0.9,
+        )
+
+        self.assertTrue(SansmaticEngine.verify_certificate(certificate, settings=settings))
+
+        tampered = copy.deepcopy(certificate)
+        tampered["statement"] = "entity IS Dead"
+        self.assertFalse(SansmaticEngine.verify_certificate(tampered, settings=settings))
+
+    def test_hmac_mode_rejects_unsigned_legacy_payloads_when_disabled(self):
+        legacy_engine = SansmaticEngine(verbose=False)
+        legacy_certificate = legacy_engine.issue_certificate(
+            "entity IS Alive",
+            True,
+            pramana="ANUMANA",
+            confidence=0.9,
+        )
+        strict_settings = SansmaticSettings(
+            certificate_mode="hmac-sha256",
+            certificate_secret="test-secret",
+            allow_legacy_certificates=False,
+        )
+
+        self.assertFalse(
+            SansmaticEngine.verify_certificate(legacy_certificate, settings=strict_settings)
+        )
+
     def test_macro_validation_uses_sansmatic_preconditions(self):
         engine = SansmaticEngine(verbose=False)
         macro_engine = SansmaticMacroEngine(engine)
@@ -121,6 +214,44 @@ class SansmaticProofTests(unittest.TestCase):
         )
 
         self.assertIsInstance(validated, Program)
+
+    def test_verifier_can_execute_registered_function_for_commutativity_checks(self):
+        class _Param:
+            def __init__(self, vibhakti):
+                self.vibhakti = vibhakti
+
+        class _Signature:
+            params = [_Param("कर्म"), _Param("कर्म")]
+
+        verifier = NyayaProofVerifier()
+        verifier.register_function("योग", _Signature(), lambda a, b: a + b)
+
+        self.assertTrue(verifier.check_commutativity("योग", [2, 3]))
+
+    def test_verifier_can_issue_kernel_judgment_certificate(self):
+        verifier = NyayaProofVerifier()
+
+        certificate = verifier.verify_kernel_judgment(
+            {
+                "term": "(refl 4 : Eq Nat 4 4)",
+                "type": "Eq Nat 4 4",
+            }
+        )
+
+        self.assertTrue(certificate.verified)
+        self.assertEqual(certificate.payload["kind"], "sansmatic_kernel_certificate")
+        self.assertTrue(NyayaProofVerifier.verify_kernel_certificate_payload(certificate.payload))
+
+    def test_certificate_payload_verifier_accepts_kernel_certificates(self):
+        verifier = NyayaProofVerifier()
+        certificate = verifier.verify_kernel_judgment(
+            {
+                "term": "refl 2",
+                "type": "Eq Nat 2 2",
+            }
+        )
+
+        self.assertTrue(NyayaProofVerifier.verify_certificate_payload(certificate.payload))
 
 
 if __name__ == "__main__":

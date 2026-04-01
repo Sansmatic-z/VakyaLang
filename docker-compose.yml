@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  vakyalang:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SANSMATIC_CERTIFICATE_MODE: ${SANSMATIC_CERTIFICATE_MODE:-auto}
+      SANSMATIC_CERTIFICATE_SECRET: ${SANSMATIC_CERTIFICATE_SECRET:-}
+      SANSMATIC_ALLOW_LEGACY_CERTIFICATES: ${SANSMATIC_ALLOW_LEGACY_CERTIFICATES:-true}
+      SANSMATIC_STRICT_PROOF_REGISTRATION: ${SANSMATIC_STRICT_PROOF_REGISTRATION:-true}
+      SANSMATIC_LOG_LEVEL: ${SANSMATIC_LOG_LEVEL:-INFO}
+    volumes:
+      - ./:/app
+    working_dir: /app
+    command: python master_test.py

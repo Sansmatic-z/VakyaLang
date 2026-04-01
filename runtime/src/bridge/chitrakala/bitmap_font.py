@@ -134,6 +134,37 @@ FONT_8x8: Dict[int, List[int]] = {
     ord('~'): [0x00, 0x00, 0x66, 0x99, 0x00, 0x00, 0x00, 0x00],
 }
 
+# Minimal Devanagari support for Vak's built-in graphics examples.
+# These are additive glyphs for the characters currently exercised by
+# example programs and tests.
+DEVANAGARI_8x8: Dict[int, List[int]] = {
+    ord('क'): [0x7E, 0x30, 0x30, 0x3C, 0x36, 0x66, 0x66, 0x00],
+    ord('च'): [0x7E, 0x06, 0x1C, 0x30, 0x60, 0x66, 0x3C, 0x00],
+    ord('त'): [0x7E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x1C, 0x00],
+    ord('द'): [0x7E, 0x0C, 0x18, 0x3C, 0x66, 0x66, 0x3C, 0x00],
+    ord('न'): [0x7E, 0x66, 0x06, 0x3E, 0x66, 0x66, 0x66, 0x00],
+    ord('प'): [0x7E, 0x66, 0x66, 0x7E, 0x60, 0x60, 0x60, 0x00],
+    ord('म'): [0x7E, 0x63, 0x77, 0x7F, 0x6B, 0x63, 0x63, 0x00],
+    ord('र'): [0x7E, 0x06, 0x1E, 0x06, 0x06, 0x0C, 0x38, 0x00],
+    ord('ल'): [0x7E, 0x30, 0x30, 0x30, 0x36, 0x36, 0x1C, 0x00],
+    ord('व'): [0x7E, 0x00, 0x66, 0x66, 0x7E, 0x0C, 0x18, 0x00],
+    ord('श'): [0x7E, 0x66, 0x66, 0x7E, 0x18, 0x18, 0x3C, 0x00],
+    ord('स'): [0x7E, 0x60, 0x60, 0x7C, 0x06, 0x66, 0x3C, 0x00],
+    ord('ा'): [0x00, 0x00, 0x06, 0x06, 0x06, 0x06, 0x3E, 0x00],
+    ord('ि'): [0x18, 0x0C, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00],
+    ord('े'): [0x18, 0x3C, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00],
+    ord('्'): [0x00, 0x00, 0x00, 0x00, 0x00, 0x3C, 0x3C, 0x00],
+}
+
+FONT_8x8.update(DEVANAGARI_8x8)
+
+DEVANAGARI_ATTACHING_MARKS = {
+    'ा': (6, 0),
+    'ि': (-2, 0),
+    'े': (0, -1),
+    '्': (0, 2),
+}
+
 
 class BitmapFont:
     """
@@ -155,7 +186,13 @@ class BitmapFont:
         """Get bitmap data for a character."""
         code = ord(char)
         return self.font_data.get(code, [0] * 8)  # Return blank if not found
-    
+
+    def is_attaching_mark(self, char: str) -> bool:
+        return char in DEVANAGARI_ATTACHING_MARKS
+
+    def attachment_offset(self, char: str) -> Tuple[int, int]:
+        return DEVANAGARI_ATTACHING_MARKS.get(char, (0, 0))
+
     def render_char(self, canvas: ChitraCanvas, x: int, y: int, char: str, color: ChitraColor):
         """
         Render a single character onto canvas.
@@ -173,10 +210,51 @@ class BitmapFont:
                 # Check if bit is set (MSB first)
                 if row_data & (0x80 >> col):
                     canvas.set_pixel(x + col, y + row_idx, color)
+
+    def render_char_scaled(
+        self,
+        canvas: ChitraCanvas,
+        x: int,
+        y: int,
+        char: str,
+        color: ChitraColor,
+        scale: int = 1,
+    ) -> None:
+        if scale == 1:
+            self.render_char(canvas, x, y, char, color)
+            return
+
+        bitmap = self.get_char_bitmap(char)
+        for row_idx, row_data in enumerate(bitmap):
+            for col in range(8):
+                if row_data & (0x80 >> col):
+                    for sy in range(scale):
+                        for sx in range(scale):
+                            canvas.set_pixel(
+                                x + col * scale + sx,
+                                y + row_idx * scale + sy,
+                                color,
+                            )
     
     def measure_text(self, text: str) -> Tuple[int, int]:
         """Get width and height of text in pixels."""
-        return len(text) * self.char_width, self.char_height
+        max_width = 0
+        current_width = 0
+        lines = 1
+        for char in text:
+            if char == '\n':
+                max_width = max(max_width, current_width)
+                current_width = 0
+                lines += 1
+                continue
+            if char == ' ':
+                current_width += self.char_width
+                continue
+            if self.is_attaching_mark(char):
+                continue
+            current_width += self.char_width
+        max_width = max(max_width, current_width)
+        return max_width, lines * self.char_height
 
 
 def draw_text(canvas: ChitraCanvas, x: int, y: int, text: str, color, 
@@ -202,35 +280,35 @@ def draw_text(canvas: ChitraCanvas, x: int, y: int, text: str, color,
     font = font or BitmapFont()
     
     current_x = x
+    current_y = y
+    last_base_x = x
     for char in text:
         if char == '\n':
             # New line
             current_x = x
-            y += font.char_height * scale
+            current_y += font.char_height * scale
+            last_base_x = x
             continue
         elif char == ' ':
             # Space
             current_x += font.char_width * scale
+            last_base_x = current_x
             continue
-        
-        if scale == 1:
-            font.render_char(canvas, current_x, y, char, color)
+
+        draw_x = current_x
+        draw_y = current_y
+        advance = font.char_width * scale
+
+        if font.is_attaching_mark(char):
+            offset_x, offset_y = font.attachment_offset(char)
+            draw_x = last_base_x + offset_x * scale
+            draw_y = current_y + offset_y * scale
+            advance = 0
         else:
-            # Scaled rendering
-            bitmap = font.get_char_bitmap(char)
-            for row_idx, row_data in enumerate(bitmap):
-                for col in range(8):
-                    if row_data & (0x80 >> col):
-                        # Draw scaled pixel
-                        for sy in range(scale):
-                            for sx in range(scale):
-                                canvas.set_pixel(
-                                    current_x + col * scale + sx,
-                                    y + row_idx * scale + sy,
-                                    color
-                                )
-        
-        current_x += font.char_width * scale
+            last_base_x = current_x
+
+        font.render_char_scaled(canvas, draw_x, draw_y, char, color, scale)
+        current_x += advance
 
 
 def draw_text_centered(canvas: ChitraCanvas, y: int, text: str, color,
@@ -247,6 +325,7 @@ def draw_text_centered(canvas: ChitraCanvas, y: int, text: str, color,
         scale: Scaling factor
     """
     font = font or BitmapFont()
-    text_width = len(text) * font.char_width * scale
+    text_width, _ = font.measure_text(text)
+    text_width *= scale
     x = (canvas.width - text_width) // 2
     draw_text(canvas, x, y, text, color, font, scale)

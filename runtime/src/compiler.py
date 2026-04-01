@@ -3,7 +3,7 @@
 
 from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, Optional
-from .bytecode import Bytecode
+from .bytecode import Bytecode, NO_DEFAULT
 from .opcodes import OpCode
 from .ast_nodes import *
 from .errors import CompileError
@@ -16,6 +16,9 @@ class FunctionScopeInfo:
     nonlocal_names: set[str] = field(default_factory=set)
     used_names: set[str] = field(default_factory=set)
     closure_names: set[str] = field(default_factory=set)
+
+
+RETURN_TYPE_HINT_KEY = "__return__"
 
 
 class Compiler:
@@ -37,6 +40,8 @@ class Compiler:
         optimize: bool = True,
         enclosing_function_scopes: Optional[list[set[str]]] = None,
         known_parinama_names: Optional[set[str]] = None,
+        branch_runtime: Optional[Any] = None,
+        source_path: str | None = None,
     ):
         self.bytecode = Bytecode()
         self.loop_stack = []  # For break/continue
@@ -46,6 +51,8 @@ class Compiler:
         ]
         self.known_parinama_names = set(known_parinama_names or set())
         self.scope_info: Optional[FunctionScopeInfo] = None
+        self.branch_runtime = branch_runtime
+        self.source_path = source_path
 
     def compile(self, node: Node) -> Bytecode:
         """
@@ -58,6 +65,13 @@ class Compiler:
         4. BYTECODE GENERATION: Convert optimized AST to bytecode
         """
         import math
+
+        if isinstance(node, Program) and self.branch_runtime is not None:
+            self.branch_runtime.before_compile(
+                node,
+                filename=self.source_path,
+                compiler=self,
+            )
 
         # ─────────────────────────────────────────────────────────────────────
         # PHASE 1: MACRO EXPANSION (सूत्र विस्तार)
@@ -92,6 +106,12 @@ class Compiler:
         if isinstance(node, Program):
             from .type_checker import TypeChecker
             TypeChecker().check(node)
+            if self.branch_runtime is not None:
+                self.branch_runtime.after_typecheck(
+                    node,
+                    filename=self.source_path,
+                    compiler=self,
+                )
 
         # ─────────────────────────────────────────────────────────────────────
         # PHASE 3: BYTECODE GENERATION
@@ -105,6 +125,13 @@ class Compiler:
 
         self._compile_node(node)
         self.bytecode.emit(OpCode.HALT)
+
+        if self.branch_runtime is not None:
+            self.branch_runtime.after_compile(
+                self.bytecode,
+                filename=self.source_path,
+                compiler=self,
+            )
 
         return self.bytecode
 
@@ -970,6 +997,8 @@ class Compiler:
 
         func_compiler.bytecode.num_params = len(node.params)
         func_compiler.bytecode.vibhakti_signature = vibhakti_sig
+        if node.return_type:
+            func_compiler.bytecode.type_hints[RETURN_TYPE_HINT_KEY] = node.return_type
 
         # Handle variadic argument
         if node.varargs:
@@ -979,11 +1008,13 @@ class Compiler:
         # Handle default values
         for default_node in node.defaults:
             if default_node is None:
+                func_compiler.bytecode.defaults.append(NO_DEFAULT)
+            elif isinstance(default_node, NullLiteral):
                 func_compiler.bytecode.defaults.append(None)
-            elif isinstance(default_node, (NumberLiteral, StringLiteral, BoolLiteral, NullLiteral)):
-                func_compiler.bytecode.defaults.append(getattr(default_node, 'value', None))
+            elif isinstance(default_node, (NumberLiteral, StringLiteral, BoolLiteral)):
+                func_compiler.bytecode.defaults.append(default_node.value)
             else:
-                func_compiler.bytecode.defaults.append(None)
+                func_compiler.bytecode.defaults.append(NO_DEFAULT)
 
         # Compile function body
         func_compiler._compile_node(node.body)

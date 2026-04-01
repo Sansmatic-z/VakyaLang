@@ -1,11 +1,19 @@
 # वाक् भाषा - बाइटकोड प्रतिनिधित्व (Bytecode Representation)
 # Vak Language - Bytecode format and utilities
 
+from enum import Enum
 from typing import List, Any, Dict, Optional
 from .opcodes import OpCode, OPCODE_NAMES
 
 ABI_FORMAT = "vak_bytecode_abi"
 ABI_VERSION = 1
+
+
+class DefaultSentinel(Enum):
+    NO_DEFAULT = "no_default"
+
+
+NO_DEFAULT = DefaultSentinel.NO_DEFAULT
 
 class Bytecode:
     """
@@ -185,6 +193,8 @@ class Bytecode:
 
     @classmethod
     def _encode_value(cls, value: Any) -> dict[str, Any]:
+        if value is NO_DEFAULT:
+            return {'kind': 'no_default'}
         if value is None:
             return {'kind': 'null'}
         if type(value) is bool:
@@ -220,6 +230,8 @@ class Bytecode:
     @classmethod
     def _decode_value(cls, payload: dict[str, Any]) -> Any:
         kind = payload.get('kind')
+        if kind == 'no_default':
+            return NO_DEFAULT
         if kind == 'null':
             return None
         if kind == 'bool':

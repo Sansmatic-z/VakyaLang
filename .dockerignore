@@ -1,0 +1,16 @@
+.git
+.github
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+dist
+build
+native/vakvm-rs/target
+test_output.png
+*.png
+kaarya_soochi.txt
+runtime/kaarya_soochi.txt

@@ -76,6 +76,7 @@ fn default_true() -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AbiValue {
+    NoDefault,
     Null,
     Bool { value: bool },
     Int { value: i64 },

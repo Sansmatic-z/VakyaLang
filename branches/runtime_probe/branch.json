@@ -1,0 +1,11 @@
+{
+  "name": "runtime_probe",
+  "version": "1.0.0",
+  "api_version": "1",
+  "kind": "validation",
+  "entrypoint": "branches.runtime_probe",
+  "capabilities": ["vm_builtins"],
+  "depends_on": [],
+  "conflicts_with": [],
+  "default_activation": false
+}

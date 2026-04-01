@@ -6,15 +6,15 @@
 # - Compiles to native Python bytecode
 # - Performance optimization
 
-from typing import Any, List, Dict, Callable
+from typing import Any, List, Dict, Callable, Optional
 from dataclasses import dataclass
 import time
-from .bytecode import Bytecode
+from .bytecode import Bytecode, NO_DEFAULT
 from .opcodes import OpCode, OPCODE_NAMES
 from .jit_compiler import JITCompiler
 from .event_loop import EventLoop, SUSPEND
 from .audit import emit_audit_event
-from .errors import VMError
+from .errors import VMError as BaseVMError
 
 class VakThrowException(Exception):
     def __init__(self, value):
@@ -55,6 +55,7 @@ class Cell:
 
 
 UNSET = object()
+RETURN_TYPE_HINT_KEY = "__return__"
 
 class VakClass:
     """Represents a custom VakyaLang class."""
@@ -256,9 +257,21 @@ class VakVM:
     - JIT compilation for hot code paths (Month 2-3 feature)
     """
 
-    def __init__(self, enable_jit: bool = True):
+    def __init__(
+        self,
+        enable_jit: bool = True,
+        *,
+        branch_runtime: Any = None,
+        active_branches: Optional[list[str]] = None,
+        branch_registry: Any = None,
+    ):
         self.frames: List[CallFrame] = []
         self.globals: Dict[str, Any] = {}
+        self.branch_runtime = self._resolve_branch_runtime(
+            branch_runtime=branch_runtime,
+            active_branches=active_branches,
+            branch_registry=branch_registry,
+        )
         self.builtins: Dict[str, Callable] = self._init_builtins()
         self.current_frame: CallFrame = None
         self.suppress_output = False
@@ -267,6 +280,28 @@ class VakVM:
         # JIT Compiler (Month 2-3 Advanced Feature)
         self.jit = JITCompiler() if enable_jit else None
         self.jit_enabled = enable_jit
+        self._refinement_engine: Any = None
+
+    def _resolve_branch_runtime(
+        self,
+        *,
+        branch_runtime: Any = None,
+        active_branches: Optional[list[str]] = None,
+        branch_registry: Any = None,
+    ) -> Any:
+        if branch_runtime is not None:
+            return branch_runtime
+
+        registry = branch_registry
+        if registry is None:
+            from branches.registry import create_default_registry
+
+            registry = create_default_registry()
+
+        return registry.create_runtime(
+            list(active_branches or []),
+            include_defaults=True,
+        )
 
     def _write_text(self, text: str) -> None:
         """Write VM output without crashing on non-UTF8 consoles."""
@@ -870,9 +905,15 @@ class VakVM:
             ADTType,
             ANY,
             BOOL,
+            ClassType,
             FLOAT,
+            FunctionType,
             INT,
+            ModuleType,
             NULL,
+            OBJECT,
+            RANGE,
+            RefinementType,
             STR,
             DictType,
             InstanceType,
@@ -899,6 +940,15 @@ class VakVM:
                 return type(value_obj) in (int, float)
             if vak_type == STR:
                 return isinstance(value_obj, str)
+            if vak_type == RANGE:
+                return isinstance(value_obj, range)
+            if vak_type == OBJECT:
+                return True
+            if isinstance(vak_type, RefinementType):
+                return (
+                    matches(value_obj, vak_type.base_type)
+                    and self._prove_runtime_refinement(vak_type.predicate, value_obj)
+                )
             if isinstance(vak_type, ListType):
                 return isinstance(value_obj, list) and all(matches(item, vak_type.element_type) for item in value_obj)
             if isinstance(vak_type, SetType):
@@ -942,12 +992,122 @@ class VakVM:
                 )
             if isinstance(vak_type, UnionType):
                 return any(matches(value_obj, option) for option in vak_type.options)
+            if isinstance(vak_type, FunctionType):
+                return (
+                    (isinstance(value_obj, tuple) and value_obj and value_obj[0] in ('function', 'bound_method'))
+                    or callable(value_obj)
+                )
+            if isinstance(vak_type, ClassType):
+                return isinstance(value_obj, VakClass) and value_obj.name == vak_type.name
             if isinstance(vak_type, InstanceType):
                 return isinstance(value_obj, VakInstance) and value_obj.klass.name == vak_type.name
+            if isinstance(vak_type, ModuleType):
+                return isinstance(value_obj, VakModule) and value_obj.name == vak_type.name
             actual_type = self.builtins['प्रकार'](value_obj)
             return str(vak_type) == actual_type
 
         return matches(value, parse_type_hint(expected_type))
+
+    def _get_refinement_engine(self):
+        if self._refinement_engine is None:
+            from sansmatic.src.config import SansmaticSettings
+            from sansmatic.src.engine import SansmaticEngine
+
+            self._refinement_engine = SansmaticEngine(
+                verbose=False,
+                settings=SansmaticSettings.from_env(),
+            )
+        return self._refinement_engine
+
+    def _serialize_refinement_value(self, value: Any) -> str:
+        if value is True:
+            return "सत्य"
+        if value is False:
+            return "असत्य"
+        if value is None:
+            return "शून्य"
+        if isinstance(value, str):
+            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+            return f'"{escaped}"'
+        if isinstance(value, tuple):
+            inner = ", ".join(self._serialize_refinement_value(item) for item in value)
+            return f"({inner})"
+        if isinstance(value, list):
+            inner = ", ".join(self._serialize_refinement_value(item) for item in value)
+            return f"[{inner}]"
+        if isinstance(value, set):
+            inner = ", ".join(
+                self._serialize_refinement_value(item)
+                for item in sorted(value, key=repr)
+            )
+            return f"{{{inner}}}"
+        if isinstance(value, dict):
+            parts = [
+                f"{self._serialize_refinement_value(key)}: {self._serialize_refinement_value(item)}"
+                for key, item in value.items()
+            ]
+            return f"{{{', '.join(parts)}}}"
+        return str(value)
+
+    def _prove_runtime_refinement(self, predicate: str, value: Any) -> bool:
+        try:
+            statement = f"{predicate}({self._serialize_refinement_value(value)})"
+            return self._get_refinement_engine().clone(verbose=False).verify_statement(statement)
+        except Exception:
+            return False
+
+    def _enforce_runtime_type_hint(
+        self,
+        value: Any,
+        expected_type: str | None,
+        *,
+        context: str,
+    ) -> None:
+        if not expected_type or expected_type == 'कोई_भी':
+            return
+        if self._value_matches_type(value, expected_type):
+            return
+        actual_type = self.builtins['प्रकार'](value)
+        raise VMError(
+            f"प्रकार त्रुटि: {context} के लिए '{expected_type}' अपेक्षित था, लेकिन '{actual_type}' मिला"
+        )
+
+    def _enforce_runtime_function_contract(self, frame: CallFrame, func_bc: Any) -> None:
+        type_hints = dict(getattr(func_bc, 'type_hints', {}) or {})
+        if not type_hints:
+            return
+
+        param_names = list(getattr(func_bc, 'param_names', []) or [])
+        if len(param_names) < func_bc.num_params:
+            param_names = list(frame.bytecode.var_names[:func_bc.num_params])
+        else:
+            param_names = param_names[:func_bc.num_params]
+
+        for local_index, param_name in enumerate(param_names):
+            if param_name == RETURN_TYPE_HINT_KEY:
+                continue
+            if local_index >= len(frame.locals):
+                break
+            value = self._unwrap_cell(frame.locals[local_index])
+            if value is UNSET:
+                continue
+            self._enforce_runtime_type_hint(
+                value,
+                type_hints.get(param_name),
+                context=f"parameter '{param_name}'",
+            )
+
+    def _enforce_runtime_return_type(self, frame: CallFrame, result: Any) -> Any:
+        if frame.is_constructor:
+            return result
+        expected_type = dict(getattr(frame.bytecode, 'type_hints', {}) or {}).get(RETURN_TYPE_HINT_KEY)
+        if expected_type:
+            self._enforce_runtime_type_hint(
+                result,
+                expected_type,
+                context=f"return value of '{frame.bytecode.name}'",
+            )
+        return result
 
     def _configure_vibhakti_frame(self, frame: CallFrame, func_bc: Any) -> None:
         from .vibhakti import VibhaktiCase
@@ -1044,6 +1204,10 @@ class VakVM:
             new_frame.locals[0] = self_obj
 
         user_param_count = max(func_bc.num_params - self_offset, 0)
+        if len(args) > user_param_count and not func_bc.varargs_name:
+            raise VMError(
+                f"Too many positional arguments: expected at most {user_param_count}, got {len(args)}"
+            )
         param_names = list(getattr(func_bc, 'param_names', []) or [])
         if len(param_names) >= func_bc.num_params:
             user_param_names = param_names[self_offset:func_bc.num_params]
@@ -1071,7 +1235,7 @@ class VakVM:
 
         defaults = list(getattr(func_bc, 'defaults', []) or [])
         if len(defaults) < func_bc.num_params:
-            defaults = [None] * (func_bc.num_params - len(defaults)) + defaults
+            defaults = [NO_DEFAULT] * (func_bc.num_params - len(defaults)) + defaults
         elif len(defaults) > func_bc.num_params:
             defaults = defaults[:func_bc.num_params]
 
@@ -1079,9 +1243,16 @@ class VakVM:
             if param_index in assigned:
                 continue
             local_index = self_offset + param_index
-            if local_index < len(defaults) and defaults[local_index] is not None:
+            if local_index < len(defaults) and defaults[local_index] is not NO_DEFAULT:
                 if local_index < len(new_frame.locals):
                     new_frame.locals[local_index] = defaults[local_index]
+            if local_index < len(new_frame.locals) and new_frame.locals[local_index] is UNSET:
+                param_name = (
+                    user_param_names[param_index]
+                    if param_index < len(user_param_names)
+                    else f"arg{param_index + 1}"
+                )
+                raise VMError(f"Missing required argument: {param_name}")
 
         if func_bc.varargs_name:
             varargs_slot = func_bc.num_params
@@ -1089,6 +1260,7 @@ class VakVM:
                 new_frame.locals[varargs_slot] = list(args[user_param_count:])
 
         self._configure_vibhakti_frame(new_frame, func_bc)
+        self._enforce_runtime_function_contract(new_frame, func_bc)
 
     def _module_name_candidates(self, module_name: str) -> list[str]:
         aliases = {
@@ -1142,7 +1314,9 @@ class VakVM:
         for bytecode in bytecodes:
             source_path = getattr(bytecode, "source_path", None)
             if source_path:
-                add_dir(os.path.dirname(source_path))
+                source_dir = os.path.dirname(source_path)
+                add_dir(source_dir)
+                add_dir(os.path.join(source_dir, 'वाक्_ग्रंथालय'))
 
         vm_dir = os.path.dirname(os.path.abspath(__file__))
         runtime_root = os.path.abspath(os.path.join(vm_dir, '..'))
@@ -1195,6 +1369,7 @@ class VakVM:
         if unified_root not in sys.path:
             sys.path.insert(0, unified_root)
 
+        from sansmatic.src.config import SansmaticSettings
         from sansmatic.src.engine import SansmaticEngine, ProofError
         from atmalipi.src.engine import AtmaLipiEngine, AtmaValue
         from runtime.src.errors import VMError
@@ -1217,36 +1392,11 @@ class VakVM:
         def _math_degrees(x): return math.degrees(float(x))
         def _math_radians(x): return math.radians(float(x))
         
-        _sansmatic = SansmaticEngine(verbose=True)
+        _sansmatic = SansmaticEngine(
+            verbose=True,
+            settings=SansmaticSettings.from_env(),
+        )
         _atmalipi = AtmaLipiEngine()
-
-        try:
-            bridge_dir = os.path.join(vm_dir, 'bridge')
-            if bridge_dir not in sys.path:
-                sys.path.append(bridge_dir)
-            from chitrakala.pixel_engine import ChitraCanvas, ChitraColor
-            from chitrakala.colors import get_color, list_colors
-            from chitrakala.png_encoder import save_png, load_png
-            from chitrakala.primitives import draw_point, draw_line, draw_circle, draw_rectangle, draw_polygon
-            from chitrakala.bitmap_font import draw_text, draw_text_centered
-            from chitrakala.effects import ChitraEffects
-            _chitra_available = True
-        except ImportError:
-            ChitraCanvas = None
-            ChitraColor = None
-            get_color = None
-            list_colors = None
-            save_png = None
-            load_png = None
-            draw_point = None
-            draw_line = None
-            draw_circle = None
-            draw_rectangle = None
-            draw_polygon = None
-            draw_text = None
-            draw_text_centered = None
-            ChitraEffects = None
-            _chitra_available = False
 
         def _read_file(path):
             resolved = _normalize_path(path)
@@ -1267,19 +1417,6 @@ class VakVM:
             if 'b' in mode:
                 return open(resolved, mode)
             return open(resolved, mode, encoding='utf-8')
-
-        def _require_chitra_support():
-            if not _chitra_available:
-                raise VMError("चित्रकला समर्थन उपलब्ध नहीं है")
-
-        def _resolve_chitra_color(value):
-            _require_chitra_support()
-            return get_color(value) if isinstance(value, str) else value
-
-        def _resolve_chitra_palette(values):
-            if isinstance(values, (list, tuple)):
-                return [_resolve_chitra_color(value) for value in values]
-            return [_resolve_chitra_color(values)]
 
         def _make_dir(path):
             resolved = _normalize_path(path)
@@ -1605,137 +1742,7 @@ class VakVM:
             def पायथन_चलाओ(*args): return None
             def पायथन_मूल्यांकन(*args): return None
 
-        # Chitrakala implementations - using *args for flexibility
-        def _chitra_canvas_impl(*args):
-            _require_chitra_support()
-            w, h = int(args[0]), int(args[1])
-            c = args[2] if len(args) > 2 else "white"
-            return ChitraCanvas(w, h, _resolve_chitra_color(c))
-        def _chitra_fill_impl(*args):
-            _require_chitra_support()
-            canv, c = args[0], args[1]
-            canv.fill(_resolve_chitra_color(c))
-        def _chitra_point_impl(*args):
-            _require_chitra_support()
-            canv, x, y = args[0], int(args[1]), int(args[2])
-            c = args[3] if len(args) > 3 else "black"
-            draw_point(canv, x, y, _resolve_chitra_color(c))
-        def _chitra_line_impl(*args):
-            _require_chitra_support()
-            canv, x0, y0, x1, y1 = args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4])
-            c = args[5] if len(args) > 5 else "black"
-            draw_line(canv, x0, y0, x1, y1, _resolve_chitra_color(c))
-        def _chitra_circle_impl(*args):
-            _require_chitra_support()
-            canv, x, y, r = args[0], int(args[1]), int(args[2]), int(args[3])
-            c = args[4] if len(args) > 4 else "black"
-            fill = bool(args[5]) if len(args) > 5 else False
-            draw_circle(canv, x, y, r, _resolve_chitra_color(c), fill)
-        def _chitra_rect_impl(*args):
-            _require_chitra_support()
-            canv, x, y, w, h = args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4])
-            c = args[5] if len(args) > 5 else "black"
-            fill = bool(args[6]) if len(args) > 6 else False
-            draw_rectangle(canv, x, y, w, h, _resolve_chitra_color(c), fill)
-        def _chitra_polygon_impl(*args):
-            _require_chitra_support()
-            canv, pts, c = args[0], args[1], args[2] if len(args) > 2 else "black"
-            fill = bool(args[3]) if len(args) > 3 else False
-            draw_polygon(canv, [(int(p[0]), int(p[1])) for p in pts], _resolve_chitra_color(c), fill)
-        def _chitra_text_impl(*args):
-            _require_chitra_support()
-            canv, x, y, text = args[0], int(args[1]), int(args[2]), str(args[3])
-            font_arg = args[4] if len(args) > 4 else None
-            size = int(args[5]) if len(args) > 5 else 1
-            c = args[6] if len(args) > 6 else "black"
-            # Handle font argument - if it's a string, pass None (use default font)
-            font = None if isinstance(font_arg, str) else font_arg
-            draw_text(canv, x, y, text, _resolve_chitra_color(c), font, size)
-            return canv
-        def _chitra_text_centered_impl(*args):
-            _require_chitra_support()
-            canv, y, text = args[0], int(args[1]), str(args[2])
-            color = args[3] if len(args) > 3 else "black"
-            scale = int(args[4]) if len(args) > 4 else 1
-            draw_text_centered(canv, y, text, _resolve_chitra_color(color), scale=scale)
-            return canv
-        def _chitra_save_impl(*args):
-            _require_chitra_support()
-            canv, path = args[0], str(args[1])
-            save_png(canv, path)
-        def _chitra_load_impl(*args):
-            _require_chitra_support()
-            path = str(args[0])
-            return load_png(path)
-        def _chitra_color_impl(*args):
-            _require_chitra_support()
-            return get_color(str(args[0]))
-        def _chitra_colors_impl():
-            _require_chitra_support()
-            return list_colors()
-        def _chitra_width_impl(*args):
-            return args[0].width
-        def _chitra_height_impl(*args):
-            return args[0].height
-        def _chitra_pixel_get_impl(*args):
-            _require_chitra_support()
-            canv, x, y = args[0], int(args[1]), int(args[2])
-            return canv.get_pixel(x, y)
-        def _chitra_pixel_set_impl(*args):
-            _require_chitra_support()
-            canv, x, y, c = args[0], int(args[1]), int(args[2]), args[3]
-            canv.set_pixel(x, y, _resolve_chitra_color(c))
-            return canv
-        def _chitra_clear_impl(*args):
-            _require_chitra_support()
-            canv, c = args[0], args[1] if len(args) > 1 else "white"
-            canv.fill(_resolve_chitra_color(c))
-            return canv
-        def _chitra_gradient_impl(*args):
-            _require_chitra_support()
-            # Horizontal gradient
-            canv, c1, c2 = args[0], args[1], args[2]
-            c1 = _resolve_chitra_color(c1)
-            c2 = _resolve_chitra_color(c2)
-            for x in range(canv.width):
-                ratio = x / max(1, canv.width - 1)
-                r = int(c1.r * (1 - ratio) + c2.r * ratio)
-                g = int(c1.g * (1 - ratio) + c2.g * ratio)
-                b = int(c1.b * (1 - ratio) + c2.b * ratio)
-                for y in range(canv.height):
-                    canv.set_pixel(x, y, ChitraColor(r, g, b))
-            return canv
-        def _chitra_rotate_impl(*args):
-            _require_chitra_support()
-            canv = args[0]
-            angle = float(args[1]) if len(args) > 1 else 0.0
-            center_x = int(args[2]) if len(args) > 2 else canv.width // 2
-            center_y = int(args[3]) if len(args) > 3 else canv.height // 2
-            return ChitraEffects.rotate(canv, angle, center_x, center_y)
-        def _chitra_mandala_impl(*args):
-            _require_chitra_support()
-            canv = args[0]
-            center_x = int(args[1]) if len(args) > 1 else canv.width // 2
-            center_y = int(args[2]) if len(args) > 2 else canv.height // 2
-            radius = int(args[3]) if len(args) > 3 else min(canv.width, canv.height) // 3
-            petals = max(1, int(args[4])) if len(args) > 4 else 12
-            palette = args[5] if len(args) > 5 else ["red", "green", "blue", "yellow"]
-            ChitraEffects.mandala_pattern(
-                canv,
-                center_x,
-                center_y,
-                radius,
-                petals,
-                _resolve_chitra_palette(palette),
-            )
-            return canv
-        def _chitra_kaleidoscope_impl(*args):
-            _require_chitra_support()
-            canv = args[0]
-            segments = max(2, int(args[1])) if len(args) > 1 else 8
-            return ChitraEffects.kaleidoscope(canv, segments)
-
-        return {
+        builtins = {
             'None': None,
             'True': True,
             'False': False,
@@ -1855,34 +1862,17 @@ class VakVM:
             'आत्म_भाव': lambda *args: args[0].bhav or "शून्य" if args and isinstance(args[0], AtmaValue) else "शून्य",
             'आत्म_अवस्था': lambda *args: args[0].avastha or "शून्य" if args and isinstance(args[0], AtmaValue) else "शून्य",
             'आत्म_मूल': lambda *args: args[0].value if args and isinstance(args[0], AtmaValue) else (args[0] if args else None),
-            '_chitra_canvas': lambda *args: _chitra_canvas_impl(*args),
-            '_chitra_fill': lambda *args: _chitra_fill_impl(*args),
-            '_chitra_point': lambda *args: _chitra_point_impl(*args),
-            '_chitra_line': lambda *args: _chitra_line_impl(*args),
-            '_chitra_circle': lambda *args: _chitra_circle_impl(*args),
-            '_chitra_rect': lambda *args: _chitra_rect_impl(*args),
-            '_chitra_polygon': lambda *args: _chitra_polygon_impl(*args),
-            '_chitra_text': lambda *args: _chitra_text_impl(*args),
-            '_chitra_save': lambda *args: _chitra_save_impl(*args),
-            '_chitra_load': lambda *args: _chitra_load_impl(*args),
-            '_chitra_color': lambda *args: _chitra_color_impl(*args),
-            '_chitra_colors': lambda *args: _chitra_colors_impl(*args),
-            '_chitra_width': lambda *args: _chitra_width_impl(*args),
-            '_chitra_height': lambda *args: _chitra_height_impl(*args),
-            '_chitra_pixel_get': lambda *args: _chitra_pixel_get_impl(*args),
-            '_chitra_pixel_set': lambda *args: _chitra_pixel_set_impl(*args),
-            '_chitra_clear': lambda *args: _chitra_clear_impl(*args),
-            '_chitra_text_centered': lambda *args: _chitra_text_centered_impl(*args),
-            '_chitra_gradient': lambda *args: _chitra_gradient_impl(*args),
-            '_chitra_rotate': lambda *args: _chitra_rotate_impl(*args),
-            '_chitra_mandala': lambda *args: _chitra_mandala_impl(*args),
-            '_chitra_kaleidoscope': lambda *args: _chitra_kaleidoscope_impl(*args),
             'पायथन_आयात': पायथन_आयात,
             'पायथन_चलाओ': पायथन_चलाओ,
             'पायथन_मूल्यांकन': पायथन_मूल्यांकन,
             'अक्षर_मान': ord,
             'अक्षर_कर': chr,
         }
+
+        if self.branch_runtime is not None:
+            self.branch_runtime.extend_vm_builtins(builtins, vm=self)
+
+        return builtins
 
 
     def run(self, bytecode: Bytecode) -> Any:
@@ -2262,6 +2252,7 @@ class VakVM:
                 is_ctor = frame.is_constructor
                 if is_ctor:
                     result = frame.locals[0] # Return the instance instead
+                result = self._enforce_runtime_return_type(frame, result)
                 result = self._enforce_vibhakti_return(frame, result)
                 self.frames.pop()
                 if not self.frames:
@@ -2275,6 +2266,7 @@ class VakVM:
             elif op == OpCode.RETURN_VOID.value:
                 is_ctor = frame.is_constructor
                 result = frame.locals[0] if is_ctor else None
+                result = self._enforce_runtime_return_type(frame, result)
                 result = self._enforce_vibhakti_return(frame, result)
                 self.frames.pop()
                 if not self.frames:
@@ -2961,11 +2953,13 @@ class VakVM:
                 return None
                 
             elif op == OpCode.RETURN.value:
-                result = self._enforce_vibhakti_return(frame, frame.stack.pop())
+                result = self._enforce_runtime_return_type(frame, frame.stack.pop())
+                result = self._enforce_vibhakti_return(frame, result)
                 return result
                 
             elif op == OpCode.RETURN_VOID.value:
-                return self._enforce_vibhakti_return(frame, None)
+                result = self._enforce_runtime_return_type(frame, None)
+                return self._enforce_vibhakti_return(frame, result)
                 
             elif op == OpCode.AWAIT.value:
                 # Hit await - suspend execution
@@ -3140,7 +3134,8 @@ class VakVM:
                     continue
             
             elif op == OpCode.RETURN.value:
-                result = self._enforce_vibhakti_return(frame, frame.stack.pop())
+                result = self._enforce_runtime_return_type(frame, frame.stack.pop())
+                result = self._enforce_vibhakti_return(frame, result)
                 coroutine.result = result
                 coroutine.completed = True
                 coroutine.suspended = False
@@ -3149,7 +3144,8 @@ class VakVM:
                 return result
             
             elif op == OpCode.RETURN_VOID.value:
-                coroutine.result = self._enforce_vibhakti_return(frame, None)
+                result = self._enforce_runtime_return_type(frame, None)
+                coroutine.result = self._enforce_vibhakti_return(frame, result)
                 coroutine.completed = True
                 coroutine.suspended = False
                 self.frames.pop()
@@ -3527,19 +3523,25 @@ class VakVM:
         
         if hasattr(func_bc, 'defaults'):
             for i in range(len(args), num_fixed):
-                if i < len(frame.locals) and func_bc.defaults[i] is not None:
+                if i < len(frame.locals) and func_bc.defaults[i] is not NO_DEFAULT:
                     frame.locals[i] = func_bc.defaults[i]
         
         return VakCoroutine(frame, func_bc)
 
     def _format_stack_trace(self) -> str:
         """Format call stack for error reporting."""
-        lines = ["Stack trace:"]
+        import os
+
+        lines = ["वाक् आवाहन-पथ (Vak Stack Trace):"]
         for i, frame in enumerate(reversed(self.frames)):
             name = frame.bytecode.name
             pc = frame.pc
-            lines.append(f"  {i}: {name} (PC={pc})")
+            source_path = getattr(frame.bytecode, "source_path", None)
+            if source_path:
+                lines.append(f"  {i}: {name} [{os.path.basename(source_path)}] (PC={pc})")
+            else:
+                lines.append(f"  {i}: {name} (PC={pc})")
         return "\n".join(lines)
 
-class VMError(Exception):
+class VMError(BaseVMError):
     pass

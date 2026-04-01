@@ -10,9 +10,13 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set
 from dataclasses import dataclass, field
 from enum import Enum, auto
+import logging
 import time
 
+from sansmatic.src.config import SansmaticSettings
 from sansmatic.src.engine import SansmaticEngine, ProofError
+from sansmatic.src.kernel import KernelProofCertificate, KernelProofVerifier
+from .audit import emit_audit_event
 
 
 class Pramana(Enum):
@@ -92,6 +96,22 @@ class ProofResult:
     environment: Dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ProofVerificationPolicy:
+    """
+    Verification policy for compile-time and runtime proof checks.
+
+    These defaults harden predicate proofs without changing the
+    existing statement/fact proof surface.
+    """
+
+    allow_expression_predicates: bool = True
+    require_nontrivial_predicate_evidence: bool = True
+    trace_limit: int = 25
+    max_steps: int = 10000
+    emit_audit_events: bool = True
+
+
 class SandboxError(Exception):
     """Exception raised during sandboxed proof execution."""
 
@@ -126,6 +146,8 @@ class ProofSandbox:
         rules: Set[Rule],
         engine: Optional[SansmaticEngine] = None,
         initial_env: Optional[Dict[str, Any]] = None,
+        *,
+        max_steps: int = 10000,
     ):
         self.engine = engine.clone(verbose=False) if engine is not None else SansmaticEngine(verbose=False)
         if engine is None:
@@ -140,7 +162,7 @@ class ProofSandbox:
                 self.engine.rule(rule.premise, rule.conclusion)
 
         self.execution_trace: List[str] = []
-        self.max_steps = 10000
+        self.max_steps = max_steps
         self.step_count = 0
         self.env: Dict[str, Any] = dict(initial_env or {})
         self.builtins: Dict[str, Any] = {}
@@ -673,12 +695,25 @@ class NyayaProofVerifier:
     Formal Nyāya proof verifier backed by Sansmatic.
     """
 
-    def __init__(self):
-        self.engine = SansmaticEngine(verbose=False)
+    def __init__(
+        self,
+        *,
+        settings: Optional[SansmaticSettings] = None,
+        policy: Optional[ProofVerificationPolicy] = None,
+        logger: Optional[logging.Logger] = None,
+    ):
+        self.settings = settings or SansmaticSettings.from_env()
+        self.policy = policy or ProofVerificationPolicy()
+        self.logger = logger or logging.getLogger("vak.nyaya_verifier")
+        if not self.logger.handlers:
+            self.logger.addHandler(logging.NullHandler())
+        self.engine = SansmaticEngine(verbose=False, settings=self.settings, logger=self.logger)
+        self.kernel_verifier = KernelProofVerifier(settings=self.settings)
         self.facts: Set[Fact] = set()
         self.rules: Set[Rule] = set()
         self.proofs: Dict[str, ProofCertificate] = {}
         self.function_signatures: Dict[str, Any] = {}
+        self.function_implementations: Dict[str, Any] = {}
 
     def add_fact(self, entity: str, relation: str, property_: str) -> None:
         fact = Fact(entity, relation, property_)
@@ -698,12 +733,27 @@ class NyayaProofVerifier:
         statement_expr: Any = None,
         certificate_hint: Optional[str] = None,
     ) -> ProofCertificate:
-        sandbox = ProofSandbox(self.facts, self.rules, engine=self.engine)
+        if self.policy.emit_audit_events:
+            emit_audit_event("vak.proof.verify.start", statement)
+
+        sandbox = ProofSandbox(
+            self.facts,
+            self.rules,
+            engine=self.engine,
+            max_steps=self.policy.max_steps,
+        )
         result = sandbox.execute(evidence)
 
-        verified, reason = self._check_statement(statement, statement_expr, result, sandbox)
+        verified, reason = self._check_statement(
+            statement,
+            statement_expr,
+            evidence,
+            result,
+            sandbox,
+        )
         pramana = self._determine_pramana(statement, result, sandbox)
         confidence = self._calculate_confidence(verified, pramana, result, sandbox)
+        metadata = self._build_certificate_metadata(statement, result, sandbox)
         payload = sandbox.engine.issue_certificate(
             statement,
             verified,
@@ -711,6 +761,7 @@ class NyayaProofVerifier:
             confidence=confidence,
             certificate_hint=certificate_hint,
             reason=reason,
+            metadata=metadata,
         )
         cert = ProofCertificate(
             statement=statement,
@@ -723,12 +774,22 @@ class NyayaProofVerifier:
             payload=payload,
         )
         self.proofs[statement] = cert
+        if self.policy.emit_audit_events:
+            emit_audit_event(
+                "vak.proof.verify.complete",
+                statement,
+                verified,
+                pramana.name,
+                confidence,
+                result.steps,
+            )
         return cert
 
     def _check_statement(
         self,
         statement: str,
         statement_expr: Any,
+        evidence: Any,
         result: ProofResult,
         sandbox: ProofSandbox,
     ) -> tuple[bool, Optional[str]]:
@@ -741,22 +802,157 @@ class NyayaProofVerifier:
         if sandbox.engine.obligations:
             return False, f"Unmet proof obligations: {len(sandbox.engine.obligations)}"
 
-        if statement_expr is not None:
+        parsed = sandbox.engine.parse_statement(statement)
+
+        if parsed["kind"] == "predicate":
+            if not self.policy.allow_expression_predicates:
+                return False, "Predicate expression proofs are disabled by policy"
+            if statement_expr is None:
+                return False, "Predicate proofs require a statement expression"
+            if (
+                self.policy.require_nontrivial_predicate_evidence and
+                not self._has_nontrivial_evidence(result, evidence=evidence)
+            ):
+                return False, "Predicate proof evidence is too weak"
             try:
                 evaluated = sandbox.evaluate_expression(statement_expr)
                 if isinstance(evaluated, bool):
                     return evaluated, None if evaluated else "Statement expression evaluated to false"
+                return False, "Predicate statement expression did not evaluate to bool"
             except Exception as error:
                 return False, f"Statement expression could not be evaluated: {error}"
 
         if sandbox.engine.verify_statement(statement):
             return True, None
 
-        parsed = sandbox.engine.parse_statement(statement)
-        if parsed["kind"] == "predicate" and sandbox.engine.verify_statement(statement):
-            return True, None
-
         return False, "Statement is not derivable from facts, rules, and evidence"
+
+    def _build_certificate_metadata(
+        self,
+        statement: str,
+        result: ProofResult,
+        sandbox: ProofSandbox,
+    ) -> Dict[str, Any]:
+        return {
+            "verified_by": "NyayaProofVerifier",
+            "statement_kind": sandbox.engine.parse_statement(statement).get("kind"),
+            "evidence_steps": result.steps,
+            "trace_excerpt": result.trace[: self.policy.trace_limit],
+            "environment_keys": sorted(result.environment.keys())[: self.policy.trace_limit],
+            "policy": {
+                "allow_expression_predicates": self.policy.allow_expression_predicates,
+                "require_nontrivial_predicate_evidence": self.policy.require_nontrivial_predicate_evidence,
+                "trace_limit": self.policy.trace_limit,
+                "max_steps": self.policy.max_steps,
+            },
+        }
+
+    @staticmethod
+    def _has_nontrivial_evidence(result: ProofResult, *, evidence: Any) -> bool:
+        if result.trace:
+            return True
+        if evidence is None:
+            return False
+        if isinstance(evidence, (list, tuple, set, dict)):
+            return bool(evidence)
+        if hasattr(evidence, "stmts"):
+            stmts = getattr(evidence, "stmts", [])
+            return any(NyayaProofVerifier._statement_has_meaningful_evidence(stmt) for stmt in stmts)
+        evidence_type = type(evidence).__name__
+        return evidence_type not in {"bool", "int", "float", "str", "NoneType"}
+
+    @staticmethod
+    def _statement_has_meaningful_evidence(node: Any) -> bool:
+        from .ast_nodes import (
+            AssignExpr,
+            Block,
+            ExprStmt,
+            ForStmt,
+            IfStmt,
+            ListComp,
+            DictComp,
+            MatchStmt,
+            ReturnStmt,
+            ThrowStmt,
+            TryStmt,
+            VarDecl,
+            WhileStmt,
+            WithStmt,
+        )
+
+        if isinstance(node, Block):
+            return any(NyayaProofVerifier._statement_has_meaningful_evidence(stmt) for stmt in node.stmts)
+        if isinstance(node, ExprStmt):
+            return NyayaProofVerifier._expression_has_meaningful_evidence(node.expr)
+        if isinstance(node, VarDecl):
+            return node.value is not None and NyayaProofVerifier._expression_has_meaningful_evidence(node.value)
+        if isinstance(node, (IfStmt, WhileStmt, ForStmt, MatchStmt, TryStmt, WithStmt, ThrowStmt, ReturnStmt)):
+            return True
+        if isinstance(node, AssignExpr):
+            return NyayaProofVerifier._expression_has_meaningful_evidence(node.value)
+        return False
+
+    @staticmethod
+    def _expression_has_meaningful_evidence(node: Any) -> bool:
+        from .ast_nodes import (
+            AssignExpr,
+            BinaryExpr,
+            CallExpr,
+            ConditionalExpr,
+            DictLiteral,
+            DictComp,
+            FStringExpr,
+            IdentifierExpr,
+            IndexExpr,
+            ListLiteral,
+            ListComp,
+            MemberExpr,
+            NullLiteral,
+            NumberLiteral,
+            SetLiteral,
+            StringLiteral,
+            TupleLiteral,
+            BoolLiteral,
+            UnaryExpr,
+        )
+
+        if isinstance(node, CallExpr):
+            return True
+        if isinstance(node, (ListComp, DictComp)):
+            return True
+        if isinstance(node, AssignExpr):
+            return NyayaProofVerifier._expression_has_meaningful_evidence(node.value)
+        if isinstance(node, ConditionalExpr):
+            return (
+                NyayaProofVerifier._expression_has_meaningful_evidence(node.condition)
+                or NyayaProofVerifier._expression_has_meaningful_evidence(node.then_expr)
+                or NyayaProofVerifier._expression_has_meaningful_evidence(node.else_expr)
+            )
+        if isinstance(node, BinaryExpr):
+            return (
+                NyayaProofVerifier._expression_has_meaningful_evidence(node.left)
+                or NyayaProofVerifier._expression_has_meaningful_evidence(node.right)
+            )
+        if isinstance(node, UnaryExpr):
+            return NyayaProofVerifier._expression_has_meaningful_evidence(node.operand)
+        if isinstance(node, FStringExpr):
+            return any(
+                not isinstance(part, str) and NyayaProofVerifier._expression_has_meaningful_evidence(part)
+                for part in node.parts
+            )
+        if isinstance(node, (MemberExpr, IndexExpr)):
+            return True
+        if isinstance(node, (IdentifierExpr, NumberLiteral, StringLiteral, BoolLiteral, NullLiteral)):
+            return False
+        if isinstance(node, (ListLiteral, TupleLiteral, SetLiteral)):
+            return any(NyayaProofVerifier._expression_has_meaningful_evidence(item) for item in node.elements)
+        if isinstance(node, DictLiteral):
+            return any(
+                NyayaProofVerifier._expression_has_meaningful_evidence(key)
+                or NyayaProofVerifier._expression_has_meaningful_evidence(value)
+                for key, value in node.pairs
+            )
+        return node is not None
 
     def _determine_pramana(
         self,
@@ -824,13 +1020,32 @@ class NyayaProofVerifier:
         return self.function_signatures.get(func_name)
 
     def _call_function(self, func_name: str, args: List[Any]) -> Any:
+        implementation = self.function_implementations.get(func_name)
+        if callable(implementation):
+            return implementation(*args)
         return None
 
-    def register_function(self, func_name: str, signature: Any) -> None:
+    def register_function(
+        self,
+        func_name: str,
+        signature: Any,
+        implementation: Any = None,
+    ) -> None:
         self.function_signatures[func_name] = signature
+        if implementation is not None:
+            self.function_implementations[func_name] = implementation
+
+    def verify_kernel_judgment(self, judgment_spec: Any) -> KernelProofCertificate:
+        return self.kernel_verifier.verify(judgment_spec)
+
+    @staticmethod
+    def verify_kernel_certificate_payload(payload: Any) -> bool:
+        return KernelProofVerifier().verify_certificate(payload)
 
     @staticmethod
     def verify_certificate_payload(payload: Any) -> bool:
+        if isinstance(payload, dict) and payload.get("kind") == "sansmatic_kernel_certificate":
+            return KernelProofVerifier().verify_certificate(payload)
         return SansmaticEngine.verify_certificate(payload)
 
 
@@ -839,6 +1054,7 @@ __all__ = [
     "ProofSandbox",
     "ProofCertificate",
     "ProofResult",
+    "ProofVerificationPolicy",
     "Fact",
     "Rule",
     "Pramana",
