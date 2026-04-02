@@ -1373,6 +1373,14 @@ class VakVM:
         from sansmatic.src.engine import SansmaticEngine, ProofError
         from atmalipi.src.engine import AtmaLipiEngine, AtmaValue
         from runtime.src.errors import VMError
+        from runtime.src.semantic_guards import (
+            build_karaka_signature,
+            classify_padartha,
+            create_dharma_spec,
+            validate_dharma_value,
+            validate_karaka_roles,
+            validate_nyaya_syllogism,
+        )
 
         def _normalize_path(path):
             try:
@@ -1397,6 +1405,57 @@ class VakVM:
             settings=SansmaticSettings.from_env(),
         )
         _atmalipi = AtmaLipiEngine()
+
+        def _dharma_create(*args):
+            if len(args) < 2:
+                raise VMError("धर्म_निर्माण: नाम और सार चाहिए")
+            properties = args[2] if len(args) > 2 else None
+            operations = args[3] if len(args) > 3 else None
+            description = args[4] if len(args) > 4 else ""
+            try:
+                return create_dharma_spec(args[0], args[1], properties, operations, description)
+            except ValueError as exc:
+                raise VMError(f"धर्म_निर्माण: {exc}") from exc
+
+        def _dharma_report(*args):
+            if len(args) < 2:
+                raise VMError("धर्म_जाँच: धर्म और मूल्य चाहिए")
+            try:
+                return validate_dharma_value(args[0], args[1])
+            except ValueError as exc:
+                raise VMError(f"धर्म_जाँच: {exc}") from exc
+
+        def _dharma_valid(*args):
+            return bool(_dharma_report(*args).get("valid"))
+
+        def _karaka_signature(*args):
+            if len(args) < 2:
+                raise VMError("कारक_हस्ताक्षर: क्रिया और पैरामीटर_सूची चाहिए")
+            try:
+                return build_karaka_signature(args[0], args[1])
+            except ValueError as exc:
+                raise VMError(f"कारक_हस्ताक्षर: {exc}") from exc
+
+        def _karaka_report(*args):
+            if len(args) < 2:
+                raise VMError("कारक_जाँच: हस्ताक्षर और प्रदत्त_भूमिकाएँ चाहिए")
+            try:
+                return validate_karaka_roles(args[0], args[1])
+            except ValueError as exc:
+                raise VMError(f"कारक_जाँच: {exc}") from exc
+
+        def _nyaya_report(*args):
+            if len(args) < 5:
+                raise VMError("न्याय_सिद्धि_रिपोर्ट: प्रतिज्ञा, हेतु, उदाहरण, उपनय, निगमन चाहिए")
+            return validate_nyaya_syllogism(args[0], args[1], args[2], args[3], args[4])
+
+        def _nyaya_valid(*args):
+            return bool(_nyaya_report(*args).get("valid"))
+
+        def _padartha(*args):
+            if not args:
+                return "अभाव"
+            return classify_padartha(args[0])
 
         def _read_file(path):
             resolved = _normalize_path(path)
@@ -1867,6 +1926,14 @@ class VakVM:
             'पायथन_मूल्यांकन': पायथन_मूल्यांकन,
             'अक्षर_मान': ord,
             'अक्षर_कर': chr,
+            'धर्म_निर्माण': _dharma_create,
+            'धर्म_जाँच': _dharma_report,
+            'धर्म_मान्य_है': _dharma_valid,
+            'कारक_हस्ताक्षर': _karaka_signature,
+            'कारक_जाँच': _karaka_report,
+            'न्याय_सिद्धि_रिपोर्ट': _nyaya_report,
+            'न्याय_सिद्धि_मान्य_है': _nyaya_valid,
+            'पदार्थ_वर्गीकरण': _padartha,
         }
 
         if self.branch_runtime is not None:

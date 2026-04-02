@@ -156,6 +156,7 @@ class TypeChecker:
         one_str = FunctionType((ANY,), STR)
         one_bool = FunctionType((ANY,), BOOL)
         one_seq = FunctionType((ANY,), INT)
+        one_report = DictType(STR, ANY)
         self.globals.define("पाठ_कर", one_str, fixed=True)
         self.globals.define("str", one_str, fixed=True)
         self.globals.define("दीर्घता", one_seq, fixed=True)
@@ -198,6 +199,14 @@ class TypeChecker:
         self.globals.define("फल_त्रुटि", FunctionType((ANY,), ANY), fixed=True)
         self.globals.define("पद", FunctionType((ANY,), ANY), fixed=True)
         self.globals.define("term", FunctionType((ANY,), ANY), fixed=True)
+        self.globals.define("धर्म_निर्माण", FunctionType((STR, STR), one_report, defaults_count=0, varargs_name="rest"), fixed=True)
+        self.globals.define("धर्म_जाँच", FunctionType((ANY, ANY), one_report), fixed=True)
+        self.globals.define("धर्म_मान्य_है", FunctionType((ANY, ANY), BOOL), fixed=True)
+        self.globals.define("कारक_हस्ताक्षर", FunctionType((STR, ANY), one_report), fixed=True)
+        self.globals.define("कारक_जाँच", FunctionType((ANY, DictType(STR, ANY)), one_report), fixed=True)
+        self.globals.define("न्याय_सिद्धि_रिपोर्ट", FunctionType((STR, STR, STR, STR, STR), one_report), fixed=True)
+        self.globals.define("न्याय_सिद्धि_मान्य_है", FunctionType((STR, STR, STR, STR, STR), BOOL), fixed=True)
+        self.globals.define("पदार्थ_वर्गीकरण", FunctionType((ANY,), STR), fixed=True)
 
     def _predeclare_block(self, stmts: list[Any], env: TypeEnv) -> None:
         for stmt in stmts:
