@@ -1582,7 +1582,6 @@ class Compiler:
         self.bytecode.emit(OpCode.STORE_VAR, slot)
 
         # The bound name inside the block should receive __enter__().
-        self.bytecode.emit(OpCode.DUP)
         enter_idx = self.bytecode.add_constant('__enter__')
         self.bytecode.emit_16bit(OpCode.LOAD_CONST, enter_idx)
         self.bytecode.emit(OpCode.CALL_METHOD, 0)

@@ -10,6 +10,118 @@ use thiserror::Error;
 
 use crate::abi::{AbiEnvelope, AbiValue, BytecodeAbi};
 
+const CALL_BUILTIN_NAMES: &[&str] = &[
+    "पाठ_कर",
+    "str",
+    "परास",
+    "range",
+    "दीर्घता",
+    "len",
+    "प्रकार",
+    "type",
+    "संख्या",
+    "int",
+    "दशमलव",
+    "float",
+    "मुद्रय",
+    "print",
+    "पठन",
+    "लेखन",
+    "खोलो",
+    "अस्तित्व",
+    "मिटाओ",
+    "सूची_निर्देशिका",
+    "बनाओ_निर्देशिका",
+    "परिवेश_प्राप्त",
+    "परिवेश_सेट",
+    "प्रणाली_कमांड",
+    "मंच",
+    "कार्य_निर्देशिका",
+    "संयोग",
+    "विभाजन",
+    "छाँटो",
+    "उच्च",
+    "निम्न",
+    "पूर्णांक_कर",
+    "क्रमबद्ध",
+    "योग",
+    "अधिकतम",
+    "न्यूनतम",
+    "कुंजियाँ",
+    "मान",
+    "वर्गमूल",
+    "परम",
+    "_math_cos",
+    "_math_sin",
+    "_math_tan",
+    "_math_sqrt",
+    "_math_abs",
+    "_math_floor",
+    "_math_ceil",
+    "_math_round",
+    "_math_degrees",
+    "_math_radians",
+    "जाल_लाओ",
+    "जाल_भेजो",
+    "जाल_डाउनलोड",
+    "जाल_पुट",
+    "जाल_हटाओ",
+    "समय",
+    "निद्रा",
+    "धागा_शुरू",
+    "सेट_टाइमआउट",
+    "सेट_इंटरवल",
+    "क्लियर_टाइमआउट",
+    "async_sleep",
+    "रेगेक्स_खोज",
+    "रेगेक्स_बदलो",
+    "जेसन_लिखो",
+    "जेसन_पढ़ो",
+    "परिभाषय",
+    "दावा",
+    "नियम",
+    "मूल्यांकन",
+    "सिद्ध_है",
+    "प्रमाण_लॉग",
+    "प्रमाण_रीसेट",
+    "आत्म_मूल्य",
+    "भाव_पढ़ो",
+    "अवस्था_पढ़ो",
+    "सभी_भाव",
+    "सभी_अवस्था",
+    "आत्म_इतिहास",
+    "आत्म_है",
+    "आत्म_भाव",
+    "आत्म_अवस्था",
+    "आत्म_मूल",
+    "_chitra_canvas",
+    "_chitra_fill",
+    "_chitra_point",
+    "_chitra_line",
+    "_chitra_circle",
+    "_chitra_rect",
+    "_chitra_polygon",
+    "_chitra_text",
+    "_chitra_save",
+    "_chitra_load",
+    "_chitra_color",
+    "_chitra_colors",
+    "_chitra_width",
+    "_chitra_height",
+    "_chitra_pixel_get",
+    "_chitra_pixel_set",
+    "_chitra_clear",
+    "_chitra_text_centered",
+    "_chitra_gradient",
+    "_chitra_rotate",
+    "_chitra_mandala",
+    "_chitra_kaleidoscope",
+    "पायथन_आयात",
+    "पायथन_चलाओ",
+    "पायथन_मूल्यांकन",
+    "अक्षर_मान",
+];
+
 const BUILTIN_NAMES: &[&str] = &[
     "पाठ_कर",
     "str",
@@ -82,6 +194,8 @@ const BUILTIN_NAMES: &[&str] = &[
     "नियम",
     "मूल्यांकन",
     "सिद्ध_है",
+    "प्रमाण_लॉग",
+    "प्रमाण_रीसेट",
     "आत्म_मूल्य",
     "भाव_पढ़ो",
     "अवस्था_पढ़ो",
@@ -118,8 +232,24 @@ const BUILTIN_NAMES: &[&str] = &[
     "पायथन_चलाओ",
     "पायथन_मूल्यांकन",
     "अक्षर_मान",
+    "bool",
+    "list",
+    "dict",
+    "set",
+    "callable",
+    "hasattr",
+    "isinstance",
+    "all",
+    "any",
     "__match_exception__",
 ];
+
+#[derive(Debug, Clone)]
+pub struct SliceValue {
+    start: Option<i64>,
+    stop: Option<i64>,
+    step: Option<i64>,
+}
 
 #[derive(Debug, Clone)]
 pub struct IterState {
@@ -155,7 +285,12 @@ pub enum Builtin {
     Bool,
     List,
     Dict,
+    Set,
     Callable,
+    HasAttr,
+    IsInstance,
+    All,
+    Any,
     MatchException,
     Unsupported(String),
 }
@@ -189,7 +324,12 @@ impl Builtin {
             "bool" => Self::Bool,
             "list" => Self::List,
             "dict" => Self::Dict,
+            "set" => Self::Set,
             "callable" => Self::Callable,
+            "hasattr" => Self::HasAttr,
+            "isinstance" => Self::IsInstance,
+            "all" => Self::All,
+            "any" => Self::Any,
             "__match_exception__" => Self::MatchException,
             other if BUILTIN_NAMES.contains(&other) => Self::Unsupported(other.to_string()),
             _ => return None,
@@ -227,8 +367,10 @@ pub enum Value {
     Float(f64),
     Str(String),
     List(Rc<RefCell<Vec<Value>>>),
+    Set(Rc<RefCell<Vec<Value>>>),
     Tuple(Vec<Value>),
     Dict(Rc<RefCell<Vec<(Value, Value)>>>),
+    Slice(SliceValue),
     FunctionRef {
         name: String,
         is_async: bool,
@@ -305,8 +447,10 @@ impl Value {
             Self::Float(value) => *value != 0.0,
             Self::Str(value) => !value.is_empty(),
             Self::List(items) => !items.borrow().is_empty(),
+            Self::Set(items) => !items.borrow().is_empty(),
             Self::Tuple(items) => !items.is_empty(),
             Self::Dict(items) => !items.borrow().is_empty(),
+            Self::Slice(_) => true,
             Self::FunctionRef { .. }
             | Self::Class(_)
             | Self::Instance(_)
@@ -460,6 +604,12 @@ impl Value {
                 let b = b.borrow();
                 a.len() == b.len() && a.iter().zip(b.iter()).all(|(left, right)| left.cmp_eq(right))
             }
+            (Self::Set(a), Self::Set(b)) => {
+                let a = a.borrow();
+                let b = b.borrow();
+                a.len() == b.len()
+                    && a.iter().all(|left| b.iter().any(|right| left.cmp_eq(right)))
+            }
             (Self::Dict(a), Self::Dict(b)) => {
                 let a = a.borrow();
                 let b = b.borrow();
@@ -467,6 +617,9 @@ impl Value {
                     && a.iter().all(|(key, value)| {
                         b.iter().any(|(other_key, other_value)| key.cmp_eq(other_key) && value.cmp_eq(other_value))
                     })
+            }
+            (Self::Slice(a), Self::Slice(b)) => {
+                a.start == b.start && a.stop == b.stop && a.step == b.step
             }
             (
                 Self::FunctionRef {
@@ -522,8 +675,10 @@ impl Value {
             Self::Float(_) => "float",
             Self::Str(_) => "str",
             Self::List(_) => "list",
+            Self::Set(_) => "set",
             Self::Tuple(_) => "tuple",
             Self::Dict(_) => "dict",
+            Self::Slice(_) => "slice",
             Self::FunctionRef { .. } => "function",
             Self::Class(_) => "class",
             Self::Instance(_) => "instance",
@@ -542,8 +697,10 @@ impl Value {
             Self::Int(_) | Self::Float(_) => "संख्या".to_string(),
             Self::Str(_) => "तार".to_string(),
             Self::List(_) => "सूची".to_string(),
+            Self::Set(_) => "समुच्चय".to_string(),
             Self::Tuple(_) => "टपल".to_string(),
             Self::Dict(_) => "शब्दकोश".to_string(),
+            Self::Slice(_) => "स्लाइस".to_string(),
             Self::Class(class) => class.name.clone(),
             Self::Instance(instance) => {
                 let instance = instance.borrow();
@@ -559,6 +716,7 @@ impl Value {
     fn iter_items(&self) -> Result<Vec<Value>, VmError> {
         match self {
             Self::List(items) => Ok(items.borrow().clone()),
+            Self::Set(items) => Ok(items.borrow().clone()),
             Self::Tuple(items) => Ok(items.clone()),
             Self::Str(text) => Ok(text.chars().map(|ch| Self::Str(ch.to_string())).collect()),
             Self::Dict(items) => Ok(items.borrow().iter().map(|(key, _)| key.clone()).collect()),
@@ -593,6 +751,11 @@ impl Value {
                     .join(", ");
                 format!("[{inner}]")
             }
+            Self::Set(items) => {
+                let mut inner = items.borrow().iter().map(Self::stringify).collect::<Vec<_>>();
+                inner.sort();
+                format!("{{{}}}", inner.join(", "))
+            }
             Self::Tuple(items) => {
                 let inner = items.iter().map(Self::stringify).collect::<Vec<_>>().join(", ");
                 if items.len() == 1 {
@@ -610,6 +773,12 @@ impl Value {
                     .join(", ");
                 format!("{{{inner}}}")
             }
+            Self::Slice(slice) => format!(
+                "slice({}, {}, {})",
+                slice.start.map_or_else(|| "None".to_string(), |v| v.to_string()),
+                slice.stop.map_or_else(|| "None".to_string(), |v| v.to_string()),
+                slice.step.map_or_else(|| "None".to_string(), |v| v.to_string())
+            ),
             Self::FunctionRef { name, .. } => format!("<function {name}>"),
             Self::Class(class) => format!("<वर्ग:{}>", class.name),
             Self::Instance(instance) => {
@@ -908,6 +1077,25 @@ impl Vm {
                     stack.push(Value::Bool(!trap!(left.cmp_lt(&right))));
                     pc += 1;
                 }
+                0x26 => {
+                    let container = trap!(pop(&mut stack));
+                    let needle = trap!(pop(&mut stack));
+                    let contains = match &container {
+                        Value::Str(text) => text.contains(&needle.stringify()),
+                        Value::List(items) => items.borrow().iter().any(|item| item.cmp_eq(&needle)),
+                        Value::Set(items) => items.borrow().iter().any(|item| item.cmp_eq(&needle)),
+                        Value::Tuple(items) => items.iter().any(|item| item.cmp_eq(&needle)),
+                        Value::Dict(items) => items.borrow().iter().any(|(key, _)| key.cmp_eq(&needle)),
+                        other => {
+                            return Err(VmError::TypeMismatch {
+                                expected: "container",
+                                actual: other.type_name(),
+                            })
+                        }
+                    };
+                    stack.push(Value::Bool(contains));
+                    pc += 1;
+                }
                 0x30 => {
                     let right = trap!(pop(&mut stack));
                     let left = trap!(pop(&mut stack));
@@ -1035,10 +1223,29 @@ impl Vm {
                     stack.push(Value::Dict(Rc::new(RefCell::new(pairs))));
                     pc += 2;
                 }
+                0x6f => {
+                    let count = code[pc + 1] as usize;
+                    let items = trap!(pop_n(&mut stack, count));
+                    let mut unique = Vec::new();
+                    for item in items {
+                        if !unique.iter().any(|existing: &Value| existing.cmp_eq(&item)) {
+                            unique.push(item);
+                        }
+                    }
+                    stack.push(Value::Set(Rc::new(RefCell::new(unique))));
+                    pc += 2;
+                }
                 0x62 => {
                     let index = trap!(pop(&mut stack));
                     let object = trap!(pop(&mut stack));
                     stack.push(trap!(index_get(&object, &index)));
+                    pc += 1;
+                }
+                0x6c => {
+                    let step = trap!(pop(&mut stack));
+                    let stop = trap!(pop(&mut stack));
+                    let start = trap!(pop(&mut stack));
+                    stack.push(Value::Slice(make_slice_value(&start, &stop, &step)?));
                     pc += 1;
                 }
                 0x63 => {
@@ -1182,7 +1389,7 @@ impl Vm {
                         .get(pc + 3)
                         .ok_or(VmError::InvalidJump((pc + 3) as isize))? as usize;
                     let args = pop_n(&mut stack, argc)?;
-                    let builtin_name = BUILTIN_NAMES
+                    let builtin_name = CALL_BUILTIN_NAMES
                         .get(idx)
                         .ok_or_else(|| VmError::UnsupportedBuiltin(format!("index {idx}")))?;
                     let builtin = Builtin::from_name(builtin_name)
@@ -2024,6 +2231,20 @@ impl Vm {
                 }
                 Ok(Value::Dict(Rc::new(RefCell::new(pairs))))
             }
+            Builtin::Set => {
+                reject_kwargs("set", &kwargs)?;
+                if let Some(value) = args.first() {
+                    let mut unique = Vec::new();
+                    for item in value.iter_items()? {
+                        if !unique.iter().any(|existing: &Value| existing.cmp_eq(&item)) {
+                            unique.push(item);
+                        }
+                    }
+                    Ok(Value::Set(Rc::new(RefCell::new(unique))))
+                } else {
+                    Ok(Value::Set(Rc::new(RefCell::new(Vec::new()))))
+                }
+            }
             Builtin::Callable => {
                 reject_kwargs("callable", &kwargs)?;
                 Ok(Value::Bool(matches!(
@@ -2033,6 +2254,37 @@ impl Vm {
                         | Some(Value::Class(_))
                         | Some(Value::BoundMethod { .. })
                 )))
+            }
+            Builtin::HasAttr => {
+                reject_kwargs("hasattr", &kwargs)?;
+                if args.len() != 2 {
+                    return Err(VmError::UnsupportedBuiltin("hasattr arity".to_string()));
+                }
+                let attr_name = args[1].stringify();
+                Ok(Value::Bool(value_has_attr(&args[0], &attr_name)))
+            }
+            Builtin::IsInstance => {
+                reject_kwargs("isinstance", &kwargs)?;
+                if args.len() != 2 {
+                    return Err(VmError::UnsupportedBuiltin("isinstance arity".to_string()));
+                }
+                Ok(Value::Bool(value_is_instance(&args[0], &args[1])))
+            }
+            Builtin::All => {
+                reject_kwargs("all", &kwargs)?;
+                let items = args
+                    .first()
+                    .ok_or_else(|| VmError::UnsupportedBuiltin("all arity".to_string()))?
+                    .iter_items()?;
+                Ok(Value::Bool(items.iter().all(Value::truthy)))
+            }
+            Builtin::Any => {
+                reject_kwargs("any", &kwargs)?;
+                let items = args
+                    .first()
+                    .ok_or_else(|| VmError::UnsupportedBuiltin("any arity".to_string()))?
+                    .iter_items()?;
+                Ok(Value::Bool(items.iter().any(Value::truthy)))
             }
             Builtin::MatchException => {
                 reject_kwargs("__match_exception__", &kwargs)?;
@@ -2324,18 +2576,114 @@ fn pop_kwargs(stack: &mut Vec<Value>) -> Result<BTreeMap<String, Value>, VmError
     Ok(kwargs)
 }
 
+fn make_slice_value(start: &Value, stop: &Value, step: &Value) -> Result<SliceValue, VmError> {
+    let parse = |value: &Value| -> Result<Option<i64>, VmError> {
+        if matches!(value, Value::Null) {
+            Ok(None)
+        } else {
+            Ok(Some(value.to_i64()?))
+        }
+    };
+
+    let parsed = SliceValue {
+        start: parse(start)?,
+        stop: parse(stop)?,
+        step: parse(step)?,
+    };
+    if parsed.step == Some(0) {
+        return Err(VmError::DivisionByZero);
+    }
+    Ok(parsed)
+}
+
+fn slice_indices(len: usize, slice: &SliceValue) -> Result<Vec<usize>, VmError> {
+    if len == 0 {
+        return Ok(Vec::new());
+    }
+
+    let len_i = len as i64;
+    let step = slice.step.unwrap_or(1);
+    if step == 0 {
+        return Err(VmError::DivisionByZero);
+    }
+
+    let mut indices = Vec::new();
+    if step > 0 {
+        let mut start = slice.start.unwrap_or(0);
+        let mut stop = slice.stop.unwrap_or(len_i);
+        if start < 0 {
+            start += len_i;
+        }
+        if stop < 0 {
+            stop += len_i;
+        }
+        start = start.clamp(0, len_i);
+        stop = stop.clamp(0, len_i);
+        let mut current = start;
+        while current < stop {
+            indices.push(current as usize);
+            current += step;
+        }
+    } else {
+        let mut start = slice.start.unwrap_or(len_i - 1);
+        let mut stop = slice.stop.unwrap_or(-1);
+        if start < 0 {
+            start += len_i;
+        }
+        if stop < 0 {
+            stop += len_i;
+        }
+        start = start.clamp(-1, len_i - 1);
+        stop = stop.clamp(-1, len_i - 1);
+        let mut current = start;
+        while current > stop {
+            if current >= 0 && current < len_i {
+                indices.push(current as usize);
+            }
+            current += step;
+        }
+    }
+
+    Ok(indices)
+}
+
 fn index_get(object: &Value, index: &Value) -> Result<Value, VmError> {
     match object {
         Value::List(items) => {
+            if let Value::Slice(slice) = index {
+                let borrowed = items.borrow();
+                let indices = slice_indices(borrowed.len(), slice)?;
+                let out = indices
+                    .into_iter()
+                    .map(|idx| borrowed[idx].clone())
+                    .collect::<Vec<_>>();
+                return Ok(Value::List(Rc::new(RefCell::new(out))));
+            }
             let idx = normalized_index(items.borrow().len(), index)?;
             Ok(items.borrow()[idx].clone())
         }
         Value::Tuple(items) => {
+            if let Value::Slice(slice) = index {
+                let indices = slice_indices(items.len(), slice)?;
+                let out = indices
+                    .into_iter()
+                    .map(|idx| items[idx].clone())
+                    .collect::<Vec<_>>();
+                return Ok(Value::Tuple(out));
+            }
             let idx = normalized_index(items.len(), index)?;
             Ok(items[idx].clone())
         }
         Value::Str(text) => {
             let chars = text.chars().collect::<Vec<_>>();
+            if let Value::Slice(slice) = index {
+                let indices = slice_indices(chars.len(), slice)?;
+                let out = indices
+                    .into_iter()
+                    .map(|idx| chars[idx])
+                    .collect::<String>();
+                return Ok(Value::Str(out));
+            }
             let idx = normalized_index(chars.len(), index)?;
             Ok(Value::Str(chars[idx].to_string()))
         }
@@ -2388,6 +2736,49 @@ fn normalized_index(len: usize, index: &Value) -> Result<usize, VmError> {
         return Err(VmError::IndexOutOfRange);
     }
     Ok(adjusted as usize)
+}
+
+fn value_has_attr(value: &Value, attr_name: &str) -> bool {
+    match value {
+        Value::Instance(instance) => {
+            let instance = instance.borrow();
+            instance.attrs.contains_key(attr_name) || instance.klass.methods.contains_key(attr_name)
+        }
+        Value::Module(module) => module.attrs.contains_key(attr_name),
+        Value::Class(class) => class.methods.contains_key(attr_name),
+        Value::List(_) => matches!(
+            attr_name,
+            "append" | "जोड़ो" | "pop" | "निकालो" | "हटाओ" | "clear" | "स्वच्छ"
+                | "extend" | "विस्तार" | "count" | "गणना" | "index" | "अनुक्रमणिका"
+                | "reverse" | "विपरीत" | "sort" | "क्रमबद्ध"
+        ),
+        Value::Dict(_) => matches!(attr_name, "keys" | "कुंजियाँ" | "values" | "मान" | "get"),
+        Value::Str(_) => matches!(attr_name, "upper" | "उच्च" | "lower" | "निम्न" | "strip" | "छाँटो" | "split" | "विभाजन"),
+        _ => false,
+    }
+}
+
+fn value_is_instance(value: &Value, target: &Value) -> bool {
+    match target {
+        Value::Class(class) => matches!(value, Value::Instance(instance) if instance.borrow().klass.name == class.name),
+        Value::Str(name) => match name.as_str() {
+            "bool" | "बूलियन" => matches!(value, Value::Bool(_)),
+            "int" => matches!(value, Value::Int(_)),
+            "float" => matches!(value, Value::Float(_)),
+            "str" | "तार" => matches!(value, Value::Str(_)),
+            "list" | "सूची" => matches!(value, Value::List(_)),
+            "set" | "समुच्चय" => matches!(value, Value::Set(_)),
+            "tuple" | "टपल" => matches!(value, Value::Tuple(_)),
+            "dict" | "शब्दकोश" => matches!(value, Value::Dict(_)),
+            "function" | "कार्य" => matches!(
+                value,
+                Value::FunctionRef { .. } | Value::Builtin(_) | Value::BoundMethod { .. }
+            ),
+            "module" | "मॉड्यूल" => matches!(value, Value::Module(_)),
+            class_name => matches!(value, Value::Instance(instance) if instance.borrow().klass.name == class_name),
+        },
+        _ => false,
+    }
 }
 
 fn find_function<'a>(bytecode: &'a BytecodeAbi, name: &str) -> Option<&'a BytecodeAbi> {

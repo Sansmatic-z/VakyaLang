@@ -7,7 +7,7 @@ from .lexer import Lexer
 from .parser import Parser
 from .compiler import Compiler, CompileError
 from .vm import VakVM, VMError
-from .errors import VakError, format_vak_error
+from .errors import VakError, format_vak_error_with_suggestions
 from .audit import emit_audit_event
 from .branching import BranchActivationError
 
@@ -44,6 +44,16 @@ class VakInterpreter:
         if self.branch_runtime is None:
             return {}
         return self.branch_runtime.report()
+
+    def inspect_vm_stack(self) -> list[dict[str, Any]]:
+        return self.vm.inspect_stack()
+
+    def error_context(self) -> dict[str, Any]:
+        return {
+            "frame": self.vm.current_frame,
+            "globals": self.vm.globals,
+            "builtins": self.vm.builtins,
+        }
 
     def _debug_print(self, text: str) -> None:
         try:
@@ -220,6 +230,6 @@ class VakInterpreter:
             except EOFError:
                 break
             except Exception as e:
-                print(format_vak_error(e))
+                print(format_vak_error_with_suggestions(e, self.error_context()))
                 
         print("\nनमस्ते (Goodbye)!")

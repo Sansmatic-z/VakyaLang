@@ -12,7 +12,7 @@ import time
 from .bytecode import Bytecode, NO_DEFAULT
 from .opcodes import OpCode, OPCODE_NAMES
 from .jit_compiler import JITCompiler
-from .event_loop import EventLoop, SUSPEND
+from .event_loop import EventLoop, SUSPEND, SleepRequest
 from .audit import emit_audit_event
 from .errors import VMError as BaseVMError
 
@@ -224,13 +224,16 @@ class VakCoroutine:
             प्रतीक्षा कार्य_१()
             प्रतीक्षा कार्य_२()
     """
-    def __init__(self, frame: CallFrame, bytecode: Bytecode):
+    def __init__(self, frame: CallFrame, bytecode: Bytecode, vm: "VakVM" | None = None):
         self.frame = frame
         self.bytecode = bytecode
+        self.vm = vm
         self.suspended = False
         self.completed = False
         self.result = None
         self.pending_await = None  # For nested awaits
+        self.waiting_on = None
+        self.task = None
         self.name = bytecode.name
     
     def __repr__(self):
@@ -276,6 +279,7 @@ class VakVM:
         self.current_frame: CallFrame = None
         self.suppress_output = False
         self.module_cache: Dict[str, VakModule] = {}
+        self._module_load_stack: list[tuple[str, str]] = []
         
         # JIT Compiler (Month 2-3 Advanced Feature)
         self.jit = JITCompiler() if enable_jit else None
@@ -1159,6 +1163,142 @@ class VakVM:
             name.startswith("<") and name.endswith(">")
         )
 
+    def _describe_available_names(self, names: list[str] | tuple[str, ...] | set[str]) -> str:
+        visible = sorted(str(name) for name in names if name and not self._is_internal_binding_name(str(name)))
+        if not visible:
+            return ""
+        preview = visible[:5]
+        suffix = " ..." if len(visible) > 5 else ""
+        return ", ".join(preview) + suffix
+
+    def _missing_attribute_message(
+        self,
+        *,
+        owner_kind: str,
+        owner_name: str,
+        attr_name: str,
+        available_names: list[str] | tuple[str, ...] | set[str],
+    ) -> str:
+        import difflib
+
+        message = f"Attribute '{attr_name}' not found in {owner_kind} {owner_name}"
+        visible = sorted(
+            str(name) for name in available_names if name and not self._is_internal_binding_name(str(name))
+        )
+        if not visible:
+            return message
+
+        similar = difflib.get_close_matches(attr_name, visible, n=1, cutoff=0.6)
+        if similar:
+            message += f". Did you mean '{similar[0]}'?"
+
+        available_text = self._describe_available_names(visible)
+        if available_text:
+            message += f". Available: {available_text}"
+        return message
+
+    def _safe_debug_repr(self, value: Any, limit: int = 96) -> str:
+        value = self._unwrap_cell(value)
+        if value is None:
+            text = "None"
+        elif value is UNSET:
+            text = "<unset>"
+        elif isinstance(value, VakInstance):
+            text = repr(value)
+        elif isinstance(value, VakClass):
+            text = repr(value)
+        elif isinstance(value, VakModule):
+            text = f"<module {value.name}>"
+        elif isinstance(value, tuple) and value:
+            if value[0] == 'function' and len(value) >= 2:
+                text = f"<function {value[1]}>"
+            elif value[0] == 'bound_method' and len(value) >= 3:
+                text = f"<bound_method {value[2]}>"
+            else:
+                text = repr(value)
+        elif isinstance(value, VakCoroutine):
+            text = repr(value)
+        else:
+            text = repr(value)
+
+        text = text.replace("\n", "\\n")
+        if len(text) > limit:
+            return text[: limit - 3] + "..."
+        return text
+
+    def _frame_locals_snapshot(self, frame: CallFrame, *, max_items: int = 6) -> list[str]:
+        items: list[str] = []
+        for index, name in enumerate(getattr(frame.bytecode, "var_names", []) or []):
+            if self._is_internal_binding_name(name):
+                continue
+            if index >= len(frame.locals):
+                continue
+            value = frame.locals[index]
+            value = self._unwrap_cell(value)
+            if value is None and name not in getattr(frame.bytecode, "global_names", set()):
+                continue
+            if value is UNSET:
+                continue
+            items.append(f"{name}={self._safe_debug_repr(value)}")
+            if len(items) >= max_items:
+                break
+        return items
+
+    def _frame_stack_snapshot(self, frame: CallFrame, *, max_items: int = 3) -> list[str]:
+        if not frame.stack:
+            return []
+        preview = frame.stack[-max_items:]
+        return [self._safe_debug_repr(value) for value in preview]
+
+    def inspect_stack(self) -> list[dict[str, Any]]:
+        frames: list[dict[str, Any]] = []
+        for depth, frame in enumerate(reversed(self.frames)):
+            source_path = getattr(frame.bytecode, "source_path", None)
+            frames.append(
+                {
+                    "depth": depth,
+                    "name": frame.bytecode.name,
+                    "pc": frame.pc,
+                    "source_path": source_path,
+                    "locals": self._frame_locals_snapshot(frame),
+                    "stack_top": self._frame_stack_snapshot(frame),
+                }
+            )
+        return frames
+
+    def _stack_trace_text(self) -> str:
+        import os
+
+        lines = ["वाक् आवाहन-पथ (Vak Stack Trace):"]
+        for frame_info in self.inspect_stack():
+            name = frame_info["name"]
+            pc = frame_info["pc"]
+            source_path = frame_info["source_path"]
+            if source_path:
+                lines.append(
+                    f"  {frame_info['depth']}: {name} [{os.path.basename(source_path)}] (PC={pc})"
+                )
+            else:
+                lines.append(f"  {frame_info['depth']}: {name} (PC={pc})")
+
+            local_items = frame_info["locals"]
+            if local_items:
+                lines.append(f"     स्थानीय: {', '.join(local_items)}")
+
+            stack_items = frame_info["stack_top"]
+            if stack_items:
+                lines.append(f"     स्टैक-शीर्ष: {', '.join(stack_items)}")
+        return "\n".join(lines)
+
+    def _error_has_stack_trace(self, error: Exception) -> bool:
+        text = str(error)
+        return "Vak Stack Trace" in text or "वाक् आवाहन-पथ" in text
+
+    def _attach_stack_trace(self, error: Exception, trace: str) -> VMError:
+        if isinstance(error, VMError) and self._error_has_stack_trace(error):
+            return error
+        return VMError(f"{error}\n{trace}")
+
     def _resolve_function_bytecode(
         self,
         func_name: str,
@@ -1333,6 +1473,8 @@ class VakVM:
 
     def _resolve_module_path(self, module_name: str, frame: CallFrame | None) -> tuple[str, str]:
         import os
+        searched_paths: list[str] = []
+        search_dirs = self._module_search_dirs(frame)
 
         for candidate_name in self._module_name_candidates(module_name):
             relative_names = [candidate_name]
@@ -1340,18 +1482,26 @@ class VakVM:
             if package_name not in relative_names:
                 relative_names.append(package_name)
 
-            for search_dir in self._module_search_dirs(frame):
+            for search_dir in search_dirs:
                 for relative_name in relative_names:
                     file_path = os.path.abspath(os.path.join(search_dir, f"{relative_name}.vak"))
+                    if file_path not in searched_paths:
+                        searched_paths.append(file_path)
                     if os.path.exists(file_path):
                         return candidate_name, file_path
 
                     init_path = os.path.abspath(
                         os.path.join(search_dir, relative_name, "__init__.vak")
                     )
+                    if init_path not in searched_paths:
+                        searched_paths.append(init_path)
                     if os.path.exists(init_path):
                         return candidate_name, init_path
 
+        preview = "; ".join(searched_paths[:4])
+        suffix = " ..." if len(searched_paths) > 4 else ""
+        if preview:
+            raise VMError(f"Module not found: {module_name}. Searched: {preview}{suffix}")
         raise VMError(f"Module not found: {module_name}")
         
     def _init_builtins(self) -> Dict[str, Callable]:
@@ -1585,37 +1735,7 @@ class VakVM:
             return self._stringify_value(obj)
 
         def _invoke_callable(func, *args, **kwargs):
-            if isinstance(func, tuple) and func[0] == 'function':
-                func_bc = self._resolve_function_bytecode(
-                    func[1],
-                    func,
-                    self.current_frame if self.frames else None,
-                )
-                if not func_bc:
-                    raise VMError(f"Function not found: {func[1]}")
-
-                new_frame = CallFrame(func_bc)
-                self._bind_call_arguments(new_frame, func_bc, list(args), kwargs)
-                if len(func) >= 3:
-                    self._hydrate_closure_locals(new_frame, func[2])
-                return self._execute_single_frame(new_frame)
-
-            if isinstance(func, tuple) and func[0] == 'bound_method':
-                obj, method_name = func[1], func[2]
-                if isinstance(obj, VakInstance) and method_name in obj.klass.methods:
-                    func_bc = obj.klass.methods[method_name]
-                    new_frame = CallFrame(func_bc)
-                    self._bind_call_arguments(new_frame, func_bc, list(args), kwargs, self_obj=obj)
-                    closure_env = self._get_method_closure_env(obj.klass, method_name)
-                    if closure_env is not None:
-                        self._hydrate_closure_locals(new_frame, closure_env)
-                    return self._execute_single_frame(new_frame)
-                raise VMError(f"Cannot call bound method {method_name}")
-
-            if callable(func):
-                return func(*args, **kwargs)
-
-            raise VMError(f"Object not callable: {type(func).__name__}")
+            return self._invoke_runtime_callable(func, *args, **kwargs)
 
         def _vak_isinstance(obj, cls):
             if isinstance(cls, VakClass):
@@ -1707,14 +1827,14 @@ class VakVM:
             """Set timeout - execute callback after delay (in milliseconds)."""
             loop = EventLoop.current()
             delay_sec = float(delay_ms) / 1000.0
-            timer = loop.set_timeout(delay_sec, callback)
+            timer = loop.set_timeout(delay_sec, callback, owner_vm=self)
             return timer
 
         def _set_interval(callback, interval_ms):
             """Set interval - execute callback repeatedly at interval (in milliseconds)."""
             loop = EventLoop.current()
             interval_sec = float(interval_ms) / 1000.0
-            timer = loop.set_interval(interval_sec, callback)
+            timer = loop.set_interval(interval_sec, callback, owner_vm=self)
             return timer
 
         def _clear_timeout(timer):
@@ -1726,7 +1846,7 @@ class VakVM:
         def _async_sleep(seconds):
             """Async sleep - non-blocking sleep for coroutines."""
             loop = EventLoop.current()
-            return loop.sleep(float(seconds))
+            return loop.request_sleep(float(seconds))
 
         def _atma_wrap(val, bhav=None, avastha=None, note=None):
             # If the user passes 4 arguments, AtmaValue expects them, although AtmaValue might only take 3.
@@ -1952,11 +2072,11 @@ class VakVM:
             try:
                 return self._execute()
             except Exception as e:
+                trace = self._format_stack_trace()
                 if self._handle_runtime_exception(e):
                     continue
                 if isinstance(e, VMError):
-                    raise
-                trace = self._format_stack_trace()
+                    raise self._attach_stack_trace(e, trace)
                 raise VMError(f"Internal VM Crash: {e}\n{trace}") from e
 
 
@@ -1971,7 +2091,158 @@ class VakVM:
         if self.current_frame is not None:
             self.current_frame.stack.append(value)
 
-    def _execute(self) -> Any:
+    def _execute_isolated_frame(self, frame: CallFrame) -> Any:
+        """Execute a frame to completion using the full VM, preserving outer state."""
+        saved_frames = self.frames
+        saved_current = self.current_frame
+        try:
+            self.frames = [frame]
+            self.current_frame = frame
+            return self._execute()
+        finally:
+            self.frames = saved_frames
+            self.current_frame = saved_current
+
+    def _run_python_awaitable(self, awaitable: Any) -> Any:
+        """Run a native Python awaitable to completion when Vak must bridge to Python."""
+        import asyncio
+
+        async def _bridge():
+            return await awaitable
+
+        try:
+            return asyncio.run(_bridge())
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(_bridge())
+            finally:
+                loop.close()
+
+    def _invoke_runtime_callable(self, func: Any, *args: Any, **kwargs: Any) -> Any:
+        """Invoke a callable from VM/runtime services while preserving Vak semantics."""
+        if isinstance(func, tuple) and func[0] == 'function':
+            func_bc = self._resolve_function_bytecode(
+                func[1],
+                func,
+                self.current_frame if self.frames else None,
+            )
+            if not func_bc:
+                raise VMError(f"Function not found: {func[1]}")
+
+            is_async = func[3] if len(func) > 3 else getattr(func_bc, 'is_async', False)
+            new_frame = CallFrame(func_bc)
+            self._bind_call_arguments(new_frame, func_bc, list(args), kwargs)
+            if len(func) >= 3:
+                self._hydrate_closure_locals(new_frame, func[2])
+            if is_async:
+                return VakCoroutine(new_frame, func_bc, vm=self)
+            return self._execute_isolated_frame(new_frame)
+
+        if isinstance(func, tuple) and func[0] == 'bound_method':
+            obj, method_name = func[1], func[2]
+            if isinstance(obj, VakInstance) and method_name in obj.klass.methods:
+                func_bc = obj.klass.methods[method_name]
+                new_frame = CallFrame(func_bc)
+                self._bind_call_arguments(new_frame, func_bc, list(args), kwargs, self_obj=obj)
+                closure_env = self._get_method_closure_env(obj.klass, method_name)
+                if closure_env is not None:
+                    self._hydrate_closure_locals(new_frame, closure_env)
+                return self._execute_isolated_frame(new_frame)
+            raise VMError(f"Cannot call bound method {method_name}")
+
+        if callable(func):
+            return func(*args, **kwargs)
+
+        raise VMError(f"Object not callable: {type(func).__name__}")
+
+    def _handle_await(self, frame: CallFrame, active_coroutine: VakCoroutine | None) -> Any:
+        """Resolve or suspend an await expression without changing bytecode semantics."""
+        import time
+
+        awaitable = self._pop()
+
+        if isinstance(awaitable, VakCoroutine):
+            if awaitable.completed:
+                frame.stack.append(awaitable.result)
+                frame.pc += 1
+                return None
+
+            if active_coroutine is None:
+                result = EventLoop.current().run_until_complete(awaitable)
+                frame.stack.append(result)
+                frame.pc += 1
+                return None
+
+            active_coroutine.waiting_on = awaitable
+            active_coroutine.suspended = True
+            EventLoop.current().create_task(awaitable, name=awaitable.name)
+            frame.pc += 1
+            return SUSPEND
+
+        if isinstance(awaitable, SleepRequest):
+            if awaitable.ready:
+                frame.stack.append(None)
+                frame.pc += 1
+                return None
+
+            if active_coroutine is None:
+                delay = max(0.0, float(awaitable.seconds))
+                time.sleep(delay)
+                frame.stack.append(None)
+                frame.pc += 1
+                return None
+
+            active_coroutine.waiting_on = awaitable
+            active_coroutine.suspended = True
+            EventLoop.current()._schedule_sleep(awaitable.wake_time, active_coroutine.task, awaitable)
+            frame.pc += 1
+            return SUSPEND
+
+        if hasattr(awaitable, '__await__'):
+            result = self._run_python_awaitable(awaitable)
+            frame.stack.append(result)
+            frame.pc += 1
+            return None
+
+        frame.stack.append(awaitable)
+        frame.pc += 1
+        return None
+
+    def _resume_coroutine(self, coroutine: VakCoroutine) -> Any:
+        """Resume a Vak coroutine with the full VM executor until it suspends or completes."""
+        if coroutine.completed:
+            return coroutine.result
+
+        saved_frames = self.frames
+        saved_current = self.current_frame
+        try:
+            self.frames = [coroutine.frame]
+            self.current_frame = coroutine.frame
+            coroutine.suspended = False
+
+            while True:
+                try:
+                    result = self._execute(active_coroutine=coroutine)
+                    if result is SUSPEND:
+                        coroutine.suspended = True
+                        return SUSPEND
+                    coroutine.completed = True
+                    coroutine.result = result
+                    coroutine.suspended = False
+                    return result
+                except Exception as e:
+                    trace = self._format_stack_trace()
+                    if self._handle_runtime_exception(e):
+                        continue
+                    if isinstance(e, VMError):
+                        raise self._attach_stack_trace(e, trace)
+                    raise VMError(f"Internal VM Crash: {e}\n{trace}") from e
+        finally:
+            self.frames = saved_frames
+            self.current_frame = saved_current
+
+    def _execute(self, *, active_coroutine: VakCoroutine | None = None) -> Any:
         """Main execution loop."""
         frame = self.current_frame
         code = frame.bytecode.code
@@ -2243,7 +2514,7 @@ class VakVM:
                                 self._hydrate_closure_locals(new_frame, func[2])
 
                             # Create and return coroutine
-                            coroutine = VakCoroutine(new_frame, func_bc)
+                            coroutine = VakCoroutine(new_frame, func_bc, vm=self)
                             self._push(coroutine)
                             frame.pc += instruction_size
                             continue
@@ -2411,7 +2682,14 @@ class VakVM:
                         frame.pc += instruction_size
                         continue
                     else:
-                        raise VMError(f"Method '{method_name}' not found on {obj.klass.name}")
+                        raise VMError(
+                            self._missing_attribute_message(
+                                owner_kind="class",
+                                owner_name=obj.klass.name,
+                                attr_name=method_name,
+                                available_names=set(obj.attrs) | set(obj.klass.methods),
+                            )
+                        )
                 elif isinstance(obj, VakModule):
                     if method_name in obj.attrs:
                         func = obj.attrs[method_name]
@@ -2476,7 +2754,14 @@ class VakVM:
                         else:
                             raise VMError(f"Attribute '{method_name}' in module '{obj.name}' is not callable")
                     else:
-                        raise VMError(f"Method '{method_name}' not found in module {obj.name}")
+                        raise VMError(
+                            self._missing_attribute_message(
+                                owner_kind="module",
+                                owner_name=obj.name,
+                                attr_name=method_name,
+                                available_names=set(obj.attrs),
+                            )
+                        )
                 else:
                     # Map Sanskrit method names to Python builtins
                     method_map = {
@@ -2592,12 +2877,26 @@ class VakVM:
                         # Return bound method equivalent
                         frame.stack.append(('bound_method', obj, attr_name))
                     else:
-                        raise VMError(f"Attribute '{attr_name}' not found on {obj.klass.name}")
+                        raise VMError(
+                            self._missing_attribute_message(
+                                owner_kind="class",
+                                owner_name=obj.klass.name,
+                                attr_name=attr_name,
+                                available_names=set(obj.attrs) | set(obj.klass.methods),
+                            )
+                        )
                 elif isinstance(obj, VakModule):
                     if attr_name in obj.attrs:
                         frame.stack.append(obj.attrs[attr_name])
                     else:
-                        raise VMError(f"Attribute '{attr_name}' not found in module {obj.name}")
+                        raise VMError(
+                            self._missing_attribute_message(
+                                owner_kind="module",
+                                owner_name=obj.name,
+                                attr_name=attr_name,
+                                available_names=set(obj.attrs),
+                            )
+                        )
                 else:
                     try:
                         frame.stack.append(getattr(obj, attr_name))
@@ -2676,6 +2975,14 @@ class VakVM:
                     target_path,
                 )
                 cache_key = os.path.normcase(os.path.abspath(target_path))
+                cycle_start = next(
+                    (index for index, (_, path) in enumerate(self._module_load_stack) if path == cache_key),
+                    None,
+                )
+                if cycle_start is not None:
+                    cycle = [name for name, _ in self._module_load_stack[cycle_start:]]
+                    cycle.append(resolved_module_name)
+                    raise VMError(f"Cyclic import detected: {' -> '.join(cycle)}")
                 cached_module = self.module_cache.get(cache_key)
                 if cached_module is not None:
                     frame.stack.append(cached_module)
@@ -2690,7 +2997,10 @@ class VakVM:
                 tokens = lexer.tokenize()
                 parser = Parser(tokens)
                 ast = parser.parse()
-                compiler = Compiler()
+                compiler = Compiler(
+                    branch_runtime=self.branch_runtime,
+                    source_path=target_path,
+                )
                 module_bytecode = compiler.compile(ast)
                 module_bytecode.source_path = target_path
                 defined_function_names = set(module_bytecode.functions.keys())
@@ -2713,19 +3023,29 @@ class VakVM:
 
                 mod_obj = VakModule(module_name, {})
                 self.module_cache[cache_key] = mod_obj
+                self._module_load_stack.append((resolved_module_name, cache_key))
 
                 # Run the module to populate its frame
                 # Functions will now capture module_env in their closure, enabling cross-calls
-                module_vm = VakVM()
+                module_vm = VakVM(branch_runtime=self.branch_runtime)
                 module_vm.suppress_output = True
                 module_vm.module_cache = self.module_cache
+                module_vm._module_load_stack = self._module_load_stack
                 # Run without halting the main VM
                 try:
                     module_vm.run(module_bytecode)
                 except Exception as e:
                     self.module_cache.pop(cache_key, None)
                     trace = self._format_stack_trace()
-                    raise VMError(f"Error executing module '{module_name}': {e}\n{trace}")
+                    raise self._attach_stack_trace(
+                        VMError(
+                            f"Error executing module '{module_name}' from '{target_path}': {e}"
+                        ),
+                        trace,
+                    )
+                finally:
+                    if self._module_load_stack and self._module_load_stack[-1][1] == cache_key:
+                        self._module_load_stack.pop()
 
                 # Extract the top-level globals that were defined
                 exported_attrs = {}
@@ -2924,44 +3244,9 @@ class VakVM:
 
             # ── Async/Coroutine ────────────────────────────────────────────────
             elif op == OpCode.AWAIT.value:
-                # Await a coroutine
-                awaitable = self._pop()
-                
-                if isinstance(awaitable, VakCoroutine):
-                    # It's a VakyaLang coroutine
-                    if awaitable.completed:
-                        # Already completed, just push result
-                        frame.stack.append(awaitable.result)
-                    else:
-                        # Need to execute the coroutine until it completes or yields
-                        result = self._run_coroutine_until_yield(awaitable)
-                        
-                        if awaitable.completed:
-                            # Coroutine finished, push result
-                            frame.stack.append(awaitable.result)
-                        else:
-                            # Coroutine suspended - in a full async implementation,
-                            # we would suspend the current frame too. For now, we
-                            # run the coroutine to completion synchronously.
-                            # The event loop handles proper async scheduling.
-                            while not awaitable.completed and not awaitable.suspended:
-                                result = self._run_coroutine_until_yield(awaitable)
-                            frame.stack.append(awaitable.result if awaitable.completed else awaitable)
-                elif hasattr(awaitable, '__await__'):
-                    # Python awaitable - execute it
-                    import types
-                    if isinstance(awaitable, types.CoroutineType):
-                        # Native Python coroutine - need event loop to run
-                        # For now, just push it back
-                        frame.stack.append(awaitable)
-                    else:
-                        # Other awaitable
-                        frame.stack.append(awaitable)
-                else:
-                    # Not awaitable, just push it back (no-op await)
-                    frame.stack.append(awaitable)
-                
-                frame.pc += 1
+                await_result = self._handle_await(frame, active_coroutine)
+                if await_result is SUSPEND:
+                    return SUSPEND
 
             # ── I/O ──────────────────────────────────────────────────────────────
             elif op == OpCode.PRINT.value:
@@ -3480,12 +3765,26 @@ class VakVM:
                 elif attr_name in obj.klass.methods:
                     frame.stack.append(('bound_method', obj, attr_name))
                 else:
-                    raise VMError(f"Attribute '{attr_name}' not found on {obj.klass.name}")
+                    raise VMError(
+                        self._missing_attribute_message(
+                            owner_kind="class",
+                            owner_name=obj.klass.name,
+                            attr_name=attr_name,
+                            available_names=set(obj.attrs) | set(obj.klass.methods),
+                        )
+                    )
             elif isinstance(obj, VakModule):
                 if attr_name in obj.attrs:
                     frame.stack.append(obj.attrs[attr_name])
                 else:
-                    raise VMError(f"Attribute '{attr_name}' not found in module {obj.name}")
+                    raise VMError(
+                        self._missing_attribute_message(
+                            owner_kind="module",
+                            owner_name=obj.name,
+                            attr_name=attr_name,
+                            available_names=set(obj.attrs),
+                        )
+                    )
             else:
                 frame.stack.append(getattr(obj, attr_name))
             frame.pc += 3
@@ -3593,22 +3892,11 @@ class VakVM:
                 if i < len(frame.locals) and func_bc.defaults[i] is not NO_DEFAULT:
                     frame.locals[i] = func_bc.defaults[i]
         
-        return VakCoroutine(frame, func_bc)
+        return VakCoroutine(frame, func_bc, vm=self)
 
     def _format_stack_trace(self) -> str:
         """Format call stack for error reporting."""
-        import os
-
-        lines = ["वाक् आवाहन-पथ (Vak Stack Trace):"]
-        for i, frame in enumerate(reversed(self.frames)):
-            name = frame.bytecode.name
-            pc = frame.pc
-            source_path = getattr(frame.bytecode, "source_path", None)
-            if source_path:
-                lines.append(f"  {i}: {name} [{os.path.basename(source_path)}] (PC={pc})")
-            else:
-                lines.append(f"  {i}: {name} (PC={pc})")
-        return "\n".join(lines)
+        return self._stack_trace_text()
 
 class VMError(BaseVMError):
     pass

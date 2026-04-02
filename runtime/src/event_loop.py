@@ -37,6 +37,7 @@ class Timer:
     repeat: bool = False
     next_fire: float = None
     cancelled: bool = False
+    vm: Any = None
     
     def __post_init__(self):
         if self.next_fire is None:
@@ -67,10 +68,31 @@ class Task:
     name: str = ""
     callback: Optional[Callable] = None
     cancelled: bool = False
+    vm: Any = None
     
     def __repr__(self):
         status = "cancelled" if self.cancelled else ("done" if self.coro.completed else "running")
         return f"Task({self.name or 'unnamed'}, {status})"
+
+
+@dataclass
+class SleepRequest:
+    """
+    Internal awaitable marker for Vak async sleep.
+
+    The VM treats this as a suspendable request instead of a Python coroutine.
+    """
+    seconds: float
+    wake_time: float | None = None
+    ready: bool = False
+
+    def __post_init__(self):
+        if self.wake_time is None:
+            self.wake_time = time.time() + self.seconds
+
+    def __repr__(self):
+        state = "ready" if self.ready else f"wake_at={self.wake_time:.6f}"
+        return f"SleepRequest({state})"
 
 
 class EventLoop:
@@ -95,7 +117,7 @@ class EventLoop:
         self.current_task: Optional[Task] = None
         self.stopped = False
         self._task_counter = 0
-        self._sleeping_tasks: List[tuple] = []  # (wake_time, task)
+        self._sleeping_tasks: List[tuple] = []  # (wake_time, task, request)
 
     @classmethod
     def current(cls) -> 'EventLoop':
@@ -116,9 +138,22 @@ class EventLoop:
         Returns:
             Created Task object
         """
-        task = Task(coro=coro, name=name or f"task-{self._task_counter}", callback=callback)
+        existing_task = getattr(coro, "task", None)
+        if existing_task is not None and existing_task in self.tasks and not existing_task.cancelled:
+            return existing_task
+
+        task = Task(
+            coro=coro,
+            name=name or f"task-{self._task_counter}",
+            callback=callback,
+            vm=getattr(coro, "vm", None),
+        )
         self._task_counter += 1
         self.tasks.append(task)
+        try:
+            coro.task = task
+        except Exception:
+            pass
         return task
     
     def run_until_complete(self, coro: Any) -> Any:
@@ -135,6 +170,7 @@ class EventLoop:
             Result of the coroutine
         """
         # Create main task
+        self.stopped = False
         main_task = self.create_task(coro, name="main")
         
         # Run event loop
@@ -148,6 +184,8 @@ class EventLoop:
             self._run_once()
         
         # Return main task result
+        if isinstance(main_task.coro.result, Exception):
+            raise main_task.coro.result
         return main_task.coro.result
     
     def _run_once(self):
@@ -162,6 +200,7 @@ class EventLoop:
         
         # Wake up sleeping tasks
         self._process_sleeping_tasks()
+        self._process_waiting_tasks()
 
         # Get active tasks
         active_tasks = [
@@ -170,6 +209,8 @@ class EventLoop:
         ]
 
         if not active_tasks:
+            if self._sleeping_tasks or self.timers:
+                time.sleep(0.001)
             return
 
         # Round-robin scheduling
@@ -192,14 +233,44 @@ class EventLoop:
         """
         now = time.time()
         remaining = []
-        for wake_time, task in self._sleeping_tasks:
+        for wake_time, task, request in self._sleeping_tasks:
             if now >= wake_time:
                 # Task should wake up
                 if task is not None and getattr(task, "coro", None) is not None:
+                    if request is not None and not request.ready:
+                        request.ready = True
+                    if getattr(task.coro, "waiting_on", None) is request:
+                        task.coro.waiting_on = None
+                    frame = getattr(task.coro, "frame", None)
+                    if frame is not None and hasattr(frame, "stack"):
+                        frame.stack.append(None)
                     task.coro.suspended = False
             else:
-                remaining.append((wake_time, task))
+                remaining.append((wake_time, task, request))
         self._sleeping_tasks = remaining
+
+    def _process_waiting_tasks(self):
+        """
+        Resume tasks waiting on nested coroutines once their dependency completes.
+        """
+        for task in self.tasks:
+            if task.cancelled:
+                continue
+            coro = getattr(task, "coro", None)
+            waiting_on = getattr(coro, "waiting_on", None)
+            if waiting_on is None or not getattr(coro, "suspended", False):
+                continue
+
+            if getattr(waiting_on, "completed", False):
+                coro.waiting_on = None
+                if isinstance(waiting_on.result, Exception):
+                    coro.completed = True
+                    coro.result = waiting_on.result
+                    if task.callback:
+                        task.callback(task)
+                    continue
+                coro.frame.stack.append(waiting_on.result)
+                coro.suspended = False
     
     def _run_task(self, task: Task):
         """
@@ -213,16 +284,15 @@ class EventLoop:
         
         coro = task.coro
         
-        # Resume coroutine execution
-        from runtime.src.vm import VakVM, SUSPEND
-        
-        vm = VakVM()
-        vm.globals = {}
-        vm.builtins = {}
+        # Resume coroutine execution in its owning VM context
+        from runtime.src.vm import SUSPEND
+
+        vm = task.vm or getattr(coro, "vm", None)
+        if vm is None:
+            raise RuntimeError("Vak task has no owning VM context")
         
         try:
-            # Execute single frame until suspend or complete
-            result = vm._execute_single_frame(coro.frame)
+            result = vm._resume_coroutine(coro)
             
             if result is SUSPEND:
                 # Coroutine suspended (hit await)
@@ -262,7 +332,7 @@ class EventLoop:
         """
         task.cancelled = True
 
-    def set_timeout(self, delay: float, callback: Callable) -> Timer:
+    def set_timeout(self, delay: float, callback: Callable, *, owner_vm: Any = None) -> Timer:
         """
         Execute callback after delay (one-shot timer).
         
@@ -279,11 +349,11 @@ class EventLoop:
             
             timer = loop.set_timeout(2.0, on_timeout)
         """
-        timer = Timer(delay, callback, repeat=False)
+        timer = Timer(delay, callback, repeat=False, vm=owner_vm)
         self.timers.append(timer)
         return timer
 
-    def set_interval(self, interval: float, callback: Callable) -> Timer:
+    def set_interval(self, interval: float, callback: Callable, *, owner_vm: Any = None) -> Timer:
         """
         Execute callback repeatedly at interval (repeating timer).
         
@@ -305,7 +375,7 @@ class EventLoop:
             # ... later ...
             loop.clear_timeout(timer)
         """
-        timer = Timer(interval, callback, repeat=True)
+        timer = Timer(interval, callback, repeat=True, vm=owner_vm)
         self.timers.append(timer)
         return timer
 
@@ -339,12 +409,7 @@ class EventLoop:
                 continue
             if now >= timer.next_fire:
                 # Execute timer callback
-                if asyncio.iscoroutinefunction(timer.callback):
-                    # Schedule as async task
-                    self.create_task(timer.callback())
-                else:
-                    # Call synchronously
-                    timer.callback()
+                self._fire_timer_callback(timer)
                 
                 if timer.repeat:
                     # Schedule next fire
@@ -357,7 +422,26 @@ class EventLoop:
                 remaining.append(timer)
         self.timers = remaining
 
-    def _schedule_sleep(self, wake_time: float, task: Task):
+    def _fire_timer_callback(self, timer: Timer) -> None:
+        """Execute a timer callback with Vak-aware coroutine handling."""
+        callback = timer.callback
+        vm = timer.vm or getattr(callback, "vm", None)
+
+        if vm is not None and hasattr(vm, "_invoke_runtime_callable"):
+            result = vm._invoke_runtime_callable(callback)
+        elif asyncio.iscoroutinefunction(callback):
+            result = callback()
+        elif callable(callback):
+            result = callback()
+        else:
+            raise TypeError("Timer callback is not callable")
+
+        if hasattr(result, "frame") and hasattr(result, "vm"):
+            self.create_task(result)
+        elif asyncio.iscoroutine(result):
+            asyncio.run(result)
+
+    def _schedule_sleep(self, wake_time: float, task: Task, request: SleepRequest | None = None):
         """
         Schedule a task to wake up at a specific time.
         
@@ -365,7 +449,11 @@ class EventLoop:
             wake_time: Unix timestamp when task should wake up
             task: Task to schedule
         """
-        self._sleeping_tasks.append((wake_time, task))
+        self._sleeping_tasks.append((wake_time, task, request))
+
+    def request_sleep(self, seconds: float) -> SleepRequest:
+        """Return a Vak-native sleep request object."""
+        return SleepRequest(float(seconds))
 
     async def _sleep(self, seconds: float):
         """
@@ -459,6 +547,7 @@ __all__ = [
     'EventLoop',
     'Task',
     'Timer',
+    'SleepRequest',
     'run_async',
     'SUSPEND',
 ]

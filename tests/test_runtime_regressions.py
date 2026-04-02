@@ -635,6 +635,32 @@ bst.जोड़ो(७०)
         loop._process_sleeping_tasks()
         self.assertFalse(task.coro.suspended)
 
+    def test_async_sleep_and_await_resume_successfully(self):
+        source = """
+अतुल्यकालिक कर्म विलम्बित():
+    प्रतीक्षा async_sleep(०.०१)
+    प्रत्यागच्छ ७
+
+मुद्रय प्रतीक्षा विलम्बित()
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.strip(), "7")
+
+    def test_set_timeout_invokes_vak_callback_during_async_wait(self):
+        source = """
+कर्म टिक():
+    मुद्रय "timer-fired"
+
+अतुल्यकालिक कर्म मुख्य():
+    सेट_टाइमआउट(टिक, २०)
+    प्रतीक्षा async_sleep(०.०५)
+    प्रत्यागच्छ ११
+
+मुद्रय प्रतीक्षा मुख्य()
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.splitlines(), ["timer-fired", "11"])
+
     def test_sutra_block_form_parses(self):
         source = """
 सूत्र दोगुना(क):
@@ -953,6 +979,35 @@ bst.जोड़ो(७०)
                 interpreter.run(source, filename=os.path.join(temp_dir, "main.vak"))
             self.assertEqual(buffer.getvalue().strip(), "21")
 
+    def test_missing_module_error_lists_search_locations(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = "आयात ghost_module\n"
+            interpreter = VakInterpreter()
+            with self.assertRaisesRegex(Exception, r"Module not found: ghost_module\. Searched:"):
+                interpreter.run(source, filename=os.path.join(temp_dir, "main.vak"))
+
+    def test_cyclic_imports_fail_with_clear_message(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with open(os.path.join(temp_dir, "alpha.vak"), "w", encoding="utf-8") as alpha_file:
+                alpha_file.write("आयात beta\n")
+            with open(os.path.join(temp_dir, "beta.vak"), "w", encoding="utf-8") as beta_file:
+                beta_file.write("आयात alpha\n")
+
+            interpreter = VakInterpreter()
+            with self.assertRaisesRegex(Exception, r"Cyclic import detected: (alpha -> beta -> alpha|beta -> alpha -> beta)"):
+                interpreter.run("आयात alpha\n", filename=os.path.join(temp_dir, "main.vak"))
+
+    def test_missing_module_attribute_lists_available_names(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            helper_path = os.path.join(temp_dir, "helper.vak")
+            main_path = os.path.join(temp_dir, "main.vak")
+            with open(helper_path, "w", encoding="utf-8") as helper_file:
+                helper_file.write('मान greeting = "namaste"\n')
+
+            interpreter = VakInterpreter()
+            with self.assertRaisesRegex(Exception, r"Available: greeting"):
+                interpreter.run("आयात helper\nमुद्रय helper.greetng\n", filename=main_path)
+
     def test_dunder_init_constructor_sets_instance_attributes(self):
         source = """
 वर्ग पशु:
@@ -1020,6 +1075,42 @@ bst.जोड़ो(७०)
             with open(target_path, "r", encoding="utf-8") as handle:
                 self.assertEqual(handle.read(), "vakya-download")
             self.assertTrue(str(result_path).endswith("copied.txt"))
+
+    def test_runtime_errors_include_vak_native_stack_locals(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = os.path.join(temp_dir, "trace_demo.vak")
+            source = (
+                "कर्म भीतरी(x):\n"
+                "    मान छिपा = x + १\n"
+                "    प्रत्यागच्छ x // ०\n"
+                "कर्म बाह्य():\n"
+                "    मान मान = ७\n"
+                "    प्रत्यागच्छ भीतरी(मान)\n"
+                "बाह्य()\n"
+            )
+            with open(source_path, "w", encoding="utf-8") as handle:
+                handle.write(source)
+
+            interpreter = VakInterpreter()
+            with self.assertRaises(Exception) as error_ctx:
+                interpreter.run(source, filename=source_path)
+
+            text = str(error_ctx.exception)
+            self.assertIn("वाक् आवाहन-पथ", text)
+            self.assertIn("भीतरी", text)
+            self.assertIn("बाह्य", text)
+            self.assertIn("स्थानीय:", text)
+            self.assertRegex(text, r"x=7|मान=7")
+
+    def test_interpreter_exposes_structured_vm_stack_inspection(self):
+        interpreter = VakInterpreter()
+        interpreter.run("मान x = ५\nमुद्रय x\n", filename="<memory>")
+        stack = interpreter.inspect_vm_stack()
+        self.assertIsInstance(stack, list)
+        self.assertTrue(stack)
+        self.assertEqual(stack[0]["name"], "<module>")
+        self.assertIn("locals", stack[0])
+        self.assertIn("stack_top", stack[0])
 
 
 if __name__ == "__main__":

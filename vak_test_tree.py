@@ -27,6 +27,31 @@ from typing import Iterable
 REPO_ROOT = Path(__file__).resolve().parent
 
 
+def _safe_print(*args, **kwargs) -> None:
+    file = kwargs.pop("file", sys.stdout)
+    sep = kwargs.pop("sep", " ")
+    end = kwargs.pop("end", "\n")
+    flush = kwargs.pop("flush", False)
+    if kwargs:
+        raise TypeError(f"Unsupported print kwargs: {', '.join(kwargs)}")
+
+    text = sep.join(str(arg) for arg in args) + end
+    try:
+        file.write(text)
+    except UnicodeEncodeError:
+        encoding = getattr(file, "encoding", None) or "utf-8"
+        safe_text = text.encode(encoding, errors="backslashreplace").decode(
+            encoding,
+            errors="replace",
+        )
+        file.write(safe_text)
+    if flush and hasattr(file, "flush"):
+        file.flush()
+
+
+print = _safe_print
+
+
 @dataclass(frozen=True)
 class CommandSpec:
     argv: tuple[str, ...]

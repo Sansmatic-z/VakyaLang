@@ -14,6 +14,23 @@ import vak_test_tree
 
 
 class VakTestTreeTests(unittest.TestCase):
+    def test_safe_print_falls_back_for_unicode_console_output(self):
+        class FragileConsole:
+            encoding = "cp1252"
+
+            def __init__(self):
+                self.buffer = ""
+
+            def write(self, text):
+                if any(ord(ch) > 127 for ch in text):
+                    raise UnicodeEncodeError("cp1252", text, 0, len(text), "boom")
+                self.buffer += text
+
+        console = FragileConsole()
+        vak_test_tree._safe_print("✅", file=console)
+
+        self.assertIn("\\u2705", console.buffer)
+
     def test_tree_contains_critical_subsystems(self):
         tree = vak_test_tree.build_test_tree()
         paths = {"/".join(path) for path, _ in vak_test_tree.iter_leaves(tree)}

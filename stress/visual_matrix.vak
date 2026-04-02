@@ -1,0 +1,36 @@
+# वाक् तनाव-परीक्षण — चित्रकला दृश्य पाइपलाइन
+
+स्थिर आउटपुट = "stress_visual_matrix_" + पाठ_कर(पूर्णांक_कर(समय() * १००००००)) + ".png"
+
+चर कैनवास = _chitra_canvas(४८०, ४८०, "shyama")
+_chitra_gradient(कैनवास, "nila", "padma")
+_chitra_rect(कैनवास, २०, २०, ४४०, ४४०, "rajata", असत्य)
+_chitra_line(कैनवास, ०, ०, ४७९, ४७९, "श्वेत")
+_chitra_line(कैनवास, ४७९, ०, ०, ४७९, "श्वेत")
+_chitra_circle(कैनवास, २४०, २४०, १४०, "harita", असत्य)
+_chitra_circle(कैनवास, २४०, २४०, ७०, "tapta", असत्य)
+
+चर बिंदु = []
+चर i = ०
+यावत् i < १२:
+    चर कोण = i * (६.२८३१८ / १२)
+    बिंदु.जोड़ो([
+        पूर्णांक_कर(२४० + _math_cos(कोण) * १७०),
+        पूर्णांक_कर(२४० + _math_sin(कोण) * १७०)
+    ])
+    चर i = i + १
+
+_chitra_polygon(कैनवास, बिंदु, "pita", असत्य)
+_chitra_mandala(कैनवास, २४०, २४०, १२५, १०, ["padma", "nila", "harita", "rajata"])
+_chitra_text_centered(कैनवास, ४०, "Vak Stress Visual", "श्वेत", २)
+
+चर घुमाया = _chitra_rotate(कैनवास, १२, २४०, २४०)
+चर प्रतिबिम्ब = _chitra_kaleidoscope(घुमाया, ६)
+_chitra_pixel_set(प्रतिबिम्ब, २४०, २४०, "श्वेत")
+
+_chitra_save(प्रतिबिम्ब, आउटपुट)
+चर पुनः = _chitra_load(आउटपुट)
+
+मुद्रय "visual-size:", _chitra_width(पुनः), _chitra_height(पुनः)
+मुद्रय "visual-center:", _chitra_pixel_get(पुनः, २४०, २४०)
+मुद्रय "STRESS VISUAL OK"

@@ -2,6 +2,9 @@
 # Vak Standard Library — Serialization module
 
 वर्ग जेसन_उपकरण:
+    कर्म प्रारम्भ(स्वयं):
+        प्रत्यागच्छ शून्य
+
     कर्म स्ट्रिंग_बनाओ(स्वयं, डेटा):
         टीका Convert data to JSON string
         प्रत्यागच्छ जेसन_लिखो(डेटा)

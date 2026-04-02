@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from runtime.src.interpreter import VakInterpreter
-from runtime.src.errors import VakError, format_vak_error
+from runtime.src.errors import VakError, format_vak_error_with_suggestions
 
 def main():
     parser = argparse.ArgumentParser(
@@ -53,10 +53,30 @@ Examples:
             print(f"Error: File not found: {args.file}", file=sys.stderr)
             sys.exit(1)
         except VakError as e:
-            print(format_vak_error(e), file=sys.stderr)
+            print(
+                format_vak_error_with_suggestions(
+                    e,
+                    {
+                        "frame": interpreter.vm.current_frame,
+                        "globals": interpreter.vm.globals,
+                        "builtins": interpreter.vm.builtins,
+                    },
+                ),
+                file=sys.stderr,
+            )
             sys.exit(1)
         except Exception as e:
-            print(format_vak_error(e), file=sys.stderr)
+            print(
+                format_vak_error_with_suggestions(
+                    e,
+                    {
+                        "frame": interpreter.vm.current_frame,
+                        "globals": interpreter.vm.globals,
+                        "builtins": interpreter.vm.builtins,
+                    },
+                ),
+                file=sys.stderr,
+            )
             if args.debug:
                 import traceback
                 traceback.print_exc()

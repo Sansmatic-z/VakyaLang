@@ -1,6 +1,8 @@
 # वाक् भाषा - त्रुटि वर्ग (Error Classes)
 # Vak Language - Error Handling
 
+from typing import Optional
+
 class VakError(Exception):
     """Base class for all VakyaLang errors."""
     pass
@@ -55,8 +57,21 @@ class MacroError(VakError):
         super().__init__(f"Macro Error: {message} at line {line}" if line else f"Macro Error: {message}")
 
 
+def format_exception_group(exc_group: BaseExceptionGroup) -> str:
+    """Render nested Python exception groups in a Vak-readable form."""
+    messages = [f"ExceptionGroup ({exc_group.message}):"]
+    for index, exc in enumerate(exc_group.exceptions):
+        messages.append(f"  [{index}] {type(exc).__name__}: {exc}")
+    return "\n".join(messages)
+
+
 def format_vak_error(error: Exception) -> str:
     """Render exceptions with Vak-facing bilingual labels."""
+    if isinstance(error, BaseExceptionGroup):
+        return (
+            "समूह त्रुटि (Exception Group): "
+            + format_exception_group(error)
+        )
     if isinstance(error, LexerError):
         prefix = "शब्द-विश्लेषण त्रुटि (Lexer Error)"
     elif isinstance(error, ParseError):
@@ -72,3 +87,25 @@ def format_vak_error(error: Exception) -> str:
     else:
         prefix = "आन्तरिक त्रुटि (Internal Error)"
     return f"{prefix}: {error}"
+
+
+def format_vak_error_with_suggestions(
+    error: Exception,
+    context: Optional[dict] = None,
+) -> str:
+    """
+    Like format_vak_error, but appends cognitive fix suggestions when available.
+    """
+    base = format_vak_error(error)
+    try:
+        from .suggestions import CognitiveFixer, format_suggestions
+
+        fixer = CognitiveFixer()
+        suggestions = fixer.analyze(error, context=context)
+        suggestion_text = format_suggestions(suggestions)
+        if suggestion_text:
+            return f"{base}\n{suggestion_text}"
+    except Exception:
+        # Suggestion rendering must never break the primary error path.
+        pass
+    return base

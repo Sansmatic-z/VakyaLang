@@ -141,6 +141,31 @@ class RustVmSmokeTests(unittest.TestCase):
         )
         self.assertEqual(lines[-3:], ["25", "14", "सहायक"])
 
+    def test_rust_vm_executes_set_contains_and_slicing(self):
+        lines = self._run_vak(
+            "मान वस्तु = {१, २, २, ३}\n"
+            "मुद्रय २ in वस्तु\n"
+            "मुद्रय ८ in वस्तु\n"
+            "मुद्रय [१, २, ३, ४][१:४:२]\n"
+            "मुद्रय \"vakya\"[१:५:२]\n"
+        )
+        self.assertEqual(lines, ["True", "False", "[2, 4]", "ay"])
+
+    def test_rust_vm_supports_runtime_type_introspection_builtins(self):
+        lines = self._run_vak(
+            "वर्ग जन:\n"
+            "    कर्म __init__(स्वयं):\n"
+            "        स्वयं.नाम = \"राम\"\n"
+            "मान ज = जन()\n"
+            "मुद्रय hasattr(ज, \"नाम\")\n"
+            "मुद्रय hasattr(ज, \"गायब\")\n"
+            "मुद्रय isinstance(ज, \"जन\")\n"
+            "मुद्रय isinstance([१, २], \"list\")\n"
+            "मुद्रय any([असत्य, सत्य])\n"
+            "मुद्रय all([सत्य, सत्य])\n"
+        )
+        self.assertEqual(lines, ["True", "False", "True", "True", "True", "True"])
+
 
 if __name__ == "__main__":
     unittest.main()
