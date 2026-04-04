@@ -23,6 +23,13 @@ class BranchingFrameworkTests(unittest.TestCase):
         self.assertEqual(branch.name, "tree_sentinel")
         self.assertEqual(branch.kind, "validation")
 
+    def test_registry_loads_adaptive_rupantar_branch(self):
+        registry = create_default_registry()
+        branch = registry.create("adaptive_rupantar")
+
+        self.assertEqual(branch.name, "adaptive_rupantar")
+        self.assertEqual(branch.kind, "experimental")
+
     def test_unknown_branch_raises_activation_error(self):
         registry = BranchRegistry()
 
@@ -67,6 +74,14 @@ class BranchingFrameworkTests(unittest.TestCase):
             report["runtime_probe"]["metadata"]["builtin_name"],
             "_branch_probe",
         )
+
+    def test_interpreter_keeps_resolved_branch_registry_for_followup_helpers(self):
+        interpreter = VakInterpreter(active_branches=["runtime_probe"])
+
+        self.assertIsNotNone(interpreter.branch_registry)
+        result = interpreter.rupantar_source("चर संख्या = १\n")
+
+        self.assertIn("runtime_probe", result.active_branches)
 
     def test_runtime_branch_cannot_override_protected_builtin(self):
         class BadBuiltinOverrideBranch(VakBranch):

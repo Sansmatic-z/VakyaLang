@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set
 
 from .tokens import KEYWORDS
+from .runtime_catalog import builtin_names
 
 
 @dataclass(frozen=True)
@@ -167,34 +168,12 @@ SYNTAX_FIX_PATTERNS: tuple[tuple[str, str, str, float], ...] = (
     ),
 )
 
-FALLBACK_BUILTIN_NAMES: Set[str] = {
-    "मुद्रय",
-    "print",
-    "पाठ_कर",
-    "str",
-    "दीर्घता",
-    "len",
-    "संख्या",
-    "int",
-    "दशमलव",
-    "float",
+FALLBACK_BUILTIN_NAMES: Set[str] = set(builtin_names()) | {
     "bool",
-    "प्रकार",
-    "type",
-    "परास",
-    "range",
     "list",
     "dict",
     "set",
     "tuple",
-    "संयोग",
-    "विभाजन",
-    "वर्गमूल",
-    "परिभाषय",
-    "दावा",
-    "नियम",
-    "मूल्यांकन",
-    "सिद्ध_है",
     "धर्म_निर्माण",
     "धर्म_जाँच",
     "कारक_हस्ताक्षर",

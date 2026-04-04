@@ -1,0 +1,11 @@
+{
+  "name": "adaptive_rupantar",
+  "version": "1.0.0",
+  "api_version": "1",
+  "kind": "experimental",
+  "entrypoint": "branches.adaptive_rupantar",
+  "capabilities": ["rupantar_rules"],
+  "depends_on": [],
+  "conflicts_with": [],
+  "default_activation": false
+}

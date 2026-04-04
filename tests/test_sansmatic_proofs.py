@@ -1,4 +1,6 @@
+import contextlib
 import copy
+import io
 import os
 import sys
 import unittest
@@ -43,6 +45,56 @@ class SansmaticProofTests(unittest.TestCase):
         engine.rule(("X", "HAS", "growth"), ("X", "IS", "Alive"))
 
         self.assertTrue(engine.is_provable("entity", "IS", "Alive"))
+
+    def test_engine_summary_and_snapshot_restore_preserve_context(self):
+        engine = SansmaticEngine(verbose=False)
+        engine.register_proof("proof_001", ("entity", "HAS", "growth"))
+        engine.assert_fact("entity", "HAS", "growth", "proof_001")
+        engine.rule(("X", "HAS", "growth"), ("X", "IS", "Alive"))
+        snapshot = engine.snapshot()
+
+        summary = engine.summary()
+        self.assertEqual(summary["facts"], 1)
+        self.assertEqual(summary["rules"], 1)
+        self.assertTrue(summary["consistent"])
+
+        engine.add_fact("entity", "IS", "Dormant")
+        self.assertTrue(engine.restore(snapshot))
+        restored = engine.summary()
+        self.assertEqual(restored["facts"], 1)
+        self.assertEqual(restored["rules"], 1)
+
+    def test_backward_chain_supports_goal_directed_queries(self):
+        engine = SansmaticEngine(verbose=False)
+        engine.register_proof("proof_001", ("entity", "HAS", "growth"))
+        engine.assert_fact("entity", "HAS", "growth", "proof_001")
+        engine.rule(("X", "HAS", "growth"), ("X", "IS", "Alive"))
+
+        self.assertTrue(engine.backward_chain(("entity", "IS", "Alive")))
+
+    def test_engine_exposes_rule_trace_and_proof_tree(self):
+        engine = SansmaticEngine(verbose=False)
+        engine.register_proof("proof_001", ("entity", "HAS", "growth"))
+        engine.assert_fact("entity", "HAS", "growth", "proof_001")
+        engine.rule(("X", "HAS", "growth"), ("X", "IS", "Alive"))
+
+        trace = engine.trace()
+        self.assertTrue(any(item["kind"] == "rule_fire" for item in trace))
+
+        explanation = engine.explain(("entity", "IS", "Alive"))
+        self.assertTrue(explanation["proved"])
+        self.assertEqual(explanation["tree"]["status"], "proved_by_rule")
+        self.assertEqual(explanation["tree"]["children"][0]["goal"], "entity HAS growth")
+
+    def test_engine_explain_reports_obligation_blocker(self):
+        engine = SansmaticEngine(verbose=False)
+        engine.assert_fact("entity", "HAS", "growth")
+
+        explanation = engine.explain(("entity", "HAS", "growth"))
+
+        self.assertFalse(explanation["proved"])
+        self.assertIn("obligation", explanation["blocked_by"])
+        self.assertEqual(explanation["obligations"][0]["statement"], "entity HAS growth")
 
     def test_verifier_rejects_unproven_statement(self):
         verifier = NyayaProofVerifier()
@@ -196,6 +248,36 @@ class SansmaticProofTests(unittest.TestCase):
         self.assertFalse(
             SansmaticEngine.verify_certificate(legacy_certificate, settings=strict_settings)
         )
+
+    def test_vak_runtime_exposes_sansmatic_summary_builtin(self):
+        interpreter = VakInterpreter()
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            interpreter.run("मुद्रय प्रमाण_सारांश()[\"facts\"]")
+        self.assertEqual(buffer.getvalue().splitlines(), ["0"])
+
+    def test_vak_runtime_exposes_backward_chaining_builtin(self):
+        vm = VakVM()
+        vm.builtins["प्रमाण_रीसेट"]()
+        vm.builtins["परिभाषय"]("entity", ["growth"])
+        vm.builtins["नियम"]("X", "HAS", "growth", "X", "IS", "Alive")
+
+        self.assertTrue(vm.builtins["पश्च_सिद्ध_है"]("entity", "IS", "Alive"))
+
+    def test_vak_runtime_exposes_trace_and_explain_builtins(self):
+        vm = VakVM()
+        vm.builtins["प्रमाण_रीसेट"]()
+        vm.builtins["परिभाषय"]("entity", ["growth"])
+        vm.builtins["नियम"]("X", "HAS", "growth", "X", "IS", "Alive")
+        vm.builtins["पश्च_सिद्ध_है"]("entity", "IS", "Alive")
+
+        trace = vm.builtins["प्रमाण_अनुक्रम"]()
+        explanation = vm.builtins["प्रमाण_व्याख्या"]("entity", "IS", "Alive")
+        tree = vm.builtins["प्रमाण_वृक्ष"]("entity", "IS", "Alive")
+
+        self.assertTrue(any(item["kind"] == "rule_fire" for item in trace))
+        self.assertTrue(explanation["proved"])
+        self.assertEqual(tree["status"], "proved_by_rule")
 
     def test_macro_validation_uses_sansmatic_preconditions(self):
         engine = SansmaticEngine(verbose=False)

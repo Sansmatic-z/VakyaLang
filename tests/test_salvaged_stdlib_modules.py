@@ -2,6 +2,7 @@ import contextlib
 import io
 import os
 import sys
+import tempfile
 import unittest
 
 
@@ -21,13 +22,15 @@ class SalvagedStdlibModuleTests(unittest.TestCase):
         return result, [line.rstrip() for line in buffer.getvalue().splitlines()]
 
     def test_contracts_config_and_id_generation(self):
-        source = """
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = os.path.join(tempdir, "salvaged_config_test.cfg").replace("\\", "/")
+            source = f"""
 आयात अनुबंध
 आयात विन्यास
 आयात क्रम_निर्माता
 
-चर पथ = "salvaged_config_test.cfg"
-विन्यास.विन्यास_लिखो({"नाम": "वाक्", "mode": "debug"}, पथ)
+चर पथ = "{config_path}"
+विन्यास.विन्यास_लिखो({{"नाम": "वाक्", "mode": "debug"}}, पथ)
 चर cfg = विन्यास.विन्यास_पढ़ो(पथ)
 मुद्रय विन्यास.विन्यास_प्राप्त(cfg, "नाम", "x")
 मुद्रय विन्यास.विन्यास_प्राप्त(cfg, "अनुपस्थित", "fallback")
@@ -39,14 +42,14 @@ class SalvagedStdlibModuleTests(unittest.TestCase):
 मिटाओ(पथ)
 मुद्रय अस्तित्व(पथ)
 """
-        _, lines = self.run_source(source)
-        self.assertEqual(lines[0], "वाक्")
-        self.assertEqual(lines[1], "fallback")
-        self.assertEqual(lines[2], "1")
-        self.assertEqual(lines[3], "vak_2")
-        self.assertEqual(lines[4], "8")
-        self.assertEqual(lines[5], "vak-lang-4")
-        self.assertEqual(lines[6], "False")
+            _, lines = self.run_source(source)
+            self.assertEqual(lines[0], "वाक्")
+            self.assertEqual(lines[1], "fallback")
+            self.assertEqual(lines[2], "1")
+            self.assertEqual(lines[3], "vak_2")
+            self.assertEqual(lines[4], "8")
+            self.assertEqual(lines[5], "vak-lang-4")
+            self.assertEqual(lines[6], "False")
 
     def test_state_events_and_deep_compare(self):
         source = """

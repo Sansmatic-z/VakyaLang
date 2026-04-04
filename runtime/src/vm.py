@@ -15,6 +15,7 @@ from .jit_compiler import JITCompiler
 from .event_loop import EventLoop, SUSPEND, SleepRequest
 from .audit import emit_audit_event
 from .errors import VMError as BaseVMError
+from .stdlib_manifest import module_alias_map
 
 class VakThrowException(Exception):
     def __init__(self, value):
@@ -1403,31 +1404,9 @@ class VakVM:
         self._enforce_runtime_function_contract(new_frame, func_bc)
 
     def _module_name_candidates(self, module_name: str) -> list[str]:
-        aliases = {
-            'गणित': 'ganit',
-            'गणित_विस्तारित': 'ganit_vistarit',
-            'भाषा_प्रसादन': 'bhasha_prasadan',
-            'तर्क_शास्त्र': 'tarka_shastra',
-            'संग्रह': 'sangrah',
-            'संग्रह_विस्तारित': 'sangrah_vistarit',
-            'डेटा_संग्रह': 'data_sangrah',
-            'कंटेनर_संग्रह': 'container_sangrah',
-            'मैट्रिक्स_गणित': 'matrix_ganit',
-            'संभावना': 'sambhavana',
-            'उपयोगिता': 'upayogita',
-            'रेखा_गणित': 'rekha_ganit',
-            'धागा': 'dhaaga',
-            'फाइल': 'file',
-            'कूटलेख': 'kootlekh',
-            'नियमित': 'niyamit',
-            'मूल': 'mool',
-            'यादृच्छ': 'yadricha',
-            'यादृच्छा': 'yadricha',
-            'पायथन_ब्रिज': 'py_bridge',
-            'उन्नत_सांख्यिकी': 'unnata_sankhyiki',
-        }
+        aliases = module_alias_map()
         candidates = [module_name]
-        alias = aliases.get(module_name)
+        alias = aliases.get(module_name) or aliases.get(module_name.lower())
         if alias and alias not in candidates:
             candidates.append(alias)
         return candidates
@@ -1737,6 +1716,28 @@ class VakVM:
         def _invoke_callable(func, *args, **kwargs):
             return self._invoke_runtime_callable(func, *args, **kwargs)
 
+        def _rupantar_result(*args):
+            from .rupantar import VakyaRupantar
+
+            source = str(args[0]) if args else ""
+            source_path = str(args[1]) if len(args) > 1 and args[1] is not None else None
+            active_names = (
+                self.branch_runtime.active_names()
+                if self.branch_runtime is not None
+                else None
+            )
+            engine = VakyaRupantar(active_branches=active_names)
+            return engine.transform_source(source, source_path=source_path)
+
+        def _rupantar(*args):
+            return _rupantar_result(*args).source
+
+        def _rupantar_report(*args):
+            return _rupantar_result(*args).report_text()
+
+        def _rupantar_payload(*args):
+            return _rupantar_result(*args).report_payload()
+
         def _vak_isinstance(obj, cls):
             if isinstance(cls, VakClass):
                 return isinstance(obj, VakInstance) and obj.klass.name == cls.name
@@ -2029,7 +2030,11 @@ class VakVM:
             'नियम': lambda *args: _sansmatic.rule((str(args[0]), str(args[1]), str(args[2])), (str(args[3]), str(args[4]), str(args[5]))),
             'मूल्यांकन': lambda *args: _sansmatic.evaluate(str(args[0]), str(args[1]), str(args[2])),
             'सिद्ध_है': lambda *args: _sansmatic.is_provable(str(args[0]), str(args[1]), str(args[2])),
+            'पश्च_सिद्ध_है': lambda *args: _sansmatic.backward_chain((str(args[0]), str(args[1]), str(args[2]))),
             'प्रमाण_लॉग': lambda *args: _sansmatic.get_log(),
+            'प्रमाण_सारांश': lambda *args: _sansmatic.summary(),
+            'प्रमाण_स्नैपशॉट': lambda *args: _sansmatic.snapshot(),
+            'प्रमाण_पुनर्स्थापय': lambda *args: _sansmatic.restore(args[0] if args else None),
             'प्रमाण_रीसेट': lambda *args: _sansmatic.reset(),
             'आत्म_मूल्य': _atma_wrap,
             'भाव_पढ़ो': lambda *args: _atmalipi.read_bhav(str(args[0])),
@@ -2054,6 +2059,12 @@ class VakVM:
             'न्याय_सिद्धि_रिपोर्ट': _nyaya_report,
             'न्याय_सिद्धि_मान्य_है': _nyaya_valid,
             'पदार्थ_वर्गीकरण': _padartha,
+            'रूपान्तर': _rupantar,
+            'रूपान्तर_रिपोर्ट': _rupantar_report,
+            'रूपान्तर_विवरण': _rupantar_payload,
+            'प्रमाण_अनुक्रम': lambda *args: _sansmatic.trace(limit=int(args[0]) if args else None),
+            'प्रमाण_वृक्ष': lambda *args: _sansmatic.proof_tree((str(args[0]), str(args[1]), str(args[2]))),
+            'प्रमाण_व्याख्या': lambda *args: _sansmatic.explain((str(args[0]), str(args[1]), str(args[2]))),
         }
 
         if self.branch_runtime is not None:

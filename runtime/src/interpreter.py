@@ -7,9 +7,11 @@ from .lexer import Lexer
 from .parser import Parser
 from .compiler import Compiler, CompileError
 from .vm import VakVM, VMError
-from .errors import VakError, format_vak_error_with_suggestions
+from .errors import TranslationError, VakError, format_vak_error_with_suggestions
 from .audit import emit_audit_event
 from .branching import BranchActivationError
+from .code_transformer import TransformResult, VakCodeTransformer
+from .rupantar import RupantarResult, VakyaRupantar
 
 class VakInterpreter:
     """
@@ -22,22 +24,28 @@ class VakInterpreter:
         *,
         active_branches: Optional[list[str]] = None,
         branch_registry: Any = None,
+        deep_meaning_mode: bool = False,
     ):
         self.debug = False
         self.branch_runtime = None
+        self.branch_registry = branch_registry
+        self.deep_meaning_mode = deep_meaning_mode
+        self.code_transformer = VakCodeTransformer(deep_meaning_mode=deep_meaning_mode)
+        self.last_transform_result = TransformResult("", "", False, 0)
         if active_branches:
             registry = branch_registry
             if registry is None:
                 from branches.registry import create_default_registry
 
                 registry = create_default_registry()
+            self.branch_registry = registry
             self.branch_runtime = registry.create_runtime(
                 list(active_branches),
                 include_defaults=True,
             )
         self.vm = VakVM(
             branch_runtime=self.branch_runtime,
-            branch_registry=branch_registry,
+            branch_registry=self.branch_registry,
         )
 
     def get_branch_report(self) -> dict[str, dict[str, Any]]:
@@ -48,12 +56,58 @@ class VakInterpreter:
     def inspect_vm_stack(self) -> list[dict[str, Any]]:
         return self.vm.inspect_stack()
 
+    def rupantar_source(
+        self,
+        source: str,
+        *,
+        filename: str | None = None,
+    ) -> RupantarResult:
+        active_names = None
+        if self.branch_runtime is not None:
+            active_names = self.branch_runtime.active_names()
+        engine = VakyaRupantar(
+            active_branches=active_names,
+            branch_registry=self.branch_registry,
+        )
+        return engine.transform_source(source, source_path=filename)
+
     def error_context(self) -> dict[str, Any]:
         return {
             "frame": self.vm.current_frame,
             "globals": self.vm.globals,
             "builtins": self.vm.builtins,
+            "translation": {
+                "language": self.last_transform_result.language,
+                "confidence": self.last_transform_result.confidence,
+                "transformed": self.last_transform_result.transformed,
+                "replacements": self.last_transform_result.replacements,
+                "changed_lines": list(self.last_transform_result.changed_lines),
+                "features": list(self.last_transform_result.features),
+                "blocked_reason": self.last_transform_result.blocked_reason,
+                "blocked_line": self.last_transform_result.blocked_line,
+                "original_source": self.last_transform_result.original_source,
+                "transformed_source": self.last_transform_result.source,
+            },
         }
+
+    def prepare_source(self, source: str) -> str:
+        self.last_transform_result = self.code_transformer.transform(source)
+        if self.last_transform_result.blocked_reason:
+            raise TranslationError(
+                self.last_transform_result.blocked_reason,
+                self.last_transform_result.blocked_line,
+            )
+        return self.last_transform_result.source
+
+    def translation_status_message(self) -> str | None:
+        if self.last_transform_result.transformed:
+            return "वाक्य-अनुवाद सफल"
+        return None
+
+    def transformed_source(self) -> str | None:
+        if self.last_transform_result.transformed:
+            return self.last_transform_result.source
+        return None
 
     def _debug_print(self, text: str) -> None:
         try:
@@ -68,7 +122,14 @@ class VakInterpreter:
             )
             sys.stdout.write(f"{safe_text}\n")
         
-    def run(self, source: str, debug: bool = False, filename: str | None = None) -> any:
+    def run(
+        self,
+        source: str,
+        debug: bool = False,
+        filename: str | None = None,
+        *,
+        source_prepared: bool = False,
+    ) -> any:
         """
         Execute VakyaLang source code.
         
@@ -82,9 +143,21 @@ class VakInterpreter:
         emit_audit_event("vak.interpreter.run.start", filename or "<memory>", debug)
         
         try:
+            if not source_prepared:
+                source = self.prepare_source(source)
+
             # Step 1: Lexical Analysis
             if debug:
                 self._debug_print("=== Stage 1: Lexical Analysis ===")
+                if self.last_transform_result.transformed:
+                    self._debug_print("=== English → Vak Transformation ===")
+                    self._debug_print(self.last_transform_result.source)
+                    self._debug_print(
+                        f"Changed lines: {list(self.last_transform_result.changed_lines)}"
+                    )
+                    self._debug_print(
+                        f"Features: {list(self.last_transform_result.features)}"
+                    )
             lexer = Lexer(source)
             tokens = lexer.tokenize()
             if debug:
@@ -150,9 +223,17 @@ class VakInterpreter:
         # except Exception as e:
             # raise VakError(f"Execution error: {e}")
             
-    def compile_only(self, source: str, filename: str | None = None) -> 'Bytecode':
+    def compile_only(
+        self,
+        source: str,
+        filename: str | None = None,
+        *,
+        source_prepared: bool = False,
+    ) -> 'Bytecode':
         """Compile source to bytecode without executing."""
         emit_audit_event("vak.interpreter.compile.start", filename or "<memory>")
+        if not source_prepared:
+            source = self.prepare_source(source)
         lexer = Lexer(source)
         tokens = lexer.tokenize()
         parser = Parser(tokens)
@@ -185,7 +266,7 @@ class VakInterpreter:
     def _read_repl_source(self) -> str | None:
         line = input("वाक्> ")
         stripped = line.strip()
-        if stripped in {'exit', 'quit'}:
+        if stripped in {'exit', 'quit', 'विराम'}:
             return None
         if not stripped:
             return ""
@@ -206,7 +287,7 @@ class VakInterpreter:
             print(banner)
         else:
             print("🕉️ वाक् भाषा - आभासी यन्त्र (VakyaLang VM)")
-            print("Type 'debug' to toggle debug mode, 'exit' to quit")
+            print("Type 'debug' to toggle debug mode, 'exit' or 'विराम' to quit")
             print("End an indented block with an empty line.\n")
         
         while True:
@@ -222,11 +303,14 @@ class VakInterpreter:
                     continue
                     
                 result = self.run(source, debug=self.debug, filename="<repl>")
+                translation_message = self.translation_status_message()
+                if translation_message:
+                    print(translation_message)
                 if result is not None:
                     print(f"=> {result}")
                     
             except KeyboardInterrupt:
-                print("\nUse 'exit' to quit")
+                print("\nUse 'exit' or 'विराम' to quit")
             except EOFError:
                 break
             except Exception as e:

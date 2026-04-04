@@ -27,6 +27,47 @@ class SanskritTranslator:
     }
     
     SANSKRIT_DICTIONARY = {v: k for k, v in MATH_DICTIONARY.items()}
+    CODE_KEYWORD_DICTIONARY = {
+        'var': 'चर',
+        'const': 'स्थिर',
+        'def': 'कर्म',
+        'class': 'वर्ग',
+        'if': 'यदि',
+        'elif': 'अन्यत्',
+        'else': 'अन्यथा',
+        'while': 'यावत्',
+        'for': 'प्रत्येक',
+        'return': 'प्रत्यागच्छ',
+        'try': 'प्रयत्न',
+        'except': 'दोष',
+        'finally': 'अन्ततः',
+        'raise': 'उत्क्षिप',
+        'import': 'आयात',
+        'from': 'से',
+        'with': 'साथ',
+        'as': 'जैसे',
+        'global': 'वैश्विक',
+        'nonlocal': 'अस्थानिक',
+        'async': 'अतुल्यकालिक',
+        'await': 'प्रतीक्षा',
+        'self': 'स्वयं',
+        'super': 'अभिभावक',
+        'True': 'सत्य',
+        'true': 'सत्य',
+        'False': 'असत्य',
+        'false': 'असत्य',
+        'None': 'शून्य',
+        'none': 'शून्य',
+        'pass': 'शून्य',
+        'and': 'और',
+        'or': 'अथवा',
+        'not': 'न',
+        'in': 'अन्तर्गत',
+        'break': 'विराम',
+        'continue': 'अग्रे',
+        'match': 'प्रत्यभिज्ञा',
+        'open': 'खोलो',
+    }
     
     def __init__(self):
         pass
@@ -94,3 +135,9 @@ class SanskritTranslator:
             return self.english_to_sanskrit(text)
         else:
             return self.sanskrit_to_english(text)
+
+    def english_code_to_sanskrit(self, token: str) -> Optional[str]:
+        """Translate a Python-style code keyword into the live Vak keyword."""
+        if token in self.CODE_KEYWORD_DICTIONARY:
+            return self.CODE_KEYWORD_DICTIONARY[token]
+        return self.CODE_KEYWORD_DICTIONARY.get(token.lower())

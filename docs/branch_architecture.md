@@ -5,6 +5,10 @@
 Vak is the trunk. Optional capabilities must grow as branches without changing
 the semantic core by accident.
 
+The decision rule for what belongs in trunk vs branch is documented in:
+
+- `docs/main_vs_branch_policy.md`
+
 This first-stage branch framework is intentionally conservative:
 
 - trunk remains authoritative

@@ -1,0 +1,53 @@
+# colour_lib cosmic poster showcase
+# Manual demo: generates one SVG poster and one PPM preview.
+
+आयात colour_lib
+
+चर svg_पथ = "manual_checks/colour_lib_cosmic_poster.svg"
+चर ppm_पथ = "manual_checks/colour_lib_cosmic_preview.ppm"
+
+चर प्रधान = colour_lib.प्राप्त("MidnightBlue")
+चर द्वितीय = colour_lib.प्राप्त("DeepPink")
+चर स्पेक्ट्रम = colour_lib.स्पेक्ट्रम_ढाल(390, 720, 12)
+चर ताप = colour_lib.ताप_ढाल(1800, 12000, 8)
+चर त्रिशीर्षी_रंग = colour_lib.त्रिशीर्षी("#8B5CF6")
+
+चर svg = colour_lib.svg_आरम्भ(1200, 780)
+svg = colour_lib.svg_रेखीय_ढाल(svg, 0, 0, 0, 1, "#020617", "#1D4ED8", "sky")
+svg = colour_lib.svg_ढाल_आयत(svg, 0, 0, 1200, 780, "sky")
+svg = colour_lib.svg_विकिरणीय_ढाल(svg, 0.76, 0.22, 0.24, "#FDE68A", "#FB7185", "halo")
+svg = colour_lib.svg_वृत्त(svg, 920, 180, 120, "url(#halo)", "#F8FAFC")
+svg = colour_lib.svg_पाठ(svg, 90, 110, "वाक् रंग-नक्षत्र", "#FFFFFF", 42)
+svg = colour_lib.svg_पाठ(svg, 90, 150, "colour_lib cosmic poster", "#BFDBFE", 22)
+svg = colour_lib.svg_पाठ(svg, 90, 190, "मुख्य: " + प्रधान + " | द्वितीय: " + द्वितीय, "#E2E8F0", 18)
+svg = colour_lib.svg_पाठ(svg, 90, 250, "त्रिशीर्षी", "#F8FAFC", 24)
+svg = colour_lib.svg_श्रेणी_दिखाओ(svg, 90, 270, 52, त्रिशीर्षी_रंग)
+svg = colour_lib.svg_पाठ(svg, 90, 390, "स्पेक्ट्रम", "#F8FAFC", 24)
+svg = colour_lib.svg_स्पेक्ट्रम_पट्टी(svg, 90, 410, 1020, 44, 390, 720)
+svg = colour_lib.svg_पाठ(svg, 90, 520, "ताप-ढाल", "#F8FAFC", 24)
+svg = colour_lib.svg_श्रेणी_दिखाओ(svg, 90, 540, 52, ताप)
+svg = colour_lib.svg_पाठ(svg, 90, 690, "Generated fully in Vak using colour_lib", "#DBEAFE", 20)
+colour_lib.svg_लिखो(svg, svg_पथ)
+
+चर चित्र = colour_lib.ppm_आरम्भ(240, 160)
+colour_lib.ppm_ऊर्ध्वाधर_ढाल(चित्र, 0, 0, 239, 159, प्रधान, द्वितीय)
+चर i = ०
+यावत् i < दीर्घता(स्पेक्ट्रम):
+    चर रंग = स्पेक्ट्रम[i]
+    चर x1 = i * 20
+    चर x2 = x1 + 19
+    colour_lib.ppm_आयत_हेक्स(चित्र, x1, 105, x2, 140, रंग)
+    i += १
+चर j = ०
+यावत् j < दीर्घता(ताप):
+    चर रंग = ताप[j]
+    चर y1 = 18
+    चर y2 = 46
+    चर x1 = 16 + j * 26
+    चर x2 = x1 + 18
+    colour_lib.ppm_आयत_हेक्स(चित्र, x1, y1, x2, y2, रंग)
+    j += १
+colour_lib.ppm_लिखो(चित्र, ppm_पथ)
+
+मुद्रय "SVG: " + svg_पथ
+मुद्रय "PPM: " + ppm_पथ

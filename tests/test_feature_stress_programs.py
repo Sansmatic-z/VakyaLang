@@ -30,7 +30,10 @@ class FeatureStressProgramTests(unittest.TestCase):
     def tearDown(self) -> None:
         for pattern in ("stress_visual_matrix_*.png", "stress_runtime_data_*.json"):
             for path in PROJECT_ROOT.glob(pattern):
-                path.unlink()
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
 
     def assertSucceeded(self, result: subprocess.CompletedProcess[str]) -> None:
         if result.returncode != 0:
@@ -83,7 +86,10 @@ class FeatureStressProgramTests(unittest.TestCase):
 
     def test_visual_matrix(self):
         for path in PROJECT_ROOT.glob("stress_visual_matrix_*.png"):
-            path.unlink()
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
         result = self.run_program("visual_matrix.vak")
         self.assertSucceeded(result)
         output = result.stdout

@@ -16,6 +16,20 @@
   Boolean derivability query.
 - `प्रमाण_लॉग()`:
   Return the current proof log as a list of strings.
+- `प्रमाण_सारांश()`:
+  Return a structured proof summary, including counts and consistency.
+- `प्रमाण_अनुक्रम([limit])`:
+  Return structured proof-trace events showing fact registration, rule firing,
+  obligations, and contradictions.
+- `प्रमाण_वृक्ष(entity, relation, property)`:
+  Return a proof tree for the requested goal.
+- `प्रमाण_व्याख्या(entity, relation, property)`:
+  Return an explanation payload for the goal, including blockers such as proof
+  obligations or contradictions.
+- `प्रमाण_स्नैपशॉट()`:
+  Capture the current proof-engine state.
+- `प्रमाण_पुनर्स्थापय([state])`:
+  Restore the last or provided proof-engine snapshot.
 - `प्रमाण_रीसेट()`:
   Clear proof state for the current engine instance.
 

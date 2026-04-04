@@ -4,7 +4,7 @@
   "api_version": "1",
   "kind": "runtime",
   "entrypoint": "branches.chitrakala",
-  "capabilities": ["vm_builtins"],
+  "capabilities": ["vm_builtins", "rupantar_rules"],
   "depends_on": [],
   "conflicts_with": [],
   "default_activation": true

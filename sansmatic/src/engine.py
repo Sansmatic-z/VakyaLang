@@ -80,6 +80,9 @@ class SansmaticEngine:
         self.known_proofs: Dict[str, Set[str]] = {}
         self.issued_certificates: Dict[str, Dict[str, Any]] = {}
         self.predicates: Dict[str, Callable[..., bool]] = {}
+        self._snapshot_stack: List[Dict[str, Any]] = []
+        self.trace_events: List[Dict[str, Any]] = []
+        self._last_explanation: Optional[Dict[str, Any]] = None
         self._register_default_predicates()
 
     # ── Public API ──────────────────────────────────────────────────────────
@@ -103,7 +106,117 @@ class SansmaticEngine:
             key: copy.deepcopy(payload) for key, payload in self.issued_certificates.items()
         }
         cloned.predicates = dict(self.predicates)
+        cloned.trace_events = [copy.deepcopy(item) for item in self.trace_events]
+        cloned._last_explanation = copy.deepcopy(self._last_explanation)
         return cloned
+
+    def snapshot(self) -> Dict[str, Any]:
+        """Capture the current proof-engine state for later restoration."""
+        state = self._capture_state()
+        self._snapshot_stack.append(copy.deepcopy(state))
+        return state
+
+    def restore(self, state: Optional[Dict[str, Any]] = None) -> bool:
+        """Restore a captured state or the last stacked snapshot."""
+        if state is None:
+            if not self._snapshot_stack:
+                return False
+            state = self._snapshot_stack.pop()
+        self._restore_state(state)
+        return True
+
+    def summary(self) -> Dict[str, Any]:
+        """Return a structured summary of the active proof context."""
+        return {
+            "definitions": len(self.definitions),
+            "facts": len(self.facts),
+            "derived": len(self._derived),
+            "rules": len(self.rules),
+            "obligations": {
+                "total": len(self.obligations),
+                "pending": len(self.obligations),
+            },
+            "contradictions": len(self.contradictions),
+            "known_proofs": len(self.known_proofs),
+            "issued_certificates": len(self.issued_certificates),
+            "predicates": len(self.predicates),
+            "consistent": not bool(self.contradictions),
+            "trace_events": len(self.trace_events),
+        }
+
+    def trace(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        events = self.trace_events if limit in (None, 0) else self.trace_events[-int(limit):]
+        return [copy.deepcopy(item) for item in events]
+
+    def proof_tree(
+        self,
+        statement: Any,
+        *,
+        max_depth: int = 20,
+    ) -> Dict[str, Any]:
+        explanation = self.explain(statement, max_depth=max_depth)
+        return copy.deepcopy(explanation.get("tree") or {})
+
+    def explain(
+        self,
+        statement: Any,
+        *,
+        max_depth: int = 20,
+    ) -> Dict[str, Any]:
+        self._apply_rules()
+        parsed = self.parse_statement(statement)
+        blocked_by: List[str] = []
+        if self.contradictions:
+            blocked_by.append("contradiction")
+        if self.obligations:
+            blocked_by.append("obligation")
+
+        if parsed["kind"] == "fact":
+            proved, tree = self._prove_fact_tree(
+                parsed["fact"],
+                depth=0,
+                max_depth=max_depth,
+                seen=set(),
+            )
+        elif parsed["kind"] == "predicate":
+            proved = self._evaluate_predicate(parsed["name"], parsed["args"])
+            tree = {
+                "goal": parsed["text"],
+                "status": "predicate",
+                "proved": bool(proved),
+                "children": [],
+            }
+        else:
+            proved = parsed["text"] in self._supported_statements()
+            tree = {
+                "goal": parsed["text"],
+                "status": "known" if proved else "missing",
+                "proved": bool(proved),
+                "children": [],
+            }
+
+        result = {
+            "goal": parsed["text"],
+            "kind": parsed["kind"],
+            "proved": bool(proved) and not blocked_by,
+            "blocked_by": blocked_by,
+            "contradictions": [list(item) for item in self.contradictions],
+            "obligations": [dict(item) for item in self.obligations],
+            "tree": tree,
+            "trace_tail": self.trace(limit=12),
+        }
+        self._last_explanation = copy.deepcopy(result)
+        return result
+
+    def backward_chain(
+        self,
+        statement: Any,
+        *,
+        max_depth: int = 20,
+    ) -> bool:
+        """Goal-directed proof search over existing facts and implication rules."""
+        explanation = self.explain(statement, max_depth=max_depth)
+        return bool(explanation["proved"])
 
     def register_predicate(self, name: str, predicate: Callable[..., bool]) -> None:
         self.predicates[name] = predicate
@@ -256,7 +369,12 @@ class SansmaticEngine:
             self._log(msg)
             return msg
 
-        if fact in self.facts or fact in self._derived:
+        if fact in self.facts or fact in self._derived or self._prove_fact(
+            fact,
+            depth=0,
+            max_depth=20,
+            seen=set(),
+        ):
             msg = f"[मूल्यांकन✔] {statement} — सिद्ध (derivable) ✓"
         else:
             msg = f"[मूल्यांकन✗] {statement} — असिद्ध (not derivable)"
@@ -302,8 +420,12 @@ class SansmaticEngine:
 
         parsed = self.parse_statement(statement)
         if parsed["kind"] == "fact":
-            fact = parsed["fact"]
-            return fact in self.facts or fact in self._derived
+            return self._prove_fact(
+                parsed["fact"],
+                depth=0,
+                max_depth=20,
+                seen=set(),
+            )
 
         if parsed["kind"] == "predicate":
             return self._evaluate_predicate(parsed["name"], parsed["args"])
@@ -413,6 +535,9 @@ class SansmaticEngine:
         self.known_proofs.clear()
         self.issued_certificates.clear()
         self.predicates.clear()
+        self._snapshot_stack.clear()
+        self.trace_events.clear()
+        self._last_explanation = None
         self._register_default_predicates()
 
     # ── Internal: predicate support ─────────────────────────────────────────
@@ -460,6 +585,43 @@ class SansmaticEngine:
         except Exception:
             return False
 
+    def _capture_state(self) -> Dict[str, Any]:
+        return {
+            "definitions": {name: set(props) for name, props in self.definitions.items()},
+            "facts": set(self.facts),
+            "rules": list(self.rules),
+            "proof_log": list(self.proof_log),
+            "derived": set(self._derived),
+            "obligations": [dict(item) for item in self.obligations],
+            "contradictions": list(self.contradictions),
+            "known_proofs": {pid: set(stmts) for pid, stmts in self.known_proofs.items()},
+            "issued_certificates": {
+                key: copy.deepcopy(payload) for key, payload in self.issued_certificates.items()
+            },
+            "predicates": dict(self.predicates),
+            "trace_events": [copy.deepcopy(item) for item in self.trace_events],
+            "last_explanation": copy.deepcopy(self._last_explanation),
+        }
+
+    def _restore_state(self, state: Dict[str, Any]) -> None:
+        self.definitions = {name: set(props) for name, props in state.get("definitions", {}).items()}
+        self.facts = set(state.get("facts", set()))
+        self.rules = list(state.get("rules", []))
+        self.proof_log = list(state.get("proof_log", []))
+        self._derived = set(state.get("derived", set()))
+        self.obligations = [dict(item) for item in state.get("obligations", [])]
+        self.contradictions = list(state.get("contradictions", []))
+        self.known_proofs = {
+            pid: set(stmts) for pid, stmts in state.get("known_proofs", {}).items()
+        }
+        self.issued_certificates = {
+            key: copy.deepcopy(payload)
+            for key, payload in state.get("issued_certificates", {}).items()
+        }
+        self.predicates = dict(state.get("predicates", {}))
+        self.trace_events = [copy.deepcopy(item) for item in state.get("trace_events", [])]
+        self._last_explanation = copy.deepcopy(state.get("last_explanation"))
+
     # ── Internal: logic core ────────────────────────────────────────────────
 
     def _register_fact(
@@ -474,11 +636,24 @@ class SansmaticEngine:
             pair = (self._fact_to_statement(fact), self._fact_to_statement(contradiction))
             if pair not in self.contradictions:
                 self.contradictions.append(pair)
+            self._trace(
+                "contradiction",
+                f"{pair[0]} conflicts with {pair[1]}",
+                fact=self._fact_to_statement(fact),
+                conflicting=self._fact_to_statement(contradiction),
+            )
             raise ProofError(
                 f"Contradiction detected: {pair[0]} conflicts with {pair[1]}"
             )
 
         self.facts.add(fact)
+        self._trace(
+            "fact",
+            f"registered {self._fact_to_statement(fact)}",
+            fact=self._fact_to_statement(fact),
+            source=source,
+            proof_id=proof_id,
+        )
 
         # An added fact can discharge a matching obligation.
         statement = self._fact_to_statement(fact)
@@ -490,6 +665,12 @@ class SansmaticEngine:
         item = {"statement": statement, "proof_id": proof_id}
         if item not in self.obligations:
             self.obligations.append(item)
+            self._trace(
+                "obligation",
+                f"blocked by proof obligation for {statement}",
+                statement=statement,
+                proof_id=proof_id,
+            )
 
     def _proof_supports(self, statement: str, proof_id: str) -> bool:
         supports = self.known_proofs.get(proof_id)
@@ -521,16 +702,127 @@ class SansmaticEngine:
                     derived = self._substitute_pattern(conclusion, bindings)
                     if derived in self.facts or derived in self._derived:
                         continue
-                    if self._find_contradiction(derived) is not None:
+                    contradiction = self._find_contradiction(derived)
+                    if contradiction is not None:
                         pair = (
                             self._fact_to_statement(derived),
-                            self._fact_to_statement(self._find_contradiction(derived)),
+                            self._fact_to_statement(contradiction),
                         )
                         if pair not in self.contradictions:
                             self.contradictions.append(pair)
+                        self._trace(
+                            "contradiction",
+                            f"derived contradiction {pair[0]} vs {pair[1]}",
+                            fact=pair[0],
+                            conflicting=pair[1],
+                        )
                         continue
                     self._derived.add(derived)
+                    self._trace(
+                        "rule_fire",
+                        f"{self._fact_to_statement(fact)} => {self._fact_to_statement(derived)}",
+                        matched_fact=self._fact_to_statement(fact),
+                        premise=self._fact_to_statement(premise),
+                        conclusion=self._fact_to_statement(conclusion),
+                        derived=self._fact_to_statement(derived),
+                    )
                     changed = True
+
+    def _prove_fact(
+        self,
+        goal: Fact,
+        *,
+        depth: int,
+        max_depth: int,
+        seen: Set[str],
+    ) -> bool:
+        if goal in self.facts or goal in self._derived:
+            return True
+        if depth >= max_depth:
+            return False
+
+        goal_key = self._fact_to_statement(goal)
+        if goal_key in seen:
+            return False
+        next_seen = set(seen)
+        next_seen.add(goal_key)
+
+        for premise, conclusion in self.rules:
+            bindings = self._match_pattern(conclusion, goal)
+            if bindings is None:
+                continue
+            candidate = self._substitute_pattern(premise, bindings)
+            if self._prove_fact(candidate, depth=depth + 1, max_depth=max_depth, seen=next_seen):
+                return True
+        return False
+
+    def _prove_fact_tree(
+        self,
+        goal: Fact,
+        *,
+        depth: int,
+        max_depth: int,
+        seen: Set[str],
+    ) -> Tuple[bool, Dict[str, Any]]:
+        goal_text = self._fact_to_statement(goal)
+        if goal in self.facts:
+            return True, {"goal": goal_text, "status": "known_fact", "children": []}
+        if depth >= max_depth:
+            return False, {"goal": goal_text, "status": "depth_limit", "children": []}
+        if goal_text in seen:
+            return False, {"goal": goal_text, "status": "cycle", "children": []}
+
+        next_seen = set(seen)
+        next_seen.add(goal_text)
+        attempts: List[Dict[str, Any]] = []
+
+        for premise, conclusion in self.rules:
+            bindings = self._match_pattern(conclusion, goal)
+            if bindings is None:
+                continue
+            candidate = self._substitute_pattern(premise, bindings)
+            proved, child = self._prove_fact_tree(
+                candidate,
+                depth=depth + 1,
+                max_depth=max_depth,
+                seen=next_seen,
+            )
+            attempt = {
+                "goal": goal_text,
+                "status": "rule_candidate",
+                "proved": proved,
+                "rule": {
+                    "premise": self._fact_to_statement(premise),
+                    "conclusion": self._fact_to_statement(conclusion),
+                },
+                "children": [child],
+            }
+            attempts.append(attempt)
+            if proved:
+                return True, {
+                    "goal": goal_text,
+                    "status": "proved_by_rule",
+                    "rule": attempt["rule"],
+                    "children": [child],
+                }
+
+        if attempts:
+            proved_attempt = next((attempt for attempt in attempts if attempt["proved"]), None)
+            if proved_attempt is not None:
+                return True, {
+                    "goal": goal_text,
+                    "status": "proved_by_rule",
+                    "rule": proved_attempt["rule"],
+                    "children": proved_attempt["children"],
+                }
+            return False, {
+                "goal": goal_text,
+                "status": "missing_premise",
+                "children": attempts,
+            }
+        if goal in self._derived:
+            return True, {"goal": goal_text, "status": "known_derived", "children": []}
+        return False, {"goal": goal_text, "status": "missing", "children": []}
 
     def _match_pattern(self, pattern: Fact, fact: Fact) -> Optional[Dict[str, str]]:
         bindings: Dict[str, str] = {}
@@ -727,3 +1019,8 @@ class SansmaticEngine:
                 )
                 sys.stdout.write(f"{safe_message}\n")
             sys.stdout.flush()
+
+    def _trace(self, kind: str, message: str, **metadata: Any) -> None:
+        event = {"kind": kind, "message": message}
+        event.update(metadata)
+        self.trace_events.append(event)

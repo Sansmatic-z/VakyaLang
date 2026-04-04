@@ -108,6 +108,7 @@ all = [
 
 [project.scripts]
 vak = "runtime.run:main"
+vakyalang = "runtime.src.tui:main"
 sanskrit-coder = "sanskrit_coder.main:main"
 
 [tool.setuptools]

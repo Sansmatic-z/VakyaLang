@@ -25,6 +25,12 @@ class CompileError(VakError):
         self.line = line
         super().__init__(f"[Line {line}] {message}")
 
+class TranslationError(VakError):
+    """English-to-Vak translation error."""
+    def __init__(self, message: str, line: int = 0):
+        self.line = line
+        super().__init__(f"[Line {line}] {message}" if line else message)
+
 class VMError(VakError):
     """Runtime error in VM."""
     pass
@@ -78,6 +84,8 @@ def format_vak_error(error: Exception) -> str:
         prefix = "वाक्यरचना त्रुटि (Parse Error)"
     elif isinstance(error, CompileError):
         prefix = "संकलन त्रुटि (Compile Error)"
+    elif isinstance(error, TranslationError):
+        prefix = "अनुवाद त्रुटि (Translation Error)"
     elif isinstance(error, (VMError, VakRuntimeError)):
         prefix = "चालना त्रुटि (Runtime Error)"
     elif isinstance(error, MacroError):

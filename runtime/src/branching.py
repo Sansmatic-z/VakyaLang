@@ -77,6 +77,13 @@ class VakBranch:
     ) -> None:
         """Additive runtime builtin registration hook."""
 
+    def extend_rupantar_rules(
+        self,
+        rules: dict[str, Any],
+        context: BranchHookContext,
+    ) -> None:
+        """Additive source-repair rule registration hook."""
+
 
 class BranchRuntime:
     """Coordinates active branches across interpreter/compiler phases."""
@@ -249,3 +256,15 @@ class BranchRuntime:
                 raise BranchActivationError(
                     f"Branch '{branch.name}' attempted to override protected builtins: {', '.join(overridden)}"
                 )
+
+    def extend_rupantar_rules(self, rules: dict[str, Any]) -> None:
+        for branch in self.branches:
+            handler = getattr(branch, "extend_rupantar_rules", None)
+            if handler is None:
+                continue
+            context = BranchHookContext(
+                runtime=self,
+                branch_name=branch.name,
+                phase="rupantar_rules",
+            )
+            handler(rules, context)
