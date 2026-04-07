@@ -1,0 +1,24 @@
+स्थिर CODEX_PAGE_NAME = "vak_native"
+स्थिर CODEX_PAGE_DESCRIPTION = "Vak-native Codex page implemented in Vak"
+स्थिर CODEX_PAGE_PRIORITY = 40
+स्थिर CODEX_PAGE_KIND = "vak_module"
+स्थिर CODEX_PAGE_CHAPTER = "vak_native"
+स्थिर CODEX_PAGE_CHAPTER_TITLE = "Vak Native Pages"
+स्थिर CODEX_PAGE_CHAPTER_ORDER = 50
+स्थिर CODEX_PAGE_CAPABILITIES = ["vak", "normalize", "repair"]
+स्थिर CODEX_PAGE_EMITS_VAK = सत्य
+स्थिर CODEX_PAGE_EXTENSIONS = ["vak"]
+स्थिर CODEX_PAGE_HINTS = ["कर्म ", "चर ", "स्थिर ", "आयात ", "यदि ", "यावत् ", "जबतक "]
+स्थिर CODEX_PAGE_MAX_FIXPOINT_PASSES = 2
+
+कर्म codex_probe(source, filename = शून्य):
+    यदि filename != शून्य और ".vak" अन्तर्गत filename:
+        प्रत्यागच्छ {"score": 60, "reason": ".vak path matched by Vak-native page"}
+    यदि "कर्म " अन्तर्गत source अथवा "चर " अन्तर्गत source अथवा "आयात " अन्तर्गत source:
+        प्रत्यागच्छ {"score": 58, "reason": "Vak-native markers detected by Vak page"}
+    यदि "यावत् " अन्तर्गत source अथवा "जबतक " अन्तर्गत source:
+        प्रत्यागच्छ {"score": 56, "reason": "Vak loop syntax detected by Vak page"}
+    प्रत्यागच्छ {"score": 15, "reason": "Vak-native fallback page"}
+
+कर्म codex_transform(source, filename = शून्य):
+    प्रत्यागच्छ रूपान्तर_विवरण(source, filename)

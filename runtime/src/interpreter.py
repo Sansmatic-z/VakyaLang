@@ -11,6 +11,7 @@ from .errors import TranslationError, VakError, format_vak_error_with_suggestion
 from .audit import emit_audit_event
 from .branching import BranchActivationError
 from .code_transformer import TransformResult, VakCodeTransformer
+from .codex import CodexResult, build_default_codex
 from .rupantar import RupantarResult, VakyaRupantar
 
 class VakInterpreter:
@@ -47,6 +48,11 @@ class VakInterpreter:
             branch_runtime=self.branch_runtime,
             branch_registry=self.branch_registry,
         )
+        self.codex = build_default_codex(
+            active_branches=self.branch_runtime.active_names() if self.branch_runtime is not None else None,
+            branch_registry=self.branch_registry,
+            deep_meaning_mode=self.deep_meaning_mode,
+        )
 
     def get_branch_report(self) -> dict[str, dict[str, Any]]:
         if self.branch_runtime is None:
@@ -70,6 +76,15 @@ class VakInterpreter:
             branch_registry=self.branch_registry,
         )
         return engine.transform_source(source, source_path=filename)
+
+    def codex_source(
+        self,
+        source: str,
+        *,
+        filename: str | None = None,
+        page: str = "auto",
+    ) -> CodexResult:
+        return self.codex.transform_source(source, filename=filename, page=page)
 
     def error_context(self) -> dict[str, Any]:
         return {

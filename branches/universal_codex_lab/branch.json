@@ -1,0 +1,11 @@
+{
+  "name": "universal_codex_lab",
+  "version": "1.0.0",
+  "api_version": "1",
+  "kind": "experimental",
+  "entrypoint": "branches.universal_codex_lab",
+  "capabilities": ["codex_pages"],
+  "depends_on": [],
+  "conflicts_with": [],
+  "default_activation": false
+}

@@ -441,6 +441,46 @@ _MANUAL_SPECS: dict[str, BuiltinSpec] = {
         category="repair",
         description="Return structured repair payload",
     ),
+    "कोडेक्स": BuiltinSpec(
+        "कोडेक्स",
+        required_args=1,
+        max_args=3,
+        aliases=("codex",),
+        category="codex",
+        description="Run Sanskrit Vakya Universal Codex and return Vak source",
+    ),
+    "कोडेक्स_रिपोर्ट": BuiltinSpec(
+        "कोडेक्स_रिपोर्ट",
+        required_args=1,
+        max_args=3,
+        aliases=("codex_report",),
+        category="codex",
+        description="Return textual Codex report",
+    ),
+    "कोडेक्स_विवरण": BuiltinSpec(
+        "कोडेक्स_विवरण",
+        required_args=1,
+        max_args=3,
+        aliases=("codex_payload",),
+        category="codex",
+        description="Return structured Codex payload",
+    ),
+    "कोडेक्स_पृष्ठ": BuiltinSpec(
+        "कोडेक्स_पृष्ठ",
+        required_args=0,
+        max_args=0,
+        aliases=("codex_pages",),
+        category="codex",
+        description="List available Codex pages",
+    ),
+    "कोडेक्स_अध्याय": BuiltinSpec(
+        "कोडेक्स_अध्याय",
+        required_args=0,
+        max_args=0,
+        aliases=("codex_chapters",),
+        category="codex",
+        description="List available Codex chapters",
+    ),
 }
 
 
@@ -466,6 +506,8 @@ def _builtin_category(name: str) -> str:
         return "proof"
     if name in {"रूपान्तर", "रूपान्तर_रिपोर्ट", "रूपान्तर_विवरण"}:
         return "repair"
+    if name in {"कोडेक्स", "कोडेक्स_रिपोर्ट", "कोडेक्स_विवरण", "कोडेक्स_पृष्ठ", "कोडेक्स_अध्याय"}:
+        return "codex"
     if name in {"पठन", "लेखन", "खोलो", "अस्तित्व", "मिटाओ", "सूची_निर्देशिका", "बनाओ_निर्देशिका"}:
         return "io"
     if name.startswith("जाल_"):

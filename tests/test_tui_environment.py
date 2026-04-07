@@ -100,10 +100,36 @@ class VakTuiEnvironmentTests(unittest.TestCase):
         self.assertIn("रूपान्तर परिणाम लिखा गया", applied)
         self.assertIn("सूची.जोड़ो(१)", source_path.read_text(encoding="utf-8"))
 
+    def test_codex_workspace_loads_runs_diff_and_applies(self):
+        source_path = self.cwd / "roman.svk"
+        source_path.write_text(
+            "karma yoga(x, y):\n    pratyagaccha x + y\n",
+            encoding="utf-8",
+        )
+        self.app.set_mode("codex")
+        chapters = self.app.execute_command("chapters")
+        self.assertIn("vak_core", chapters)
+        pages = self.app.execute_command("pages")
+        self.assertIn("vak", pages)
+        self.app.execute_command(f"load {source_path.name}")
+        self.app.execute_command("page auto")
+        report = self.app.execute_command("analyze")
+        self.assertIn("संस्कृत-वाक्य यूनिवर्सल कोडेक्स रिपोर्ट", report)
+        diff = self.app.execute_command("diff")
+        self.assertIn("karma yoga(x, y):", diff)
+        self.assertIn("कर्म yoga(x, y):", diff)
+        applied = self.app.execute_command("apply")
+        self.assertIn("कोडेक्स परिणाम लिखा गया", applied)
+        self.assertIn("कर्म yoga(x, y):", source_path.read_text(encoding="utf-8"))
+        rendered = self.app.render_text()
+        self.assertIn("कोडेक्स", rendered)
+
     def test_builtin_and_module_help_commands_are_available(self):
         builtins_output = self.app.execute_command("builtins proof")
+        codex_builtins_output = self.app.execute_command("builtins codex")
         modules_output = self.app.execute_command("modules")
         self.assertIn("प्रमाण_सारांश", builtins_output)
+        self.assertIn("कोडेक्स_विवरण", codex_builtins_output)
         self.assertIn("रंग_पुस्तकालय", modules_output)
 
     def test_cli_main_supports_noninteractive_commands(self):

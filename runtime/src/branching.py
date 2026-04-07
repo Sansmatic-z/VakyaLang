@@ -84,6 +84,13 @@ class VakBranch:
     ) -> None:
         """Additive source-repair rule registration hook."""
 
+    def extend_codex_pages(
+        self,
+        pages: list[Any],
+        context: BranchHookContext,
+    ) -> None:
+        """Additive Codex page registration hook."""
+
 
 class BranchRuntime:
     """Coordinates active branches across interpreter/compiler phases."""
@@ -268,3 +275,15 @@ class BranchRuntime:
                 phase="rupantar_rules",
             )
             handler(rules, context)
+
+    def extend_codex_pages(self, pages: list[Any]) -> None:
+        for branch in self.branches:
+            handler = getattr(branch, "extend_codex_pages", None)
+            if handler is None:
+                continue
+            context = BranchHookContext(
+                runtime=self,
+                branch_name=branch.name,
+                phase="codex_pages",
+            )
+            handler(pages, context)

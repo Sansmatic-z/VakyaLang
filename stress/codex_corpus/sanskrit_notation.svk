@@ -1,0 +1,4 @@
+karma yoga(x, y):
+    pratyagaccha x + y
+
+mudraya(yoga(२, ३))

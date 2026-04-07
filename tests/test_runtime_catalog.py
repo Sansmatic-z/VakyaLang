@@ -13,8 +13,11 @@ class RuntimeCatalogTests(unittest.TestCase):
 
         self.assertIn("प्रमाण_सारांश", catalog)
         self.assertIn("रूपान्तर", catalog)
+        self.assertIn("कोडेक्स", catalog)
+        self.assertIn("कोडेक्स_अध्याय", catalog)
         self.assertEqual(aliases["print"], "मुद्रय")
         self.assertEqual(catalog["खोलो"].category, "io")
+        self.assertEqual(catalog["कोडेक्स"].category, "codex")
 
     def test_stdlib_manifest_marks_colour_lib_as_compatibility(self):
         manifest = build_stdlib_manifest()

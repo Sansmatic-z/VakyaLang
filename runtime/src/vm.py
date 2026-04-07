@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # वाक् भाषा - आभासी यन्त्र (Virtual Machine)
 # Vak Language - Stack-based Bytecode VM
 #
@@ -271,10 +273,11 @@ class VakVM:
     ):
         self.frames: List[CallFrame] = []
         self.globals: Dict[str, Any] = {}
+        self.branch_registry = branch_registry
         self.branch_runtime = self._resolve_branch_runtime(
             branch_runtime=branch_runtime,
             active_branches=active_branches,
-            branch_registry=branch_registry,
+            branch_registry=self.branch_registry,
         )
         self.builtins: Dict[str, Callable] = self._init_builtins()
         self.current_frame: CallFrame = None
@@ -1738,6 +1741,60 @@ class VakVM:
         def _rupantar_payload(*args):
             return _rupantar_result(*args).report_payload()
 
+        def _codex_result(*args):
+            from .codex import build_default_codex
+
+            source = str(args[0]) if args else ""
+            page = str(args[1]) if len(args) > 1 and args[1] is not None else "auto"
+            filename = str(args[2]) if len(args) > 2 and args[2] is not None else None
+            active_names = (
+                self.branch_runtime.active_names()
+                if self.branch_runtime is not None
+                else None
+            )
+            codex = build_default_codex(
+                active_branches=active_names,
+                branch_registry=self.branch_registry,
+            )
+            return codex.transform_source(source, filename=filename, page=page)
+
+        def _codex(*args):
+            return _codex_result(*args).source
+
+        def _codex_report(*args):
+            return _codex_result(*args).report_text()
+
+        def _codex_payload(*args):
+            return _codex_result(*args).report_payload()
+
+        def _codex_pages(*args):
+            from .codex import build_default_codex
+
+            active_names = (
+                self.branch_runtime.active_names()
+                if self.branch_runtime is not None
+                else None
+            )
+            codex = build_default_codex(
+                active_branches=active_names,
+                branch_registry=self.branch_registry,
+            )
+            return codex.list_pages()
+
+        def _codex_chapters(*args):
+            from .codex import build_default_codex
+
+            active_names = (
+                self.branch_runtime.active_names()
+                if self.branch_runtime is not None
+                else None
+            )
+            codex = build_default_codex(
+                active_branches=active_names,
+                branch_registry=self.branch_registry,
+            )
+            return codex.list_chapters()
+
         def _vak_isinstance(obj, cls):
             if isinstance(cls, VakClass):
                 return isinstance(obj, VakInstance) and obj.klass.name == cls.name
@@ -2062,6 +2119,11 @@ class VakVM:
             'रूपान्तर': _rupantar,
             'रूपान्तर_रिपोर्ट': _rupantar_report,
             'रूपान्तर_विवरण': _rupantar_payload,
+            'कोडेक्स': _codex,
+            'कोडेक्स_रिपोर्ट': _codex_report,
+            'कोडेक्स_विवरण': _codex_payload,
+            'कोडेक्स_पृष्ठ': _codex_pages,
+            'कोडेक्स_अध्याय': _codex_chapters,
             'प्रमाण_अनुक्रम': lambda *args: _sansmatic.trace(limit=int(args[0]) if args else None),
             'प्रमाण_वृक्ष': lambda *args: _sansmatic.proof_tree((str(args[0]), str(args[1]), str(args[2]))),
             'प्रमाण_व्याख्या': lambda *args: _sansmatic.explain((str(args[0]), str(args[1]), str(args[2]))),

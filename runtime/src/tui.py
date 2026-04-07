@@ -17,6 +17,7 @@ from vpm import PACKAGE_DIR, VakPackageManager
 
 from .errors import format_vak_error_with_suggestions
 from .interpreter import VakInterpreter
+from .codex import CodexResult, build_default_codex
 from .runtime_catalog import format_builtin_help
 from .rupantar import RupantarResult, VakyaRupantar
 from .stdlib_manifest import format_stdlib_manifest
@@ -46,6 +47,7 @@ MODE_LABELS = {
     "chitra": "चित्रकला",
     "vpm": "VPM",
     "repair": "रूपान्तर",
+    "codex": "कोडेक्स",
 }
 
 MODE_ALIASES = {
@@ -68,6 +70,8 @@ MODE_ALIASES = {
     "repair": "repair",
     "rupantar": "repair",
     "रूपान्तर": "repair",
+    "codex": "codex",
+    "कोडेक्स": "codex",
 }
 
 
@@ -159,6 +163,11 @@ class VakTuiApp:
         self.repair_original_source = ""
         self.repair_result: RupantarResult | None = None
         self.repair_branches: tuple[str, ...] = ()
+        self.codex_file: Path | None = None
+        self.codex_original_source = ""
+        self.codex_result: CodexResult | None = None
+        self.codex_branches: tuple[str, ...] = ()
+        self.codex_page = "auto"
 
     # ---- Generic helpers -------------------------------------------------
 
@@ -187,6 +196,7 @@ class VakTuiApp:
             "chitra": "चित्र> ",
             "vpm": "vpm> ",
             "repair": "रूपान्तर> ",
+            "codex": "कोडेक्स> ",
         }
         return prompts[self.mode]
 
@@ -195,6 +205,7 @@ class VakTuiApp:
             "सामान्य आदेश:\n"
             "  help                   सहायता दिखाओ\n"
             "  mode <name>            मोड बदलो (main/repl/sandbox/proof/chitra/vpm/repair)\n"
+            "                        या codex\n"
             "  modes                  सभी मोड दिखाओ\n"
             "  builtins [category]    उपलब्ध builtins दिखाओ\n"
             "  modules                stdlib मानचित्र दिखाओ\n"
@@ -204,7 +215,7 @@ class VakTuiApp:
         per_mode = {
             "main": (
                 "मुख्य आदेश:\n"
-                "  open repl|sandbox|proof|chitra|vpm|repair\n"
+                "  open repl|sandbox|proof|chitra|vpm|repair|codex\n"
             ),
             "repl": (
                 "REPL आदेश:\n"
@@ -268,6 +279,20 @@ class VakTuiApp:
             "repair": (
                 "रूपान्तर आदेश:\n"
                 "  load <path>\n"
+                "  branches [name...]\n"
+                "  analyze\n"
+                "  report\n"
+                "  diff\n"
+                "  show original|current\n"
+                "  apply [path]\n"
+                "  reject\n"
+            ),
+            "codex": (
+                "कोडेक्स आदेश:\n"
+                "  load <path>\n"
+                "  chapters\n"
+                "  pages\n"
+                "  page <name|auto>\n"
                 "  branches [name...]\n"
                 "  analyze\n"
                 "  report\n"
@@ -435,6 +460,22 @@ class VakTuiApp:
             return "कोई अंतर नहीं"
         return "\n".join(diff[:120])
 
+    def _codex_diff_text(self) -> str:
+        if self.codex_result is None or self.codex_file is None:
+            return "कोई कोडेक्स परिणाम नहीं"
+        diff = list(
+            difflib.unified_diff(
+                self.codex_original_source.splitlines(),
+                self.codex_result.source.splitlines(),
+                fromfile=str(self.codex_file),
+                tofile=f"{self.codex_file} (कोडेक्स)",
+                lineterm="",
+            )
+        )
+        if not diff:
+            return "कोई अंतर नहीं"
+        return "\n".join(diff[:120])
+
     def _handle_repair_command(self, command: str) -> str:
         parts = shlex.split(command)
         if not parts:
@@ -493,6 +534,82 @@ class VakTuiApp:
             self.repair_result = None
             return self._record("रूपान्तर परिणाम हटाया गया")
         raise VakTuiError(f"अज्ञात रूपान्तर आदेश: {parts[0]}")
+
+    def _handle_codex_command(self, command: str) -> str:
+        parts = shlex.split(command)
+        if not parts:
+            return self.status_message
+        op = parts[0].lower()
+        if op == "load":
+            if len(parts) < 2:
+                raise VakTuiError("load <path> अपेक्षित")
+            target = self._resolve_workspace_path(parts[1])
+            self.codex_file = target
+            self.codex_original_source = target.read_text(encoding="utf-8")
+            self.codex_result = None
+            return self._record(f"कोडेक्स फ़ाइल लोड हुई: {target}")
+        if op == "pages":
+            codex = build_default_codex(active_branches=list(self.codex_branches))
+            names = ", ".join(item["name"] for item in codex.list_pages())
+            return self._record(f"उपलब्ध कोडेक्स पृष्ठ: {names}")
+        if op == "chapters":
+            codex = build_default_codex(active_branches=list(self.codex_branches))
+            lines = []
+            for chapter in codex.list_chapters():
+                lines.append(f"{chapter['name']}: {chapter['title']}")
+                lines.append(f"  पृष्ठ: {', '.join(chapter['pages'])}")
+            return self._record("\n".join(lines) if lines else "कोई कोडेक्स अध्याय नहीं")
+        if op == "page":
+            if len(parts) < 2:
+                raise VakTuiError("page <name|auto> अपेक्षित")
+            self.codex_page = parts[1]
+            return self._record(f"कोडेक्स पृष्ठ: {self.codex_page}")
+        if op == "branches":
+            self.codex_branches = tuple(parts[1:])
+            if self.codex_branches:
+                return self._record(f"कोडेक्स शाखाएँ: {', '.join(self.codex_branches)}")
+            return self._record("कोडेक्स शाखाएँ साफ की गईं")
+        if op == "analyze":
+            if self.codex_file is None:
+                raise VakTuiError("पहले load <path> चलाएँ")
+            codex = build_default_codex(active_branches=list(self.codex_branches))
+            self.codex_result = codex.transform_source(
+                self.codex_original_source,
+                filename=str(self.codex_file),
+                page=self.codex_page,
+            )
+            return self._record(self.codex_result.report_text())
+        if op == "report":
+            if self.codex_result is None:
+                raise VakTuiError("पहले analyze चलाएँ")
+            return self._record(self.codex_result.report_text())
+        if op == "diff":
+            return self._record(self._codex_diff_text())
+        if op == "show":
+            if len(parts) < 2:
+                raise VakTuiError("show original|current अपेक्षित")
+            target = parts[1].lower()
+            if target == "original":
+                if not self.codex_original_source:
+                    raise VakTuiError("कोई मूल स्रोत नहीं")
+                return self._record(self.codex_original_source)
+            if target == "current":
+                if self.codex_result is None:
+                    raise VakTuiError("पहले analyze चलाएँ")
+                return self._record(self.codex_result.source)
+            raise VakTuiError("show original|current अपेक्षित")
+        if op == "apply":
+            if self.codex_result is None:
+                raise VakTuiError("पहले analyze चलाएँ")
+            target = self.codex_file if len(parts) < 2 else self._resolve_workspace_path(parts[1])
+            if target is None:
+                raise VakTuiError("कोई लक्ष्य फ़ाइल नहीं")
+            target.write_text(self.codex_result.source, encoding="utf-8")
+            return self._record(f"कोडेक्स परिणाम लिखा गया: {target}")
+        if op == "reject":
+            self.codex_result = None
+            return self._record("कोडेक्स परिणाम हटाया गया")
+        raise VakTuiError(f"अज्ञात कोडेक्स आदेश: {parts[0]}")
 
     # ---- Chitrakala ------------------------------------------------------
 
@@ -741,7 +858,7 @@ class VakTuiApp:
 
     def _sidebar_lines(self) -> list[str]:
         lines = []
-        for key in ("main", "repl", "sandbox", "proof", "chitra", "vpm", "repair"):
+        for key in ("main", "repl", "sandbox", "proof", "chitra", "vpm", "repair", "codex"):
             prefix = "▶" if key == self.mode else " "
             lines.append(f"{prefix} {MODE_LABELS[key]} ({key})")
         return lines
@@ -762,6 +879,7 @@ class VakTuiApp:
                 "  • Chitrakala graphics studio",
                 "  • VPM package interface",
                 "  • रूपान्तर repair workspace",
+                "  • कोडेक्स translation workspace",
                 "",
                 "हाल की गतिविधि:",
             ]
@@ -854,6 +972,34 @@ class VakTuiApp:
                         f"सुझाव: {len(self.repair_result.suggestions)}",
                         "",
                         self._repair_diff_text(),
+                    ]
+                )
+            return "\n".join(lines)
+        if self.mode == "codex":
+            lines = [
+                f"फ़ाइल: {self.codex_file or '—'}",
+                f"पृष्ठ: {self.codex_page}",
+                f"शाखाएँ: {', '.join(self.codex_branches) if self.codex_branches else 'कोई नहीं'}",
+            ]
+            if self.codex_result is None:
+                lines.extend(
+                    [
+                        "",
+                        "आदेश: load / pages / page / branches / analyze / report / diff / apply / reject",
+                        "अध्याय देखने के लिए: chapters",
+                    ]
+                )
+            else:
+                lines.extend(
+                    [
+                        f"चयनित पृष्ठ: {self.codex_result.page}",
+                        f"विश्वास: {self.codex_result.confidence}",
+                        f"वाक्यरचना मान्य: {'हाँ' if (self.codex_result.validation and self.codex_result.validation.syntax_valid) else 'नहीं'}",
+                        f"संकलन मान्य: {'हाँ' if (self.codex_result.validation and self.codex_result.validation.compiled) else 'नहीं'}",
+                        f"लागू नियम: {len(self.codex_result.applied_rules)}",
+                        f"अस्वीकृत नियम: {len(self.codex_result.rejected_rules)}",
+                        "",
+                        self._codex_diff_text(),
                     ]
                 )
             return "\n".join(lines)
@@ -1041,7 +1187,7 @@ class VakTuiApp:
                 return self.set_mode(text.split(None, 1)[1])
 
             if self.mode == "main":
-                raise VakTuiError("मुख्य मोड में 'open <mode>' या 'mode <mode>' उपयोग करें")
+                raise VakTuiError("मुख्य मोड में 'open <mode>' या 'mode <mode>' उपयोग करें, जैसे open codex")
             if self.mode == "repl":
                 if text == ":block":
                     source = self._read_multiline_block()
@@ -1067,6 +1213,8 @@ class VakTuiApp:
                 return self._handle_vpm_command(text)
             if self.mode == "repair":
                 return self._handle_repair_command(text)
+            if self.mode == "codex":
+                return self._handle_codex_command(text)
         except VakTuiError as error:
             return self._record(f"वाक् TUI त्रुटि: {error}")
         except Exception as error:

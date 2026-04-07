@@ -168,6 +168,43 @@ def main():
             print(f"  फ़ाइल नहीं मिली: '{args[1]}' (file not found)", file=sys.stderr)
             sys.exit(1)
 
+    if args[0] == '--codex-pages':
+        if __package__ in (None, ""):
+            from src.codex import build_default_codex
+        else:
+            from .src.codex import build_default_codex
+        codex = build_default_codex(
+            active_branches=active_branches,
+            deep_meaning_mode=deep_meaning_mode,
+        )
+        for page in codex.list_pages():
+            print(f"{page['name']}: {page['description']}")
+        return
+
+    if args[0] in ('--कोडेक्स', '--codex'):
+        if len(args) < 3:
+            print("उपयोग: python run.py --कोडेक्स input output", file=sys.stderr)
+            sys.exit(1)
+        page_name = "auto"
+        if len(args) >= 5 and args[3] == '--codex-page':
+            page_name = args[4]
+        if __package__ in (None, ""):
+            from src.codex import build_default_codex
+        else:
+            from .src.codex import build_default_codex
+        try:
+            codex = build_default_codex(
+                active_branches=active_branches,
+                deep_meaning_mode=deep_meaning_mode,
+            )
+            result = codex.transform_file(args[1], args[2], page=page_name)
+            print(f"कोडेक्स रूपान्तरित स्रोत लिखा गया: {args[2]}")
+            print(result.report_text())
+            sys.exit(0 if not (result.confidence == "do_not_touch" and not result.transformed) else 1)
+        except FileNotFoundError:
+            print(f"  फ़ाइल नहीं मिली: '{args[1]}' (file not found)", file=sys.stderr)
+            sys.exit(1)
+
     if args[0] == '--tokens':
         if len(args) < 2:
             print("उपयोग: python run.py --tokens file.vak", file=sys.stderr)

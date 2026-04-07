@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from runtime.src.interpreter import VakInterpreter
+from runtime.src.codex import build_default_codex
 from runtime.src.errors import VakError, format_vak_error_with_suggestions
 from runtime.src.rupantar import VakyaRupantar
 
@@ -53,6 +54,31 @@ Examples:
         metavar=('INPUT', 'OUTPUT'),
         help='Normalize Vak source into current live syntax and write the corrected .vak output',
     )
+    parser.add_argument(
+        '--कोडेक्स', '--codex',
+        dest='codex',
+        nargs=2,
+        metavar=('INPUT', 'OUTPUT'),
+        help='Run Sanskrit_Vakya_Universal_Codex and write Vak output',
+    )
+    parser.add_argument(
+        '--codex-page',
+        dest='codex_page',
+        default='auto',
+        help='Select a specific Codex page (default: auto)',
+    )
+    parser.add_argument(
+        '--codex-pages',
+        dest='codex_pages',
+        action='store_true',
+        help='List available Codex pages and exit',
+    )
+    parser.add_argument(
+        '--codex-chapters',
+        dest='codex_chapters',
+        action='store_true',
+        help='List available Codex chapters and exit',
+    )
     parser.add_argument('--version', '-v', action='version', version='%(prog)s 2.17.0')
     
     args = parser.parse_args(raw_args)
@@ -66,6 +92,50 @@ Examples:
             print(f"रूपान्तरित स्रोत लिखा गया: {output_path}")
             print(result.report_text())
             if not (result.syntax_valid and result.compiled):
+                sys.exit(1)
+            return
+        except FileNotFoundError:
+            print(f"Error: File not found: {input_path}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(format_vak_error_with_suggestions(e), file=sys.stderr)
+            sys.exit(1)
+
+    if args.codex_pages:
+        codex = build_default_codex(
+            active_branches=args.branches,
+            deep_meaning_mode=args.gudhartha,
+        )
+        for page in codex.list_pages():
+            print(f"{page['name']}: {page['description']}")
+        return
+
+    if args.codex_chapters:
+        codex = build_default_codex(
+            active_branches=args.branches,
+            deep_meaning_mode=args.gudhartha,
+        )
+        for chapter in codex.list_chapters():
+            print(f"{chapter['name']}: {chapter['title']}")
+            print(f"  pages: {', '.join(chapter['pages'])}")
+        return
+
+    if args.codex:
+        input_path = Path(args.codex[0]).resolve()
+        output_path = Path(args.codex[1]).resolve()
+        try:
+            codex = build_default_codex(
+                active_branches=args.branches,
+                deep_meaning_mode=args.gudhartha,
+            )
+            result = codex.transform_file(
+                input_path,
+                output_path,
+                page=args.codex_page,
+            )
+            print(f"कोडेक्स रूपान्तरित स्रोत लिखा गया: {output_path}")
+            print(result.report_text())
+            if result.confidence == "do_not_touch" and not result.transformed:
                 sys.exit(1)
             return
         except FileNotFoundError:

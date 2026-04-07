@@ -22,6 +22,7 @@ ALLOWED_CAPABILITIES = {
     "after_compile",
     "vm_builtins",
     "rupantar_rules",
+    "codex_pages",
 }
 BRANCH_STATES = {
     "discovered",
