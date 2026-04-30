@@ -147,11 +147,48 @@ Current branch page pack:
 
 - branch: `universal_codex_lab`
 - pages:
+  - `python_to_vak_experimental`
+  - `javascript_to_vak_experimental`
+  - `pseudocode_to_vak_experimental`
   - `c_subset`
   - `rust_subset`
   - `natural_language`
 
+The same branch now also vendors the full `codex-system1` page pack inside
+VakLang. Those integrated pages are exposed with a `codex_system_` prefix so
+they do not collide with VakLang's stronger main pages. Examples:
+
+- `codex_system_python_to_vak`
+- `codex_system_javascript_to_vak`
+- `codex_system_api_generator`
+- `codex_system_cli_generator`
+- `codex_system_webapp_generator`
+- `codex_system_grammar_engine`
+- `codex_system_lexer_generator`
+- `codex_system_knowledge_graph`
+- `codex_system_bytecode_decoder`
+- `codex_system_decompiler_page`
+- `codex_system_vak_native`
+
+Their chapters are likewise namespaced, for example:
+
+- `codex_system_bridges`
+- `codex_system_math_logic`
+- `codex_system_sanskrit_notation`
+- `codex_system_translators`
+- `codex_system_generators`
+- `codex_system_language_tools`
+- `codex_system_knowledge_engine`
+
+This is a full branch-pack integration, not a mainline promotion. VakLang's
+existing core pages remain the default/stable ones, and the integrated
+`codex_system_*` pages stay experimental until they clear promotion gates.
+
 These are intentionally suggestive/experimental rather than guaranteed.
+
+Editor surfaces currently expose Codex as safe whole-document actions. That
+means the current LSP/TUI integration can suggest or apply page transforms, but
+it does not pretend to offer arbitrary semantic refactors.
 
 ## Vak Integration
 

@@ -1,0 +1,118 @@
+{
+  "bytecode": {
+    "closure_names": [],
+    "code": [
+      1,
+      0,
+      0,
+      3,
+      0,
+      1,
+      0,
+      1,
+      3,
+      1,
+      2,
+      1,
+      1,
+      0,
+      2,
+      1,
+      0,
+      3,
+      80,
+      2,
+      112,
+      1,
+      0,
+      4,
+      112,
+      255
+    ],
+    "constants": [
+      {
+        "kind": "float",
+        "value": 3.141592653589793
+      },
+      {
+        "callable_kind": "function",
+        "kind": "callable_ref",
+        "name": "जोड़ो"
+      },
+      {
+        "kind": "int",
+        "value": 2
+      },
+      {
+        "kind": "int",
+        "value": 3
+      },
+      {
+        "kind": "str",
+        "value": "\n"
+      }
+    ],
+    "defaults": [],
+    "functions": {
+      "जोड़ो": {
+        "closure_names": [],
+        "code": [
+          2,
+          0,
+          2,
+          1,
+          16,
+          81
+        ],
+        "constants": [],
+        "defaults": [
+          {
+            "kind": "no_default"
+          },
+          {
+            "kind": "no_default"
+          }
+        ],
+        "functions": {},
+        "global_names": [],
+        "is_async": false,
+        "local_names": [
+          "अ",
+          "ब"
+        ],
+        "name": "जोड़ो",
+        "nonlocal_names": [],
+        "num_params": 2,
+        "param_names": [
+          "अ",
+          "ब"
+        ],
+        "source_path": null,
+        "type_hints": {},
+        "var_names": [
+          "अ",
+          "ब"
+        ],
+        "varargs_name": null,
+        "vibhakti_signature": null
+      }
+    },
+    "global_names": [],
+    "is_async": false,
+    "local_names": [],
+    "name": "<module>",
+    "nonlocal_names": [],
+    "num_params": 0,
+    "param_names": [],
+    "source_path": "C:\\RIZAMD\\vakyalang-upgraded xyz\\vakyalang-upgraded\\manual_checks\\native_func_probe.vak",
+    "type_hints": {},
+    "var_names": [
+      "पाई",
+      "जोड़ो"
+    ],
+    "varargs_name": null,
+    "vibhakti_signature": null
+  },
+  "format": "vak_bytecode_abi",
+  "version": 1
+}

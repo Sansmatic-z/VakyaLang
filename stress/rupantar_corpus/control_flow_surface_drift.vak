@@ -1,0 +1,9 @@
+चर items = [१, २]
+foreach item in items {
+    मुद्रय item
+}
+if सत्य {
+    मुद्रय १
+} else {
+    मुद्रय २
+}

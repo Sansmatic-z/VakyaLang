@@ -26,12 +26,39 @@ from pathlib import Path
 from datetime import datetime
 
 
+def _safe_print(*args, **kwargs):
+    file = kwargs.pop("file", sys.stdout)
+    sep = kwargs.pop("sep", " ")
+    end = kwargs.pop("end", "\n")
+    flush = kwargs.pop("flush", False)
+    if kwargs:
+        raise TypeError(f"Unsupported print kwargs: {', '.join(kwargs)}")
+
+    text = sep.join(str(arg) for arg in args) + end
+    try:
+        file.write(text)
+    except UnicodeEncodeError:
+        encoding = getattr(file, "encoding", None) or "utf-8"
+        safe_text = text.encode(encoding, errors="backslashreplace").decode(
+            encoding,
+            errors="replace",
+        )
+        file.write(safe_text)
+    if flush and hasattr(file, "flush"):
+        file.flush()
+
+
+print = _safe_print
+
+
 class VakPackageBuilder:
     """Builds compressed VakyaLang library packages"""
     
     def __init__(self, stdlib_dir: str = None, output_dir: str = None):
-        self.stdlib_dir = stdlib_dir or Path(__file__).parent
-        self.output_dir = output_dir or Path(__file__).parent / "packages"
+        repo_root = Path(__file__).resolve().parents[1]
+        default_stdlib = repo_root / "runtime" / "stdlib"
+        self.stdlib_dir = Path(stdlib_dir) if stdlib_dir is not None else default_stdlib
+        self.output_dir = Path(output_dir) if output_dir is not None else Path(__file__).parent / "packages"
         self.output_dir.mkdir(exist_ok=True)
     
     def get_libraries(self) -> list:

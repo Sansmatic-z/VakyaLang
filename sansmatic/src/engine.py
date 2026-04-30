@@ -80,6 +80,7 @@ class SansmaticEngine:
         self.known_proofs: Dict[str, Set[str]] = {}
         self.issued_certificates: Dict[str, Dict[str, Any]] = {}
         self.predicates: Dict[str, Callable[..., bool]] = {}
+        self.theorems: Dict[str, Dict[str, Any]] = {}
         self._snapshot_stack: List[Dict[str, Any]] = []
         self.trace_events: List[Dict[str, Any]] = []
         self._last_explanation: Optional[Dict[str, Any]] = None
@@ -106,6 +107,9 @@ class SansmaticEngine:
             key: copy.deepcopy(payload) for key, payload in self.issued_certificates.items()
         }
         cloned.predicates = dict(self.predicates)
+        cloned.theorems = {
+            name: copy.deepcopy(payload) for name, payload in self.theorems.items()
+        }
         cloned.trace_events = [copy.deepcopy(item) for item in self.trace_events]
         cloned._last_explanation = copy.deepcopy(self._last_explanation)
         return cloned
@@ -140,13 +144,60 @@ class SansmaticEngine:
             "known_proofs": len(self.known_proofs),
             "issued_certificates": len(self.issued_certificates),
             "predicates": len(self.predicates),
+            "theorems": len(self.theorems),
             "consistent": not bool(self.contradictions),
             "trace_events": len(self.trace_events),
+            "snapshots": len(self._snapshot_stack),
         }
+
+    def summary_text(self) -> str:
+        summary = self.summary()
+        lines = [
+            "सान्समैटिक सारांश",
+            f"परिभाषाएँ: {summary['definitions']}",
+            f"तथ्य: {summary['facts']}",
+            f"व्युत्पन्न: {summary['derived']}",
+            f"नियम: {summary['rules']}",
+            f"दायित्व: {summary['obligations']['pending']}/{summary['obligations']['total']}",
+            f"विरोध: {summary['contradictions']}",
+            f"प्रमेय: {summary['theorems']}",
+            f"प्रमाणपत्र: {summary['issued_certificates']}",
+            f"अनुक्रम: {summary['trace_events']}",
+            f"स्नैपशॉट: {summary['snapshots']}",
+            f"सुसंगत: {'हाँ' if summary['consistent'] else 'नहीं'}",
+        ]
+        return "\n".join(lines)
 
     def trace(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         events = self.trace_events if limit in (None, 0) else self.trace_events[-int(limit):]
         return [copy.deepcopy(item) for item in events]
+
+    def trace_text(self, limit: Optional[int] = None) -> str:
+        events = self.trace(limit=limit)
+        if not events:
+            return "कोई प्रमाण अनुक्रम नहीं"
+        lines = ["प्रमाण अनुक्रम"]
+        for index, event in enumerate(events, start=1):
+            line = f"{index}. {event.get('kind', 'event')}: {event.get('message', '')}"
+            details: list[str] = []
+            for key in (
+                "fact",
+                "matched_fact",
+                "derived",
+                "statement",
+                "proof_id",
+                "theorem",
+                "premise",
+                "conclusion",
+                "conflicting",
+            ):
+                value = event.get(key)
+                if value not in (None, "", [], ()):
+                    details.append(f"{key}={value}")
+            lines.append(line)
+            if details:
+                lines.append("   " + ", ".join(details))
+        return "\n".join(lines)
 
     def proof_tree(
         self,
@@ -156,6 +207,19 @@ class SansmaticEngine:
     ) -> Dict[str, Any]:
         explanation = self.explain(statement, max_depth=max_depth)
         return copy.deepcopy(explanation.get("tree") or {})
+
+    def proof_tree_text(
+        self,
+        statement: Any,
+        *,
+        max_depth: int = 20,
+    ) -> str:
+        tree = self.proof_tree(statement, max_depth=max_depth)
+        if not tree:
+            return "कोई प्रमाण वृक्ष नहीं"
+        lines = ["प्रमाण वृक्ष"]
+        lines.extend(self._format_tree_lines(tree))
+        return "\n".join(lines)
 
     def explain(
         self,
@@ -200,6 +264,7 @@ class SansmaticEngine:
             "kind": parsed["kind"],
             "proved": bool(proved) and not blocked_by,
             "blocked_by": blocked_by,
+            "matching_theorems": self._matching_theorems(parsed["text"]),
             "contradictions": [list(item) for item in self.contradictions],
             "obligations": [dict(item) for item in self.obligations],
             "tree": tree,
@@ -207,6 +272,39 @@ class SansmaticEngine:
         }
         self._last_explanation = copy.deepcopy(result)
         return result
+
+    def explain_text(
+        self,
+        statement: Any,
+        *,
+        max_depth: int = 20,
+    ) -> str:
+        explanation = self.explain(statement, max_depth=max_depth)
+        lines = [
+            "प्रमाण व्याख्या",
+            f"लक्ष्य: {explanation['goal']}",
+            f"प्रकार: {explanation['kind']}",
+            f"सिद्ध: {'हाँ' if explanation['proved'] else 'नहीं'}",
+        ]
+        if explanation["blocked_by"]:
+            lines.append(f"अवरोध: {', '.join(explanation['blocked_by'])}")
+        else:
+            lines.append("अवरोध: कोई नहीं")
+        if explanation.get("matching_theorems"):
+            lines.append(f"मिलते प्रमेय: {', '.join(explanation['matching_theorems'])}")
+        if explanation["contradictions"]:
+            lines.append("विरोध:")
+            for left, right in explanation["contradictions"]:
+                lines.append(f"  - {left} <> {right}")
+        if explanation["obligations"]:
+            lines.append("दायित्व:")
+            for item in explanation["obligations"]:
+                lines.append(
+                    f"  - {item.get('statement')} | proof_id={item.get('proof_id') or '—'}"
+                )
+        lines.append("वृक्ष:")
+        lines.extend(self._format_tree_lines(explanation["tree"]))
+        return "\n".join(lines)
 
     def backward_chain(
         self,
@@ -217,6 +315,106 @@ class SansmaticEngine:
         """Goal-directed proof search over existing facts and implication rules."""
         explanation = self.explain(statement, max_depth=max_depth)
         return bool(explanation["proved"])
+
+    def register_theorem(
+        self,
+        name: str,
+        statement: Any,
+        *,
+        note: Optional[str] = None,
+        tags: Optional[Iterable[str]] = None,
+    ) -> Dict[str, Any]:
+        theorem_name = self._normalize_text(name)
+        if not theorem_name:
+            raise ProofError("Theorem name cannot be empty")
+        parsed = self.parse_statement(statement)
+        explanation = self.explain(statement)
+        entry = {
+            "name": theorem_name,
+            "kind": parsed["kind"],
+            "statement": parsed["text"],
+            "note": self._normalize_text(note),
+            "tags": tuple(self._normalize_tags(tags)),
+            "proved": explanation["proved"],
+            "blocked_by": tuple(explanation["blocked_by"]),
+        }
+        if parsed["kind"] == "fact":
+            entry["fact"] = list(parsed["fact"])
+        self.theorems[theorem_name] = copy.deepcopy(entry)
+        self._trace(
+            "theorem_register",
+            f"registered theorem {theorem_name}",
+            theorem=theorem_name,
+            statement=entry["statement"],
+            theorem_kind=entry["kind"],
+        )
+        return copy.deepcopy(entry)
+
+    def register_rule_theorem(
+        self,
+        name: str,
+        premise: Any,
+        conclusion: Any,
+        *,
+        note: Optional[str] = None,
+        tags: Optional[Iterable[str]] = None,
+        activate: bool = True,
+    ) -> Dict[str, Any]:
+        theorem_name = self._normalize_text(name)
+        if not theorem_name:
+            raise ProofError("Theorem name cannot be empty")
+        premise_fact = self._coerce_rule_fact(premise)
+        conclusion_fact = self._coerce_rule_fact(conclusion)
+        if activate:
+            rule = (premise_fact, conclusion_fact)
+            if rule not in self.rules:
+                self.rules.append(rule)
+                self._apply_rules()
+        entry = {
+            "name": theorem_name,
+            "kind": "rule",
+            "premise": self._fact_to_statement(premise_fact),
+            "conclusion": self._fact_to_statement(conclusion_fact),
+            "note": self._normalize_text(note),
+            "tags": tuple(self._normalize_tags(tags)),
+            "active": bool(activate),
+        }
+        self.theorems[theorem_name] = copy.deepcopy(entry)
+        self._trace(
+            "theorem_rule",
+            f"registered theorem rule {theorem_name}",
+            theorem=theorem_name,
+            premise=entry["premise"],
+            conclusion=entry["conclusion"],
+            active=activate,
+        )
+        return copy.deepcopy(entry)
+
+    def list_theorems(self, tag: Optional[str] = None) -> List[Dict[str, Any]]:
+        requested_tag = self._normalize_text(tag) if tag else None
+        rows: List[Dict[str, Any]] = []
+        for name in sorted(self.theorems):
+            entry = self.theorems[name]
+            tags = tuple(entry.get("tags", ()))
+            if requested_tag and requested_tag not in tags:
+                continue
+            row = {
+                "name": name,
+                "kind": entry.get("kind", "text"),
+                "statement": entry.get("statement") or entry.get("conclusion", ""),
+                "tags": list(tags),
+            }
+            if "proved" in entry:
+                row["proved"] = bool(entry["proved"])
+            if "active" in entry:
+                row["active"] = bool(entry["active"])
+            rows.append(row)
+        return rows
+
+    def theorem_details(self, name: str) -> Optional[Dict[str, Any]]:
+        theorem_name = self._normalize_text(name)
+        payload = self.theorems.get(theorem_name)
+        return None if payload is None else copy.deepcopy(payload)
 
     def register_predicate(self, name: str, predicate: Callable[..., bool]) -> None:
         self.predicates[name] = predicate
@@ -535,6 +733,7 @@ class SansmaticEngine:
         self.known_proofs.clear()
         self.issued_certificates.clear()
         self.predicates.clear()
+        self.theorems.clear()
         self._snapshot_stack.clear()
         self.trace_events.clear()
         self._last_explanation = None
@@ -599,6 +798,9 @@ class SansmaticEngine:
                 key: copy.deepcopy(payload) for key, payload in self.issued_certificates.items()
             },
             "predicates": dict(self.predicates),
+            "theorems": {
+                name: copy.deepcopy(payload) for name, payload in self.theorems.items()
+            },
             "trace_events": [copy.deepcopy(item) for item in self.trace_events],
             "last_explanation": copy.deepcopy(self._last_explanation),
         }
@@ -619,6 +821,9 @@ class SansmaticEngine:
             for key, payload in state.get("issued_certificates", {}).items()
         }
         self.predicates = dict(state.get("predicates", {}))
+        self.theorems = {
+            name: copy.deepcopy(payload) for name, payload in state.get("theorems", {}).items()
+        }
         self.trace_events = [copy.deepcopy(item) for item in state.get("trace_events", [])]
         self._last_explanation = copy.deepcopy(state.get("last_explanation"))
 
@@ -994,6 +1199,62 @@ class SansmaticEngine:
         if tail:
             args.append(tail)
         return args
+
+    def _matching_theorems(self, statement: str) -> List[str]:
+        normalized = self._normalize_text(statement)
+        parsed_goal = self.parse_statement(normalized)
+        matches: List[str] = []
+        for name, entry in self.theorems.items():
+            if normalized == self._normalize_text(entry.get("statement")):
+                matches.append(name)
+                continue
+            if normalized == self._normalize_text(entry.get("conclusion")):
+                matches.append(name)
+                continue
+            if parsed_goal["kind"] != "fact":
+                continue
+            fact = parsed_goal["fact"]
+            entry_fact = entry.get("fact")
+            if entry_fact:
+                candidate = self._normalize_fact(tuple(str(part) for part in entry_fact))
+                if self._match_pattern(candidate, fact) is not None:
+                    matches.append(name)
+                    continue
+            conclusion_text = entry.get("conclusion")
+            if conclusion_text:
+                parsed_conclusion = self.parse_statement(conclusion_text)
+                if parsed_conclusion["kind"] == "fact":
+                    if self._match_pattern(parsed_conclusion["fact"], fact) is not None:
+                        matches.append(name)
+        return sorted(matches)
+
+    def _normalize_tags(self, tags: Optional[Iterable[str]]) -> List[str]:
+        if not tags:
+            return []
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in tags:
+            value = self._normalize_text(item)
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+        return normalized
+
+    def _format_tree_lines(self, node: Dict[str, Any], indent: int = 0) -> List[str]:
+        if not node:
+            return ["  (रिक्त वृक्ष)"]
+        prefix = "  " * indent + "- "
+        goal = node.get("goal", "अज्ञात")
+        status = node.get("status", "unknown")
+        line = f"{prefix}{goal} [{status}]"
+        rule = node.get("rule")
+        if isinstance(rule, dict):
+            line += f" <= {rule.get('premise', '?')} ⇒ {rule.get('conclusion', '?')}"
+        lines = [line]
+        for child in node.get("children", []) or []:
+            lines.extend(self._format_tree_lines(child, indent + 1))
+        return lines
 
     @classmethod
     def _is_variable(cls, token: str) -> bool:

@@ -1,0 +1,33 @@
+मुद्रय "━━ Vak Full Stack Ecosystem Demo ━━"
+
+चर codex_payload = कोडेक्स_विवरण(
+    "def add(a, b):\n    return a + b\n",
+    "english_vak",
+    "ecosystem.py"
+)
+मुद्रय "कोडेक्स पृष्ठ:", codex_payload["page"]
+मुद्रय "कोडेक्स संकलित:", codex_payload["validation"]["compiled"]
+
+चर repair_payload = रूपान्तर_विवरण("चर सूची = []\nसूची.apend(१)\n")
+मुद्रय "रूपान्तर संकलित:", repair_payload["compiled"]
+मुद्रय "रूपान्तर स्रोत:", repair_payload["source"]
+
+प्रमाण_रीसेट()
+परिभाषय("दीप", ["प्रकाश"])
+दावा("दीप", "HAS", "प्रकाश")
+नियम("*", "HAS", "प्रकाश", "*", "IS", "उज्ज्वल")
+मुद्रय प्रमाण_व्याख्या_पाठ("दीप", "IS", "उज्ज्वल")
+
+आयात रंग_पुस्तकालय
+आयात colour_lib
+मुद्रय "रंग canonical:", रंग_पुस्तकालय.प्राप्त("Blue")
+मुद्रय "रंग compatibility:", colour_lib.प्राप्त("Blue")
+
+चर पट = _chitra_canvas(12, 12, "white")
+_chitra_line(पट, 0, 0, 11, 11, "black")
+मुद्रय "चित्र चौड़ाई:", _chitra_width(पट)
+मुद्रय "चित्र ऊँचाई:", _chitra_height(पट)
+
+चर प्रोफ़ाइल = प्रदर्शन_विवरण("मुद्रय १\n", "ecosystem_profile.vak", 1, असत्य)
+मुद्रय "प्रदर्शन चरण:", दीर्घता(प्रोफ़ाइल["stages"])
+मुद्रय "पूर्ण: ecosystem_full_stack"

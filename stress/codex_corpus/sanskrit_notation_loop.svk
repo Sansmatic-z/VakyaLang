@@ -1,0 +1,4 @@
+chara total = 0
+yavat total < 2:
+    mudraya(total)
+    total = total + 1

@@ -1,92 +1,70 @@
 ![3XZXa](https://github.com/user-attachments/assets/180ff2ab-d2c0-4f84-bf64-068c80e1fc77)
 # VakyaLang and Sansmatic
 
-VakyaLang is a Sanskrit-inspired programming language and execution stack built
-around Paninian form and Nyaya-style reasoning. Sansmatic is the proof
-subsystem that validates proof declarations, issues proof certificates, and
-enforces proof obligations inside the runtime.
+VakyaLang is a Sanskrit/Devanagari programming language with a real parser,
+compiler, bytecode VM, stdlib, repair engine, Codex translation system, TUI,
+and proof subsystem. Sansmatic is the proof engine that powers theorem-style
+reasoning, proof obligations, trace/tree inspection, and proof certificates.
 
-## Architecture
+## What Is Stable
 
-```text
-VakyaLang source / macros
-        |
-        v
-NyayaProofVerifier
-- compile-time proof policy
-- sandboxed evidence execution
-        |
-        v
-Sansmatic core
-- fact and statement model
-- rule engine and contradiction detection
-- proof registry and certificates
-- env-configured trust policy
-        |
-   +----+----+
-   |         |
-   v         v
-Runtime/VM   Delivery
-- builtins   - tests
-- bytecode   - CI workflows
-- audit      - Docker / compose
-```
+- lexer, parser, compiler, and Python VM runtime
+- main CLI surfaces: `vak.py` and `runtime/run.py`
+- core stdlib and curated compatibility manifest
+- Sansmatic core proof engine
+- conservative mainline `वाक्य-रूपान्तर`
+- main Codex pages and `.vak` Codex page support
+- TUI core workspaces
+- measurement/profiling tooling for parser/compiler/VM/import stages
+- Windows/Unicode path handling covered by tests
 
-## Setup
+## What Is Experimental
+
+- runtime JIT for a validated opcode subset with explicit fallback
+- Rust VM subset parity
+- branch-only Codex pages in `universal_codex_lab`
+- adaptive/aggressive repair branches
+- bootstrap/self-hosting compiler work
+
+These surfaces are real and tested where available, but they should not be
+described as production-ready. The runtime JIT currently targets a safe
+computational subset and rejects unsupported bytecode instead of pretending to
+compile it.
+
+## Quick Start
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 python -m pip install --upgrade pip
-python -m pip install -e .[dev]
+python vak.py examples/unified_test.vak
+python vpm.py list
 ```
 
-Optional native VM build:
+Optional Rust VM build:
 
 ```bash
 cd native/vakvm-rs
 cargo build
 ```
 
-## Run
-
-```bash
-python vak.py examples/unified_test.vak
-python vpm.py list
-```
-
 ## Test
 
 ```bash
 python -m unittest discover -s tests -p "test_*.py"
-python master_test.py
-```
-
-## Environment
-
-Copy `.env.example` to `.env` and set proof policy for the target environment.
-
-Recommended production settings:
-
-```env
-SANSMATIC_CERTIFICATE_MODE=hmac-sha256
-SANSMATIC_CERTIFICATE_SECRET=replace-with-a-long-random-secret
-SANSMATIC_ALLOW_LEGACY_CERTIFICATES=false
-SANSMATIC_STRICT_PROOF_REGISTRATION=true
-SANSMATIC_LOG_LEVEL=INFO
-```
-
-## Containers
-
-```bash
-docker build -t vakyalang .
-docker compose up --build
+python runtime/run_tests.py
+python vak_test_tree.py
 ```
 
 ## Documentation
 
-- [Sansmatic production architecture](docs/sansmatic_production_architecture.md)
+- [Runtime status](docs/runtime_status.md)
+- [Performance profiling](docs/performance_profiling.md)
+- [Self-hosting roadmap](docs/self_hosting_roadmap.md)
 - [Sansmatic API](docs/sansmatic_api.md)
+- [Universal Codex](docs/universal_codex.md)
+- [LSP tooling](docs/lsp_tooling.md)
+- [Stdlib compatibility](docs/stdlib_compatibility.md)
 - [Standard library docs](STD_LIB_DOCUMENTATION.md)
 - [Feature overview](FEATURES.md)
 
@@ -325,6 +303,10 @@ python vpm.py install http-client
 
 # Subsequent installs work offline if cached
 python vpm.py install http-client  # Uses cache
+
+# Inspect or clear cache
+python vpm.py cache info
+python vpm.py cache clear
 ```
 
 ### Version Syntax
@@ -360,6 +342,12 @@ for pkg in packages:
 
 # Remove
 vpm.remove("http-client")
+
+# Update declared dependencies
+vpm.update()
+
+# Write reproducible lock data
+vpm.write_lockfile()
 
 # Search
 results = vpm.search("json")
@@ -419,7 +407,7 @@ Run `python vpm.py init` to create a manifest.
 - [ ] Local package linking (`vpm link`)
 - [ ] Package integrity verification (SHA256)
 - [ ] Multiple registry support
-- [ ] Package lock file (`vakya-lock.json`)
+- [x] Package lock file (`vakya.lock.json`)
 
 ---
 

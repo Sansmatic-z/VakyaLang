@@ -1,0 +1,20 @@
+मुद्रय "━━ Vak Tooling Diagnostics Showcase ━━"
+चर कोडेक्स_कोश = "stress/codex_corpus"
+यदि अस्तित्व("../stress/codex_corpus"):
+    कोडेक्स_कोश = "../stress/codex_corpus"
+
+चर legacy_payload = कोडेक्स_विवरण(
+    "चर x = 0\nजबतक x < 1:\n    x = x + 1\n",
+    "vak_legacy",
+    "legacy.vak"
+)
+मुद्रय "legacy page:", legacy_payload["page"]
+मुद्रय legacy_payload["source"]
+
+मुद्रय रूपान्तर_रिपोर्ट("चर सूची = []\nसूची.apend(१)\n")
+
+चर उन्नयन = कोडेक्स_उन्नयन("vak_legacy", कोडेक्स_कोश)
+मुद्रय "उन्नयन मामले:", उन्नयन["total_cases"]
+
+मुद्रय प्रदर्शन_पाठ("मुद्रय १\n", "diag_profile.vak", 1, असत्य)
+मुद्रय "पूर्ण: tooling_diagnostics_showcase"
