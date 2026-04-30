@@ -106,6 +106,61 @@ class SalvagedStdlibModuleTests(unittest.TestCase):
         self.assertEqual(lines[8], "मजबूत")
         self.assertEqual(lines[9], "True")
 
+    def test_salvaged_modules_cover_failure_paths_and_roundtrips(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = os.path.join(tempdir, "salvaged_deep.cfg").replace("\\", "/")
+            source = f"""
+आयात अनुबंध
+आयात अवस्था_यंत्र
+आयात अक्षर_चित्र
+आयात विन्यास
+आयात क्रम_निर्माता
+
+चर पथ = "{config_path}"
+विन्यास.विन्यास_लिखो({{"name": "vak=lang", "quote": "alpha beta"}}, पथ)
+चर raw = पठन(पथ)
+चर cfg = विन्यास.विन्यास_पढ़ो(पथ)
+मुद्रय "name=vak=lang" अन्तर्गत raw
+मुद्रय विन्यास.विन्यास_प्राप्त(cfg, "name")
+मुद्रय विन्यास.विन्यास_प्राप्त(cfg, "quote")
+
+चर मशीन = अवस्था_यंत्र.अवस्था_यंत्र_बनाओ("idle")
+अवस्था_यंत्र.अवस्था_जोड़ो(मशीन, "run")
+अवस्था_यंत्र.संक्रमण_जोड़ो(मशीन, "idle", "start", "run")
+मुद्रय अवस्था_यंत्र.घटना_भेजो(मशीन, "stop")
+मुद्रय अवस्था_यंत्र.वर्तमान_अवस्था(मशीन)
+मुद्रय दीर्घता(अवस्था_यंत्र.अवस्था_इतिहास(मशीन))
+
+चर canvas = अक्षर_चित्र.कैनवास_बनाओ(५, ५, ".")
+अक्षर_चित्र.कैनवास_रेखा(canvas, ०, ०, ४, ४, "*")
+अक्षर_चित्र.कैनवास_बिंदु(canvas, -१, ८, "!")
+मुद्रय canvas["पंक्तियाँ"][०]
+मुद्रय canvas["पंक्तियाँ"][४]
+
+मुद्रय क्रम_निर्माता.छोटा_यूयुआईडी() != क्रम_निर्माता.छोटा_यूयुआईडी()
+मुद्रय क्रम_निर्माता.स्लग_बनाओ("Vak_Lang Project")
+
+चर सीमा_संदेश = ""
+प्रयत्न:
+    अनुबंध.सीमा_जाँच(११, १, १०, "मान")
+अपवाद err:
+    सीमा_संदेश = पाठ_कर(err)
+मुद्रय "सीमा उल्लंघन" अन्तर्गत सीमा_संदेश
+मिटाओ(पथ)
+"""
+            _, lines = self.run_source(source)
+            self.assertEqual(lines[0], "True")
+            self.assertEqual(lines[1], "vak=lang")
+            self.assertEqual(lines[2], "alpha beta")
+            self.assertEqual(lines[3], "False")
+            self.assertEqual(lines[4], "idle")
+            self.assertEqual(lines[5], "1")
+            self.assertEqual(lines[6], "*....")
+            self.assertEqual(lines[7], "....*")
+            self.assertEqual(lines[8], "True")
+            self.assertTrue(lines[9].startswith("Vak-Lang-Project-"))
+            self.assertEqual(lines[10], "True")
+
 
 if __name__ == "__main__":
     unittest.main()

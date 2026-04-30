@@ -232,20 +232,161 @@ class CodeTransformerTests(unittest.TestCase):
         self.assertIn("कर्म प्राप्त_करो(स्वयं):", interpreter.last_transform_result.source)
         self.assertIn("मुद्रय(पेटिका().प्राप्त_करो())", interpreter.last_transform_result.source)
 
+    def test_transformer_supports_python_decorator_lines_when_vak_surface_supports_them(self):
+        interpreter, _, output = self.run_source(
+            textwrap.dedent(
+                """
+                def double(fn):
+                    def wrapper(x):
+                        return fn(x) * 2
+                    return wrapper
+
+                @double
+                def inc(x):
+                    return x + 1
+
+                print(inc(4))
+                """
+            )
+        )
+        self.assertEqual(output, ["10"])
+        self.assertIn("@double", interpreter.last_transform_result.source)
+
+    def test_transformer_supports_python_yield_generators(self):
+        interpreter, _, output = self.run_source(
+            textwrap.dedent(
+                """
+                def count(limit):
+                    i = 0
+                    while i < limit:
+                        yield i
+                        i = i + 1
+
+                for value in count(3):
+                    print(value)
+                """
+            )
+        )
+        self.assertEqual(output, ["0", "1", "2"])
+        self.assertIn("उपज i", interpreter.last_transform_result.source)
+
+    def test_transformer_supports_python_yield_from_generators(self):
+        interpreter, _, output = self.run_source(
+            textwrap.dedent(
+                """
+                def base():
+                    yield 1
+                    yield 2
+
+                def outer():
+                    yield 0
+                    yield from base()
+                    yield 3
+
+                for value in outer():
+                    print(value)
+                """
+            )
+        )
+        self.assertEqual(output, ["0", "1", "2", "3"])
+        self.assertIn("उपज से", interpreter.last_transform_result.source)
+
+    def test_transformer_supports_python_async_for_generators(self):
+        interpreter, _, output = self.run_source(
+            textwrap.dedent(
+                """
+                async def count(limit):
+                    i = 0
+                    while i < limit:
+                        await async_sleep(0.01)
+                        yield i
+                        i = i + 1
+
+                async def main():
+                    async for value in count(3):
+                        print(value)
+
+                await main()
+                """
+            )
+        )
+        self.assertEqual(output, ["0", "1", "2"])
+        self.assertIn("अतुल्यकालिक प्रत्येक", interpreter.last_transform_result.source)
+
+    def test_transformer_supports_python_async_with_context_managers(self):
+        interpreter, _, output = self.run_source(
+            textwrap.dedent(
+                """
+                class Stream:
+                    def __init__(self):
+                        self.events = []
+
+                    async def __aenter__(self):
+                        self.events.append("enter")
+                        await async_sleep(0.01)
+                        return "inside"
+
+                    async def __aexit__(self, exc_type, exc, tb):
+                        self.events.append("exit")
+                        await async_sleep(0.01)
+                        return False
+
+                async def main():
+                    stream = Stream()
+                    async with stream as value:
+                        print(value)
+                    print(stream.events)
+
+                await main()
+                """
+            )
+        )
+        self.assertEqual(output, ["inside", "['enter', 'exit']"])
+        self.assertIn("अतुल्यकालिक साथ", interpreter.last_transform_result.source)
+
+    def test_transformer_supports_python_generator_and_async_comprehensions(self):
+        interpreter, _, output = self.run_source(
+            textwrap.dedent(
+                """
+                async def count(limit):
+                    i = 0
+                    while i < limit:
+                        await async_sleep(0.01)
+                        yield i
+                        i = i + 1
+
+                def double_values():
+                    return (value * 2 for value in [1, 2, 3])
+
+                async def main():
+                    items_out = [value * 2 async for value in count(4) if value > 0]
+                    squares_out = {value: value * value async for value in count(4) if value > 1}
+                    print(items_out)
+                    print(squares_out)
+                    for item in double_values():
+                        print(item)
+
+                await main()
+                """
+            )
+        )
+        self.assertEqual(output, ["[2, 4, 6]", "{2: 4, 3: 9}", "2", "4", "6"])
+        self.assertIn("उपज", interpreter.last_transform_result.source)
+
     def test_transformer_rejects_lossy_python_features(self):
         interpreter = VakInterpreter()
         with self.assertRaises(TranslationError) as ctx:
             interpreter.run(
                 textwrap.dedent(
                     """
-                    @decorator
-                    def broken():
-                        return 1
+                    async def broken(first, second):
+                        async with first, second:
+                            print(1)
                     """
                 )
             )
         self.assertIn("वाक्य-अनुवाद असंभव", str(ctx.exception))
-        self.assertIn("decorator", str(ctx.exception))
+        self.assertIn("context managers", str(ctx.exception))
 
     def test_transformer_rejects_invalid_python_syntax_before_vak_parse(self):
         interpreter = VakInterpreter()

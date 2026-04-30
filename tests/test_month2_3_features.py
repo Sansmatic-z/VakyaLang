@@ -248,6 +248,8 @@ test_header("TEST 4: JIT Compilation System")
 
 try:
     from runtime.src.jit_compiler import JITCompiler, FunctionStats, CompiledFunction
+    from runtime.src.bytecode import Bytecode
+    from runtime.src.opcodes import OpCode
     
     # Test 4.1: Create JIT compiler
     jit = JITCompiler(threshold=5)
@@ -265,10 +267,12 @@ try:
     test_result("Function statistics", stats is not None and stats['calls'] == 5)
     
     # Test 4.4: Compile function (mock bytecode)
-    class MockBytecode:
-        code = [1, 10, 2, 5, 100]  # Mock opcodes
-    
-    compiled = jit.compile_function("test_func", MockBytecode(), [42])
+    mock_bytecode = Bytecode("test_func")
+    const_idx = mock_bytecode.add_constant(42)
+    mock_bytecode.emit_16bit(OpCode.LOAD_CONST, const_idx)
+    mock_bytecode.emit(OpCode.RETURN)
+
+    compiled = jit.compile_function("test_func", mock_bytecode, list(mock_bytecode.constants))
     test_result("Function compilation", compiled is not None, 
                 f"compiled={compiled is not None}")
     

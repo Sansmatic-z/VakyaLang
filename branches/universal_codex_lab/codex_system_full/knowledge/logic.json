@@ -1,0 +1,58 @@
+{
+  "knowledge": [
+    {
+      "key": "logic.propositional.connectives",
+      "title": "Propositional Logic Connectives",
+      "content": "Basic connectives: AND (∧), OR (∨), NOT (¬), IMPLIES (→), IFF (↔). Truth tables: p∧q is true iff both p and q are true. p∨q is true iff at least one is true. ¬p is the negation. p→q is false only when p is true and q is false. p↔q is true when p and q have the same truth value.",
+      "category": "logic",
+      "tags": ["propositional", "connectives", "truth_table", "boolean"],
+      "metadata": {"operators": ["AND", "OR", "NOT", "IMPLIES", "IFF"], "complexity": "basic"},
+      "references": []
+    },
+    {
+      "key": "logic.propositional.normal_forms",
+      "title": "Normal Forms: CNF and DNF",
+      "content": "Conjunctive Normal Form (CNF): conjunction of disjunctions (AND of ORs). Disjunctive Normal Form (DNF): disjunction of conjunctions (OR of ANDs). Every propositional formula can be converted to CNF or DNF. CNF is used in SAT solvers. Conversion uses De Morgan's laws and distributivity.",
+      "category": "logic",
+      "tags": ["propositional", "CNF", "DNF", "normal_form", "SAT"],
+      "metadata": {"forms": ["CNF", "DNF"], "use_case": "SAT_solving"},
+      "references": ["logic.propositional.connectives"]
+    },
+    {
+      "key": "logic.predicate.quantifiers",
+      "title": "Predicate Logic Quantifiers",
+      "content": "Universal quantifier (∀): 'for all x, P(x)' means P holds for every x. Existential quantifier (∃): 'there exists x such that P(x)' means P holds for at least one x. Negation rules: ¬∀x.P(x) ≡ ∃x.¬P(x) and ¬∃x.P(x) ≡ ∀x.¬P(x).",
+      "category": "logic",
+      "tags": ["predicate", "quantifier", "universal", "existential"],
+      "metadata": {"quantifiers": ["forall", "exists"], "complexity": "intermediate"},
+      "references": ["logic.propositional.connectives"]
+    },
+    {
+      "key": "logic.inference.rules",
+      "title": "Rules of Inference",
+      "content": "Modus Ponens: from p and p→q, infer q. Modus Tollens: from ¬q and p→q, infer ¬p. Hypothetical Syllogism: from p→q and q→r, infer p→r. Disjunctive Syllogism: from p∨q and ¬p, infer q. Resolution: from p∨q and ¬p∨r, infer q∨r. These are sound inference rules preserving truth.",
+      "category": "logic",
+      "tags": ["inference", "modus_ponens", "resolution", "proof"],
+      "metadata": {"rules": ["modus_ponens", "modus_tollens", "syllogism", "resolution"], "soundness": "guaranteed"},
+      "references": ["logic.propositional.connectives"]
+    },
+    {
+      "key": "logic.temporal.operators",
+      "title": "Temporal Logic Operators",
+      "content": "Linear Temporal Logic (LTL) operators: □ (always/G): P holds in all future states. ◇ (eventually/F): P holds in some future state. ○ (next/X): P holds in the next state. U (until): P U Q means P holds until Q becomes true. Used in model checking for verifying reactive systems.",
+      "category": "logic",
+      "tags": ["temporal", "LTL", "model_checking", "verification"],
+      "metadata": {"operators": ["always", "eventually", "next", "until"], "use_case": "model_checking"},
+      "references": ["logic.propositional.connectives"]
+    },
+    {
+      "key": "logic.fuzzy.membership",
+      "title": "Fuzzy Logic and Membership Functions",
+      "content": "Fuzzy logic allows partial truth values in [0,1] instead of just {0,1}. Membership functions map inputs to degrees of membership. Common functions: triangular, trapezoidal, Gaussian. Fuzzy operators: AND = min(a,b), OR = max(a,b), NOT = 1-a. Used in control systems and approximate reasoning.",
+      "category": "logic",
+      "tags": ["fuzzy", "membership", "control_system", "approximate"],
+      "metadata": {"operators": ["min", "max", "complement"], "use_case": "control_systems"},
+      "references": ["logic.propositional.connectives"]
+    }
+  ]
+}

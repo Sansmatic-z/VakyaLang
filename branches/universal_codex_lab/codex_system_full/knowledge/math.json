@@ -1,0 +1,67 @@
+{
+  "knowledge": [
+    {
+      "key": "math.algebra.quadratic",
+      "title": "Quadratic Equation Solver",
+      "content": "A quadratic equation ax² + bx + c = 0 has solutions x = (-b ± √(b²-4ac)) / 2a. The discriminant Δ = b²-4ac determines the nature of roots: Δ > 0 → two real roots, Δ = 0 → one repeated root, Δ < 0 → two complex conjugate roots.",
+      "category": "math",
+      "tags": ["algebra", "quadratic", "equation", "polynomial"],
+      "metadata": {"formula": "x = (-b ± √(b²-4ac)) / 2a", "complexity": "basic"},
+      "references": []
+    },
+    {
+      "key": "math.algebra.linear_system",
+      "title": "System of Linear Equations",
+      "content": "A system of linear equations can be solved using Gaussian elimination, matrix inversion, or Cramer's rule. For Ax = b, if A is invertible: x = A⁻¹b. Gaussian elimination transforms the augmented matrix [A|b] to row-echelon form.",
+      "category": "math",
+      "tags": ["algebra", "linear", "matrix", "system"],
+      "metadata": {"methods": ["gaussian_elimination", "matrix_inverse", "cramers_rule"], "complexity": "O(n³)"},
+      "references": ["math.algebra.quadratic"]
+    },
+    {
+      "key": "math.calculus.derivative",
+      "title": "Derivative Rules",
+      "content": "Common derivative rules: d/dx(xⁿ) = nxⁿ⁻¹ (power rule), d/dx(eˣ) = eˣ, d/dx(ln x) = 1/x, d/dx(sin x) = cos x, d/dx(cos x) = -sin x. Chain rule: d/dx(f(g(x))) = f'(g(x))·g'(x). Product rule: d/dx(fg) = f'g + fg'. Quotient rule: d/dx(f/g) = (f'g - fg')/g².",
+      "category": "math",
+      "tags": ["calculus", "derivative", "differentiation"],
+      "metadata": {"rules": ["power", "chain", "product", "quotient"], "complexity": "intermediate"},
+      "references": []
+    },
+    {
+      "key": "math.calculus.integral",
+      "title": "Integration Rules",
+      "content": "Common integrals: ∫xⁿdx = xⁿ⁺¹/(n+1) + C (n≠-1), ∫eˣdx = eˣ + C, ∫(1/x)dx = ln|x| + C, ∫sin x dx = -cos x + C, ∫cos x dx = sin x + C. Integration by parts: ∫udv = uv - ∫vdu. Substitution rule: ∫f(g(x))g'(x)dx = ∫f(u)du where u = g(x).",
+      "category": "math",
+      "tags": ["calculus", "integral", "integration"],
+      "metadata": {"rules": ["power", "by_parts", "substitution"], "complexity": "intermediate"},
+      "references": ["math.calculus.derivative"]
+    },
+    {
+      "key": "math.number_theory.primes",
+      "title": "Prime Numbers and Factorization",
+      "content": "A prime number is a natural number > 1 with no positive divisors other than 1 and itself. Sieve of Eratosthenes finds all primes up to n in O(n log log n). Fundamental theorem of arithmetic: every integer > 1 has a unique prime factorization. Fermat's little theorem: if p is prime and gcd(a,p)=1, then a^(p-1) ≡ 1 (mod p).",
+      "category": "math",
+      "tags": ["number_theory", "prime", "factorization", "sieve"],
+      "metadata": {"algorithms": ["sieve_of_eratosthenes", "trial_division", "pollard_rho"], "complexity": "varies"},
+      "references": []
+    },
+    {
+      "key": "math.statistics.mean_variance",
+      "title": "Mean, Variance, and Standard Deviation",
+      "content": "Mean (μ) = Σxᵢ/n. Variance (σ²) = Σ(xᵢ-μ)²/n. Standard deviation (σ) = √variance. For sample data, use n-1 denominator (Bessel's correction). These measure central tendency and spread of data.",
+      "category": "math",
+      "tags": ["statistics", "mean", "variance", "standard_deviation"],
+      "metadata": {"formulas": ["mean", "variance", "std_dev"], "complexity": "basic"},
+      "references": []
+    },
+    {
+      "key": "math.combinatorics.permutations",
+      "title": "Permutations and Combinations",
+      "content": "Permutations P(n,r) = n!/(n-r)!: number of ways to arrange r items from n. Combinations C(n,r) = n!/(r!(n-r)!): number of ways to choose r items from n without regard to order. Binomial theorem: (a+b)ⁿ = ΣC(n,k)·aⁿ⁻ᵏ·bᵏ.",
+      "category": "math",
+      "tags": ["combinatorics", "permutation", "combination", "binomial"],
+      "metadata": {"formulas": ["P(n,r)", "C(n,r)", "binomial_theorem"], "complexity": "basic"},
+      "references": []
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "knowledge": [
+    {
+      "key": "cs.complexity.big_o",
+      "title": "Big-O Notation and Complexity Classes",
+      "content": "Big-O notation describes the upper bound of an algorithm's growth rate. Common classes: O(1) constant, O(log n) logarithmic, O(n) linear, O(n log n) linearithmic, O(n²) quadratic, O(2ⁿ) exponential, O(n!) factorial. Big-O ignores constant factors and lower-order terms. Formal definition: f(n) = O(g(n)) iff ∃c,n₀ such that ∀n≥n₀: f(n) ≤ c·g(n).",
+      "category": "cs",
+      "tags": ["complexity", "big_o", "asymptotic", "analysis"],
+      "metadata": {"classes": ["O(1)", "O(log n)", "O(n)", "O(n log n)", "O(n²)", "O(2ⁿ)"], "complexity": "fundamental"},
+      "references": []
+    },
+    {
+      "key": "cs.data_structures.array",
+      "title": "Array Data Structure",
+      "content": "An array stores elements in contiguous memory. Access: O(1) by index. Insert/Delete at end: O(1) amortized. Insert/Delete at position: O(n). Search unsorted: O(n). Search sorted (binary): O(log n). Arrays have fixed size in static languages, dynamic in Python/lists.",
+      "category": "cs",
+      "tags": ["data_structure", "array", "contiguous", "random_access"],
+      "metadata": {"access": "O(1)", "insert": "O(n)", "delete": "O(n)", "search": "O(n) or O(log n)"},
+      "references": ["cs.complexity.big_o"]
+    },
+    {
+      "key": "cs.data_structures.linked_list",
+      "title": "Linked List Data Structure",
+      "content": "A linked list consists of nodes, each containing data and a reference to the next node. Singly linked: one direction. Doubly linked: forward and backward. Access: O(n). Insert/Delete at head: O(1). Insert/Delete at tail: O(1) with tail pointer. Memory overhead: one (singly) or two (doubly) pointers per node.",
+      "category": "cs",
+      "tags": ["data_structure", "linked_list", "dynamic", "sequential"],
+      "metadata": {"access": "O(n)", "insert_head": "O(1)", "delete_head": "O(1)"},
+      "references": ["cs.data_structures.array"]
+    },
+    {
+      "key": "cs.data_structures.hash_map",
+      "title": "Hash Map / Hash Table",
+      "content": "A hash map uses a hash function to map keys to bucket indices. Average case: O(1) for get/put/delete. Worst case (all collisions): O(n). Collision resolution: chaining (linked lists in buckets) or open addressing (probing). Load factor = n/buckets. Rehash when load factor exceeds threshold (typically 0.75).",
+      "category": "cs",
+      "tags": ["data_structure", "hash_map", "hash_table", "key_value"],
+      "metadata": {"avg_get": "O(1)", "worst_get": "O(n)", "collision_strategies": ["chaining", "open_addressing"]},
+      "references": ["cs.complexity.big_o"]
+    },
+    {
+      "key": "cs.data_structures.binary_tree",
+      "title": "Binary Tree and BST",
+      "content": "A binary tree node has at most 2 children. Binary Search Tree (BST): left child < parent < right child. BST operations: search/insert/delete in O(h) where h is height. Balanced BST (AVL, Red-Black): h = O(log n). Unbalanced worst case: h = O(n) (degenerate to linked list). Traversals: inorder (LNR), preorder (NLR), postorder (LRN).",
+      "category": "cs",
+      "tags": ["data_structure", "tree", "BST", "binary_tree", "balanced"],
+      "metadata": {"search": "O(h)", "balanced_height": "O(log n)", "traversals": ["inorder", "preorder", "postorder"]},
+      "references": ["cs.complexity.big_o"]
+    },
+    {
+      "key": "cs.data_structures.graph",
+      "title": "Graph Data Structure",
+      "content": "A graph G = (V, E) consists of vertices V and edges E. Representations: adjacency matrix (O(1) edge lookup, O(V²) space) or adjacency list (O(degree) edge lookup, O(V+E) space). Directed vs undirected. Weighted vs unweighted. Cyclic vs acyclic (DAG). Traversal: BFS (queue, shortest path in unweighted), DFS (stack/recursion, topological sort).",
+      "category": "cs",
+      "tags": ["data_structure", "graph", "adjacency", "BFS", "DFS"],
+      "metadata": {"representations": ["adjacency_matrix", "adjacency_list"], "traversals": ["BFS", "DFS"]},
+      "references": ["cs.data_structures.binary_tree"]
+    },
+    {
+      "key": "cs.design.solid",
+      "title": "SOLID Principles",
+      "content": "S = Single Responsibility: one class, one reason to change. O = Open/Closed: open for extension, closed for modification. L = Liskov Substitution: subclasses must be substitutable for base classes. I = Interface Segregation: many specific interfaces over one general. D = Dependency Inversion: depend on abstractions, not concretions.",
+      "category": "cs",
+      "tags": ["design", "SOLID", "principles", "OOP"],
+      "metadata": {"principles": ["SRP", "OCP", "LSP", "ISP", "DIP"], "domain": "software_design"},
+      "references": []
+    },
+    {
+      "key": "cs.concurrency.threads",
+      "title": "Concurrency: Threads and Synchronization",
+      "content": "Threads share memory space but have separate stacks. Synchronization primitives: mutex (mutual exclusion), semaphore (counter), condition variable (wait/notify), barrier (wait for N threads). Problems: race conditions, deadlock (circular wait), livelock, starvation. Solutions: lock ordering, timeouts, lock-free algorithms. GIL in CPython prevents true parallelism for CPU-bound threads.",
+      "category": "cs",
+      "tags": ["concurrency", "threads", "synchronization", "deadlock", "mutex"],
+      "metadata": {"primitives": ["mutex", "semaphore", "condition_variable", "barrier"], "problems": ["race_condition", "deadlock", "livelock"]},
+      "references": []
+    },
+    {
+      "key": "cs.networking.osi",
+      "title": "OSI Model and TCP/IP",
+      "content": "OSI 7 layers: Physical, Data Link, Network, Transport, Session, Presentation, Application. TCP/IP 4 layers: Link, Internet, Transport, Application. Key protocols: HTTP/HTTPS (application), TCP/UDP (transport), IP (network), Ethernet (link). TCP: connection-oriented, reliable, ordered. UDP: connectionless, unreliable, low latency.",
+      "category": "cs",
+      "tags": ["networking", "OSI", "TCP/IP", "protocols", "HTTP"],
+      "metadata": {"models": ["OSI_7_layer", "TCP/IP_4_layer"], "protocols": ["HTTP", "TCP", "UDP", "IP"]},
+      "references": []
+    },
+    {
+      "key": "cs.databases.normalization",
+      "title": "Database Normalization",
+      "content": "Normalization reduces redundancy and anomalies. 1NF: atomic values, no repeating groups. 2NF: 1NF + no partial dependency on composite key. 3NF: 2NF + no transitive dependency. BCNF: every determinant is a candidate key. Denormalization trades redundancy for read performance. ACID properties: Atomicity, Consistency, Isolation, Durability.",
+      "category": "cs",
+      "tags": ["database", "normalization", "ACID", "relational", "3NF"],
+      "metadata": {"forms": ["1NF", "2NF", "3NF", "BCNF"], "properties": ["Atomicity", "Consistency", "Isolation", "Durability"]},
+      "references": []
+    },
+    {
+      "key": "cs.distributed.cap",
+      "title": "CAP Theorem",
+      "content": "CAP theorem: a distributed system can guarantee at most 2 of 3 properties: Consistency (all nodes see same data at same time), Availability (every request gets a response), Partition tolerance (system continues despite network partitions). In practice: choose CP or AP since P is inevitable. Eventual consistency: system becomes consistent over time.",
+      "category": "cs",
+      "tags": ["distributed", "CAP", "consistency", "availability", "partition"],
+      "metadata": {"trade_offs": ["CP", "AP"], "consistency_models": ["strong", "eventual", "causal"]},
+      "references": ["cs.databases.normalization"]
+    },
+    {
+      "key": "cs.testing.pyramid",
+      "title": "Testing Pyramid",
+      "content": "Testing pyramid: many unit tests (bottom), fewer integration tests (middle), fewest E2E tests (top). Unit tests: test individual functions/classes in isolation (fast, cheap). Integration tests: test component interactions. E2E tests: test full system flow (slow, expensive). TDD: write tests before code (Red-Green-Refactor). Code coverage measures % of code executed by tests.",
+      "category": "cs",
+      "tags": ["testing", "unit", "integration", "E2E", "TDD", "pyramid"],
+      "metadata": {"levels": ["unit", "integration", "E2E"], "methodology": ["TDD", "BDD"]},
+      "references": []
+    }
+  ]
+}

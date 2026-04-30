@@ -73,6 +73,10 @@ def register_sansmatic_bridge(globals_env):
         """प्रमाण_सारांश() → शब्दकोश — Return proof-engine summary."""
         return _engine.summary()
 
+    def _proof_summary_text(args, kwargs):
+        """प्रमाण_सारांश_पाठ() → पाठ — Return formatted proof summary."""
+        return _engine.summary_text()
+
     def _proof_snapshot(args, kwargs):
         """प्रमाण_स्नैपशॉट() → शब्दकोश — Capture proof-engine state."""
         return _engine.snapshot()
@@ -87,17 +91,64 @@ def register_sansmatic_bridge(globals_env):
         limit = int(args[0]) if args else None
         return _engine.trace(limit=limit)
 
+    def _proof_trace_text(args, kwargs):
+        """प्रमाण_अनुक्रम_पाठ([limit]) → पाठ — Return formatted proof trace."""
+        limit = int(args[0]) if args else None
+        return _engine.trace_text(limit=limit)
+
     def _proof_tree(args, kwargs):
         """प्रमाण_वृक्ष(इकाई, संबंध, गुण) → शब्दकोश — Return proof tree."""
         if len(args) < 3:
             raise VakRuntimeError("प्रमाण_वृक्ष: इकाई, संबंध, गुण चाहिए")
         return _engine.proof_tree((str(args[0]), str(args[1]), str(args[2])))
 
+    def _proof_tree_text(args, kwargs):
+        """प्रमाण_वृक्ष_पाठ(इकाई, संबंध, गुण) → पाठ — Return formatted proof tree."""
+        if len(args) < 3:
+            raise VakRuntimeError("प्रमाण_वृक्ष_पाठ: इकाई, संबंध, गुण चाहिए")
+        return _engine.proof_tree_text((str(args[0]), str(args[1]), str(args[2])))
+
     def _proof_explain(args, kwargs):
         """प्रमाण_व्याख्या(इकाई, संबंध, गुण) → शब्दकोश — Explain proof result."""
         if len(args) < 3:
             raise VakRuntimeError("प्रमाण_व्याख्या: इकाई, संबंध, गुण चाहिए")
         return _engine.explain((str(args[0]), str(args[1]), str(args[2])))
+
+    def _proof_explain_text(args, kwargs):
+        """प्रमाण_व्याख्या_पाठ(इकाई, संबंध, गुण) → पाठ — Explain proof result."""
+        if len(args) < 3:
+            raise VakRuntimeError("प्रमाण_व्याख्या_पाठ: इकाई, संबंध, गुण चाहिए")
+        return _engine.explain_text((str(args[0]), str(args[1]), str(args[2])))
+
+    def _theorem_list(args, kwargs):
+        """प्रमेय_सूची([tag]) → सूची — List theorem library entries."""
+        tag = str(args[0]) if args else None
+        return _engine.list_theorems(tag)
+
+    def _theorem_details(args, kwargs):
+        """प्रमेय_विवरण(name) → शब्दकोश — Return theorem details."""
+        if len(args) < 1:
+            raise VakRuntimeError("प्रमेय_विवरण: नाम चाहिए")
+        return _engine.theorem_details(str(args[0]))
+
+    def _theorem_fact(args, kwargs):
+        """प्रमेय_तथ्य(name, entity, relation, property) — Register theorem."""
+        if len(args) < 4:
+            raise VakRuntimeError("प्रमेय_तथ्य: नाम, इकाई, संबंध, गुण चाहिए")
+        return _engine.register_theorem(
+            str(args[0]),
+            (str(args[1]), str(args[2]), str(args[3])),
+        )
+
+    def _theorem_rule(args, kwargs):
+        """प्रमेय_नियम(name, a, rel_a, prop_a, b, rel_b, prop_b) — Register named rule theorem."""
+        if len(args) < 7:
+            raise VakRuntimeError("प्रमेय_नियम: नाम और दो तथ्य चाहिए")
+        return _engine.register_rule_theorem(
+            str(args[0]),
+            (str(args[1]), str(args[2]), str(args[3])),
+            (str(args[4]), str(args[5]), str(args[6])),
+        )
 
     def _reset_engine(args, kwargs):
         """प्रमाण_रीसेट() — Clear all facts, rules, definitions."""
@@ -113,11 +164,19 @@ def register_sansmatic_bridge(globals_env):
         "पश्च_सिद्ध_है": _backward_provable,
         "प्रमाण_लॉग":   _proof_log,    # get proof log
         "प्रमाण_सारांश": _proof_summary,
+        "प्रमाण_सारांश_पाठ": _proof_summary_text,
         "प्रमाण_स्नैपशॉट": _proof_snapshot,
         "प्रमाण_पुनर्स्थापय": _proof_restore,
         "प्रमाण_अनुक्रम": _proof_trace,
+        "प्रमाण_अनुक्रम_पाठ": _proof_trace_text,
         "प्रमाण_वृक्ष": _proof_tree,
+        "प्रमाण_वृक्ष_पाठ": _proof_tree_text,
         "प्रमाण_व्याख्या": _proof_explain,
+        "प्रमाण_व्याख्या_पाठ": _proof_explain_text,
+        "प्रमेय_सूची": _theorem_list,
+        "प्रमेय_विवरण": _theorem_details,
+        "प्रमेय_तथ्य": _theorem_fact,
+        "प्रमेय_नियम": _theorem_rule,
         "प्रमाण_रीसेट": _reset_engine, # reset engine
     }
 

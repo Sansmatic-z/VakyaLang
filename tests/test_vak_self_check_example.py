@@ -24,6 +24,11 @@ class VakSelfCheckExampleTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("Vak आत्म-परीक्षा पूर्ण", result.stdout)
         self.assertIn("कुल विफलताएँ: 0", result.stdout)
+        self.assertIn("✓ कोडेक्स उन्नयन रिपोर्ट", result.stdout)
+        self.assertIn("✓ सान्समैटिक अनुक्रम पाठ", result.stdout)
+        self.assertIn("✓ colour_lib compatibility lookup", result.stdout)
+        self.assertIn("✓ चित्रकला कैनवास चौड़ाई", result.stdout)
+        self.assertIn("✓ प्रदर्शन चरण उपलब्ध", result.stdout)
 
 
 if __name__ == "__main__":

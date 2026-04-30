@@ -15,11 +15,21 @@ from .bytecode import Bytecode, NO_DEFAULT
 from .opcodes import OpCode, OPCODE_NAMES
 from .jit_compiler import JITCompiler
 from .event_loop import EventLoop, SUSPEND, SleepRequest
+from .vm_messages import (
+    build_missing_attribute_message,
+    describe_available_names,
+    is_internal_binding_name,
+)
 from .audit import emit_audit_event
 from .errors import VMError as BaseVMError
 from .stdlib_manifest import module_alias_map
 
 class VakThrowException(Exception):
+    def __init__(self, value):
+        self.value = value
+
+
+class VakYieldSignal(Exception):
     def __init__(self, value):
         self.value = value
 
@@ -62,10 +72,11 @@ RETURN_TYPE_HINT_KEY = "__return__"
 
 class VakClass:
     """Represents a custom VakyaLang class."""
-    def __init__(self, name: str, methods: dict, method_envs: dict | None = None):
+    def __init__(self, name: str, methods: dict, method_envs: dict | None = None, parent: 'VakClass' | None = None):
         self.name = name
         self.methods = methods
         self.method_envs = method_envs or {}
+        self.parent = parent
         
     def __repr__(self):
         return f"<वर्ग:{self.name}>"
@@ -84,6 +95,29 @@ class VakInstance:
         
     def __str__(self):
         return self.__repr__()
+
+class VakSuperProxy:
+    """Runtime proxy used to invoke methods on the direct parent class."""
+    def __init__(self, vm: 'VakVM', instance: VakInstance, parent: VakClass):
+        self._vm = vm
+        self._instance = instance
+        self._parent = parent
+
+    def __getattribute__(self, name: str):
+        if name in {"_vm", "_instance", "_parent", "__class__", "__dict__", "__repr__", "__str__"}:
+            return object.__getattribute__(self, name)
+
+        parent = object.__getattribute__(self, "_parent")
+        if name in parent.methods:
+            vm = object.__getattribute__(self, "_vm")
+            instance = object.__getattribute__(self, "_instance")
+
+            def _bound(*args, **kwargs):
+                return vm._invoke_parent_method(instance, parent, name, *args, **kwargs)
+
+            return _bound
+
+        return object.__getattribute__(self, name)
 
 class VakModule:
     """Represents an imported VakyaLang module."""
@@ -250,6 +284,146 @@ class VakCoroutine:
         return self.result
 
 
+class VakGenerator:
+    """Lazy generator wrapper backed by a suspended Vak call frame."""
+    def __init__(
+        self,
+        frame: CallFrame,
+        bytecode: Bytecode,
+        vm: "VakVM" | None = None,
+        *,
+        instance: VakInstance | None = None,
+    ):
+        self.frame = frame
+        self.bytecode = bytecode
+        self.vm = vm
+        self.completed = False
+        self.return_value = None
+        self.name = bytecode.name
+        self.instance = instance
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.completed:
+            raise StopIteration(self.return_value)
+        if self.vm is None:
+            self.completed = True
+            raise StopIteration
+        value = self.vm._resume_generator(self)
+        if self.completed:
+            raise StopIteration(self.return_value)
+        return value
+
+    def __repr__(self):
+        status = "completed" if self.completed else "active"
+        return f"VakGenerator({self.name}, {status})"
+
+    def __getattr__(self, name: str):
+        instance = object.__getattribute__(self, "instance")
+        if instance is None:
+            raise AttributeError(name)
+        if name in instance.attrs:
+            return instance.attrs[name]
+        if name in instance.klass.methods:
+            vm = object.__getattribute__(self, "vm")
+
+            def _bound(*args, **kwargs):
+                return vm._invoke_runtime_callable(('bound_method', instance, name), *args, **kwargs)
+
+            return _bound
+        raise AttributeError(name)
+
+    def __setattr__(self, name: str, value: Any):
+        if name in {"frame", "bytecode", "vm", "completed", "return_value", "name", "instance"}:
+            object.__setattr__(self, name, value)
+            return
+        instance = object.__getattribute__(self, "instance") if "instance" in self.__dict__ else None
+        if instance is not None:
+            instance.attrs[name] = value
+            return
+        object.__setattr__(self, name, value)
+
+
+class VakAsyncGenerator:
+    """Async generator wrapper resumed one awaited step at a time."""
+    def __init__(
+        self,
+        frame: CallFrame,
+        bytecode: Bytecode,
+        vm: "VakVM" | None = None,
+        *,
+        instance: VakInstance | None = None,
+    ):
+        self.frame = frame
+        self.bytecode = bytecode
+        self.vm = vm
+        self.completed = False
+        self.return_value = None
+        self.name = bytecode.name
+        self.instance = instance
+
+    def __aiter__(self):
+        return self
+
+    def __anext__(self):
+        return VakAsyncGeneratorNext(self)
+
+    def __repr__(self):
+        status = "completed" if self.completed else "active"
+        return f"VakAsyncGenerator({self.name}, {status})"
+
+    def __getattr__(self, name: str):
+        instance = object.__getattribute__(self, "instance")
+        if instance is None:
+            raise AttributeError(name)
+        if name in instance.attrs:
+            return instance.attrs[name]
+        if name in instance.klass.methods:
+            vm = object.__getattribute__(self, "vm")
+
+            def _bound(*args, **kwargs):
+                return vm._invoke_runtime_callable(('bound_method', instance, name), *args, **kwargs)
+
+            return _bound
+        raise AttributeError(name)
+
+    def __setattr__(self, name: str, value: Any):
+        if name in {"frame", "bytecode", "vm", "completed", "return_value", "name", "instance"}:
+            object.__setattr__(self, name, value)
+            return
+        instance = object.__getattribute__(self, "instance") if "instance" in self.__dict__ else None
+        if instance is not None:
+            instance.attrs[name] = value
+            return
+        object.__setattr__(self, name, value)
+
+
+class VakAsyncGeneratorNext:
+    """Awaitable single-step advance over a Vak async generator."""
+    def __init__(self, generator: VakAsyncGenerator, *, pair_mode: bool = False):
+        self.generator = generator
+        self.frame = generator.frame
+        self.vm = generator.vm
+        self.name = f"{generator.name}.__anext__"
+        self.completed = False
+        self.result = None
+        self.suspended = False
+        self.waiting_on = None
+        self.task = None
+        self.pair_mode = pair_mode
+
+    def __repr__(self):
+        status = "completed" if self.completed else ("suspended" if self.suspended else "active")
+        return f"VakAsyncGeneratorNext({self.name}, {status})"
+
+    def __await__(self):
+        if not self.completed:
+            yield self
+        return self.result
+
+
 class VakVM:
     """
     Stack-based Virtual Machine for VakyaLang.
@@ -284,6 +458,7 @@ class VakVM:
         self.suppress_output = False
         self.module_cache: Dict[str, VakModule] = {}
         self._module_load_stack: list[tuple[str, str]] = []
+        self._active_generator: VakGenerator | VakAsyncGenerator | None = None
         
         # JIT Compiler (Month 2-3 Advanced Feature)
         self.jit = JITCompiler() if enable_jit else None
@@ -689,6 +864,16 @@ class VakVM:
         required_names = set(getattr(func_bc, "closure_names", set()) or set())
         required_names.update(getattr(func_bc, "nonlocal_names", set()) or set())
 
+        module_bytecode = None
+        if self._is_module_frame(frame):
+            module_bytecode = frame.bytecode
+        elif getattr(frame, "closure_env", None) and "__bytecode__" in frame.closure_env:
+            module_bytecode = frame.closure_env["__bytecode__"]
+        else:
+            module_bytecode = frame.bytecode
+        if module_bytecode is not None:
+            closure_env["__bytecode__"] = module_bytecode
+
         if not required_names:
             return closure_env
 
@@ -782,6 +967,11 @@ class VakVM:
                 if module_value is not UNSET:
                     return module_value
 
+        if name == 'अभिभावक':
+            super_factory = self._resolve_super_factory(frame)
+            if super_factory is not None:
+                return super_factory
+
         if name not in local_names or is_global_name:
             if name in self.globals:
                 return self.globals[name]
@@ -793,6 +983,23 @@ class VakVM:
             raise VMError(f"Name not found: {name}")
 
         raise VMError(f"Local variable '{name}' referenced before assignment")
+
+    def _resolve_super_factory(self, frame: CallFrame) -> Any:
+        if not getattr(frame, "locals", None):
+            return None
+        instance = frame.locals[0]
+        if isinstance(instance, Cell):
+            instance = instance.value
+        if not isinstance(instance, VakInstance):
+            return None
+        parent_class = getattr(instance.klass, "parent", None)
+        if not isinstance(parent_class, VakClass):
+            return None
+
+        def _factory():
+            return VakSuperProxy(self, instance, parent_class)
+
+        return _factory
 
     def _store_named_value(self, frame: CallFrame, slot: int, value: Any) -> None:
         if slot >= len(frame.locals):
@@ -1163,17 +1370,10 @@ class VakVM:
         return result
 
     def _is_internal_binding_name(self, name: str) -> bool:
-        return name.startswith("__imported_module_") or (
-            name.startswith("<") and name.endswith(">")
-        )
+        return is_internal_binding_name(name)
 
     def _describe_available_names(self, names: list[str] | tuple[str, ...] | set[str]) -> str:
-        visible = sorted(str(name) for name in names if name and not self._is_internal_binding_name(str(name)))
-        if not visible:
-            return ""
-        preview = visible[:5]
-        suffix = " ..." if len(visible) > 5 else ""
-        return ", ".join(preview) + suffix
+        return describe_available_names(names)
 
     def _missing_attribute_message(
         self,
@@ -1183,23 +1383,12 @@ class VakVM:
         attr_name: str,
         available_names: list[str] | tuple[str, ...] | set[str],
     ) -> str:
-        import difflib
-
-        message = f"Attribute '{attr_name}' not found in {owner_kind} {owner_name}"
-        visible = sorted(
-            str(name) for name in available_names if name and not self._is_internal_binding_name(str(name))
+        return build_missing_attribute_message(
+            owner_kind=owner_kind,
+            owner_name=owner_name,
+            attr_name=attr_name,
+            available_names=available_names,
         )
-        if not visible:
-            return message
-
-        similar = difflib.get_close_matches(attr_name, visible, n=1, cutoff=0.6)
-        if similar:
-            message += f". Did you mean '{similar[0]}'?"
-
-        available_text = self._describe_available_names(visible)
-        if available_text:
-            message += f". Available: {available_text}"
-        return message
 
     def _safe_debug_repr(self, value: Any, limit: int = 96) -> str:
         value = self._unwrap_cell(value)
@@ -1359,6 +1548,8 @@ class VakVM:
             user_param_names = list(new_frame.bytecode.var_names[self_offset:func_bc.num_params])
 
         assigned = set()
+        kwargs_capture_name = dict(getattr(func_bc, 'type_hints', {}) or {}).get("__vak_kwargs_capture__")
+        captured_kwargs: dict[str, Any] = {}
 
         for index, arg in enumerate(args[:user_param_count]):
             local_index = self_offset + index
@@ -1368,6 +1559,9 @@ class VakVM:
 
         for kw_name, kw_value in kwargs.items():
             if kw_name not in user_param_names:
+                if kwargs_capture_name:
+                    captured_kwargs[kw_name] = kw_value
+                    continue
                 raise VMError(f"Unexpected keyword argument: {kw_name}")
             param_index = user_param_names.index(kw_name)
             if param_index in assigned:
@@ -1403,6 +1597,13 @@ class VakVM:
             if varargs_slot < len(new_frame.locals):
                 new_frame.locals[varargs_slot] = list(args[user_param_count:])
 
+        if kwargs_capture_name:
+            if kwargs_capture_name not in getattr(func_bc, 'var_names', []):
+                raise VMError(f"Invalid kwargs capture slot for {getattr(func_bc, 'name', '<function>')}")
+            kwargs_slot = func_bc.var_names.index(kwargs_capture_name)
+            if kwargs_slot < len(new_frame.locals):
+                new_frame.locals[kwargs_slot] = dict(captured_kwargs)
+
         self._configure_vibhakti_frame(new_frame, func_bc)
         self._enforce_runtime_function_contract(new_frame, func_bc)
 
@@ -1413,6 +1614,20 @@ class VakVM:
         if alias and alias not in candidates:
             candidates.append(alias)
         return candidates
+
+    def _validate_module_name(self, module_name: str) -> str:
+        text = str(module_name).strip()
+        if not text:
+            emit_audit_event("vak.import.reject", "<empty>", "empty")
+            raise VMError("Unsafe module name: empty")
+        if any(marker in text for marker in ("/", "\\", ":")):
+            emit_audit_event("vak.import.reject", text, "path-separator")
+            raise VMError(f"Unsafe module name: {module_name}")
+        parts = text.split(".")
+        if any(part in {"", ".", ".."} for part in parts):
+            emit_audit_event("vak.import.reject", text, "invalid-segments")
+            raise VMError(f"Unsafe module name: {module_name}")
+        return text
 
     def _module_search_dirs(self, frame: CallFrame | None) -> list[str]:
         import os
@@ -1455,8 +1670,10 @@ class VakVM:
 
     def _resolve_module_path(self, module_name: str, frame: CallFrame | None) -> tuple[str, str]:
         import os
+        module_name = self._validate_module_name(module_name)
         searched_paths: list[str] = []
         search_dirs = self._module_search_dirs(frame)
+        emit_audit_event("vak.import.resolve", module_name, search_dirs[:4])
 
         for candidate_name in self._module_name_candidates(module_name):
             relative_names = [candidate_name]
@@ -1482,6 +1699,7 @@ class VakVM:
 
         preview = "; ".join(searched_paths[:4])
         suffix = " ..." if len(searched_paths) > 4 else ""
+        emit_audit_event("vak.import.error", module_name, "not_found")
         if preview:
             raise VMError(f"Module not found: {module_name}. Searched: {preview}{suffix}")
         raise VMError(f"Module not found: {module_name}")
@@ -1795,7 +2013,92 @@ class VakVM:
             )
             return codex.list_chapters()
 
+        def _codex_promotion(*args):
+            from .codex import build_default_codex
+
+            page = str(args[0]) if args else "vak"
+            corpus_root = str(args[1]) if len(args) > 1 and args[1] is not None else None
+            active_names = (
+                self.branch_runtime.active_names()
+                if self.branch_runtime is not None
+                else None
+            )
+            codex = build_default_codex(
+                active_branches=active_names,
+                branch_registry=self.branch_registry,
+            )
+            return codex.promotion_report(page, corpus_root=corpus_root).payload()
+
+        def _profile_interpreter():
+            from .interpreter import VakInterpreter
+
+            active_names = (
+                self.branch_runtime.active_names()
+                if self.branch_runtime is not None
+                else None
+            )
+            return VakInterpreter(
+                active_branches=active_names,
+                branch_registry=self.branch_registry,
+            )
+
+        def _profile_source_result(*args):
+            source = str(args[0]) if args else ""
+            filename = str(args[1]) if len(args) > 1 and args[1] is not None else None
+            repeat = int(args[2]) if len(args) > 2 and args[2] is not None else 3
+            execute = bool(args[3]) if len(args) > 3 else True
+            interpreter = _profile_interpreter()
+            return interpreter.profile_source(
+                source,
+                filename=filename,
+                repeat=max(repeat, 1),
+                execute=execute,
+            )
+
+        def _profile_source_payload(*args):
+            return _profile_source_result(*args).payload()
+
+        def _profile_source_text(*args):
+            return _profile_source_result(*args).text()
+
+        def _profile_import_result(*args):
+            module_name = str(args[0]) if args else ""
+            filename = str(args[1]) if len(args) > 1 and args[1] is not None else None
+            repeat = int(args[2]) if len(args) > 2 and args[2] is not None else 3
+            interpreter = _profile_interpreter()
+            return interpreter.profile_import(
+                module_name,
+                filename=filename,
+                repeat=max(repeat, 1),
+            )
+
+        def _profile_import_payload(*args):
+            return _profile_import_result(*args).payload()
+
+        def _profile_import_text(*args):
+            return _profile_import_result(*args).text()
+
+        def _vak_internal_yield(value=None):
+            if self._active_generator is None:
+                raise VMError("उपज केवल जनक कर्म के भीतर प्रयोग किया जा सकता है")
+            raise VakYieldSignal(value)
+
+        def _async_next(value):
+            if not isinstance(value, VakAsyncGenerator):
+                raise VMError("अतुल्य_अग्रिम को अतुल्य जनक चाहिए")
+            return VakAsyncGeneratorNext(value)
+
+        def _vak_internal_async_next_pair(value):
+            if not isinstance(value, VakAsyncGenerator):
+                raise VMError("__vak_internal_async_next_pair__ को अतुल्य जनक चाहिए")
+            return VakAsyncGeneratorNext(value, pair_mode=True)
+
+        def _async_done(value):
+            return isinstance(value, VakAsyncGenerator) and value.completed
+
         def _vak_isinstance(obj, cls):
+            if isinstance(obj, (VakGenerator, VakAsyncGenerator)) and obj.instance is not None:
+                obj = obj.instance
             if isinstance(cls, VakClass):
                 return isinstance(obj, VakInstance) and obj.klass.name == cls.name
             if isinstance(cls, str):
@@ -2090,9 +2393,21 @@ class VakVM:
             'पश्च_सिद्ध_है': lambda *args: _sansmatic.backward_chain((str(args[0]), str(args[1]), str(args[2]))),
             'प्रमाण_लॉग': lambda *args: _sansmatic.get_log(),
             'प्रमाण_सारांश': lambda *args: _sansmatic.summary(),
+            'प्रमाण_सारांश_पाठ': lambda *args: _sansmatic.summary_text(),
             'प्रमाण_स्नैपशॉट': lambda *args: _sansmatic.snapshot(),
             'प्रमाण_पुनर्स्थापय': lambda *args: _sansmatic.restore(args[0] if args else None),
             'प्रमाण_रीसेट': lambda *args: _sansmatic.reset(),
+            'प्रमेय_सूची': lambda *args: _sansmatic.list_theorems(str(args[0]) if args else None),
+            'प्रमेय_विवरण': lambda *args: _sansmatic.theorem_details(str(args[0])) if args else None,
+            'प्रमेय_तथ्य': lambda *args: _sansmatic.register_theorem(
+                str(args[0]),
+                (str(args[1]), str(args[2]), str(args[3])),
+            ),
+            'प्रमेय_नियम': lambda *args: _sansmatic.register_rule_theorem(
+                str(args[0]),
+                (str(args[1]), str(args[2]), str(args[3])),
+                (str(args[4]), str(args[5]), str(args[6])),
+            ),
             'आत्म_मूल्य': _atma_wrap,
             'भाव_पढ़ो': lambda *args: _atmalipi.read_bhav(str(args[0])),
             'अवस्था_पढ़ो': lambda *args: _atmalipi.read_avastha(str(args[0])),
@@ -2124,9 +2439,23 @@ class VakVM:
             'कोडेक्स_विवरण': _codex_payload,
             'कोडेक्स_पृष्ठ': _codex_pages,
             'कोडेक्स_अध्याय': _codex_chapters,
+            'कोडेक्स_उन्नयन': _codex_promotion,
+            'प्रदर्शन_विवरण': _profile_source_payload,
+            'प्रदर्शन_पाठ': _profile_source_text,
+            'आयात_प्रदर्शन_विवरण': _profile_import_payload,
+            'आयात_प्रदर्शन_पाठ': _profile_import_text,
+            '__vak_internal_yield__': _vak_internal_yield,
+            '__vak_internal_async_next_pair__': _vak_internal_async_next_pair,
+            'अतुल्य_अग्रिम': _async_next,
+            'async_next': _async_next,
+            'अतुल्य_समाप्त': _async_done,
+            'async_done': _async_done,
             'प्रमाण_अनुक्रम': lambda *args: _sansmatic.trace(limit=int(args[0]) if args else None),
+            'प्रमाण_अनुक्रम_पाठ': lambda *args: _sansmatic.trace_text(limit=int(args[0]) if args else None),
             'प्रमाण_वृक्ष': lambda *args: _sansmatic.proof_tree((str(args[0]), str(args[1]), str(args[2]))),
+            'प्रमाण_वृक्ष_पाठ': lambda *args: _sansmatic.proof_tree_text((str(args[0]), str(args[1]), str(args[2]))),
             'प्रमाण_व्याख्या': lambda *args: _sansmatic.explain((str(args[0]), str(args[1]), str(args[2]))),
+            'प्रमाण_व्याख्या_पाठ': lambda *args: _sansmatic.explain_text((str(args[0]), str(args[1]), str(args[2]))),
         }
 
         if self.branch_runtime is not None:
@@ -2176,6 +2505,106 @@ class VakVM:
             self.frames = saved_frames
             self.current_frame = saved_current
 
+    def _is_generator_bytecode(self, func_bc: Any) -> bool:
+        return dict(getattr(func_bc, "type_hints", {}) or {}).get("__vak_is_generator__") == "1"
+
+    def _materialize_callable(
+        self,
+        func_bc: Any,
+        args: list[Any],
+        kwargs: dict[str, Any] | None = None,
+        *,
+        closure_env: dict[str, Any] | None = None,
+        self_obj: Any = None,
+        is_constructor: bool = False,
+    ) -> Any:
+        new_frame = CallFrame(func_bc, is_constructor=is_constructor)
+        self._bind_call_arguments(new_frame, func_bc, list(args), kwargs or {}, self_obj=self_obj)
+        if closure_env is not None:
+            self._hydrate_closure_locals(new_frame, closure_env)
+        if self._is_generator_bytecode(func_bc):
+            instance = self_obj if isinstance(self_obj, VakInstance) else None
+            if getattr(func_bc, "is_async", False):
+                return VakAsyncGenerator(new_frame, func_bc, vm=self, instance=instance)
+            return VakGenerator(new_frame, func_bc, vm=self, instance=instance)
+        if getattr(func_bc, "is_async", False):
+            return VakCoroutine(new_frame, func_bc, vm=self)
+        return new_frame
+
+    def _resume_generator(self, generator: VakGenerator) -> Any:
+        saved_frames = self.frames
+        saved_current = self.current_frame
+        saved_active = self._active_generator
+        try:
+            self.frames = [generator.frame]
+            self.current_frame = generator.frame
+            self._active_generator = generator
+            while True:
+                try:
+                    result = self._execute()
+                    generator.completed = True
+                    generator.return_value = result
+                    return result
+                except VakYieldSignal as signal:
+                    return signal.value
+                except Exception as e:
+                    trace = self._format_stack_trace()
+                    if self._handle_runtime_exception(e):
+                        continue
+                    if isinstance(e, VMError):
+                        raise self._attach_stack_trace(e, trace)
+                    raise VMError(f"Internal VM Crash: {e}\n{trace}") from e
+        finally:
+            self.frames = saved_frames
+            self.current_frame = saved_current
+            self._active_generator = saved_active
+
+    def _resume_async_generator_next(self, request: VakAsyncGeneratorNext) -> Any:
+        """Resume one awaited step of an async generator."""
+        generator = request.generator
+        if generator.completed:
+            request.completed = True
+            request.result = (True, None) if request.pair_mode else None
+            return request.result
+
+        saved_frames = self.frames
+        saved_current = self.current_frame
+        saved_active = self._active_generator
+        try:
+            self.frames = [generator.frame]
+            self.current_frame = generator.frame
+            self._active_generator = generator
+            request.suspended = False
+
+            while True:
+                try:
+                    result = self._execute(active_coroutine=request)
+                    if result is SUSPEND:
+                        request.suspended = True
+                        return SUSPEND
+                    generator.completed = True
+                    generator.return_value = result
+                    request.completed = True
+                    request.result = (True, None) if request.pair_mode else None
+                    request.suspended = False
+                    return request.result
+                except VakYieldSignal as signal:
+                    request.completed = True
+                    request.result = (False, signal.value) if request.pair_mode else signal.value
+                    request.suspended = False
+                    return request.result
+                except Exception as e:
+                    trace = self._format_stack_trace()
+                    if self._handle_runtime_exception(e):
+                        continue
+                    if isinstance(e, VMError):
+                        raise self._attach_stack_trace(e, trace)
+                    raise VMError(f"Internal VM Crash: {e}\n{trace}") from e
+        finally:
+            self.frames = saved_frames
+            self.current_frame = saved_current
+            self._active_generator = saved_active
+
     def _run_python_awaitable(self, awaitable: Any) -> Any:
         """Run a native Python awaitable to completion when Vak must bridge to Python."""
         import asyncio
@@ -2192,6 +2621,38 @@ class VakVM:
             finally:
                 loop.close()
 
+    def _invoke_parent_method(
+        self,
+        instance: VakInstance,
+        parent_class: VakClass,
+        method_name: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        if method_name not in parent_class.methods:
+            raise VMError(
+                self._missing_attribute_message(
+                    owner_kind="class",
+                    owner_name=parent_class.name,
+                    attr_name=method_name,
+                    available_names=set(parent_class.methods),
+                )
+            )
+        func_bc = parent_class.methods[method_name]
+        constructor_name = self._get_constructor_name(parent_class)
+        closure_env = self._get_method_closure_env(parent_class, method_name)
+        materialized = self._materialize_callable(
+            func_bc,
+            list(args),
+            kwargs,
+            closure_env=closure_env,
+            self_obj=instance,
+            is_constructor=(constructor_name == method_name),
+        )
+        if isinstance(materialized, CallFrame):
+            return self._execute_isolated_frame(materialized)
+        return materialized
+
     def _invoke_runtime_callable(self, func: Any, *args: Any, **kwargs: Any) -> Any:
         """Invoke a callable from VM/runtime services while preserving Vak semantics."""
         if isinstance(func, tuple) and func[0] == 'function':
@@ -2203,25 +2664,33 @@ class VakVM:
             if not func_bc:
                 raise VMError(f"Function not found: {func[1]}")
 
-            is_async = func[3] if len(func) > 3 else getattr(func_bc, 'is_async', False)
-            new_frame = CallFrame(func_bc)
-            self._bind_call_arguments(new_frame, func_bc, list(args), kwargs)
-            if len(func) >= 3:
-                self._hydrate_closure_locals(new_frame, func[2])
-            if is_async:
-                return VakCoroutine(new_frame, func_bc, vm=self)
-            return self._execute_isolated_frame(new_frame)
+            materialized = self._materialize_callable(
+                func_bc,
+                list(args),
+                kwargs,
+                closure_env=func[2] if len(func) >= 3 else None,
+            )
+            if isinstance(materialized, CallFrame):
+                return self._execute_isolated_frame(materialized)
+            return materialized
 
         if isinstance(func, tuple) and func[0] == 'bound_method':
             obj, method_name = func[1], func[2]
             if isinstance(obj, VakInstance) and method_name in obj.klass.methods:
                 func_bc = obj.klass.methods[method_name]
-                new_frame = CallFrame(func_bc)
-                self._bind_call_arguments(new_frame, func_bc, list(args), kwargs, self_obj=obj)
                 closure_env = self._get_method_closure_env(obj.klass, method_name)
-                if closure_env is not None:
-                    self._hydrate_closure_locals(new_frame, closure_env)
-                return self._execute_isolated_frame(new_frame)
+                constructor_name = self._get_constructor_name(obj.klass)
+                materialized = self._materialize_callable(
+                    func_bc,
+                    list(args),
+                    kwargs,
+                    closure_env=closure_env,
+                    self_obj=obj,
+                    is_constructor=(constructor_name == method_name),
+                )
+                if isinstance(materialized, CallFrame):
+                    return self._execute_isolated_frame(materialized)
+                return materialized
             raise VMError(f"Cannot call bound method {method_name}")
 
         if callable(func):
@@ -2234,6 +2703,24 @@ class VakVM:
         import time
 
         awaitable = self._pop()
+
+        if isinstance(awaitable, VakAsyncGeneratorNext):
+            if awaitable.completed:
+                frame.stack.append(awaitable.result)
+                frame.pc += 1
+                return None
+
+            if active_coroutine is None:
+                result = EventLoop.current().run_until_complete(awaitable)
+                frame.stack.append(result)
+                frame.pc += 1
+                return None
+
+            active_coroutine.waiting_on = awaitable
+            active_coroutine.suspended = True
+            EventLoop.current().create_task(awaitable, name=awaitable.name)
+            frame.pc += 1
+            return SUSPEND
 
         if isinstance(awaitable, VakCoroutine):
             if awaitable.completed:
@@ -2555,10 +3042,23 @@ class VakVM:
                     func_name = func[1]
                     # Check 4th element for is_async flag (or lookup from bytecode)
                     is_async = func[3] if len(func) > 3 else False
+                    func_bc = None
 
                     if self.jit_enabled and self.jit:
                         self.jit.track_call(func_name)
-                        if func_name in self.jit.compiled_functions:
+                        func_bc = self._resolve_function_bytecode(func_name, func, frame)
+                        if (
+                            func_bc is not None
+                            and not self._is_generator_bytecode(func_bc)
+                            and self.jit.should_attempt_compile(func_name)
+                        ):
+                            self.jit.compile_function(func_name, func_bc, list(func_bc.constants))
+                        if (
+                            func_bc is not None
+                            and not self._is_generator_bytecode(func_bc)
+                            and self.jit.runtime_enabled
+                            and func_name in self.jit.compiled_functions
+                        ):
                             compiled_func = self.jit.compiled_functions[func_name]
                             try:
                                 result = compiled_func.execute(self.globals, *args, **kwargs)
@@ -2566,45 +3066,35 @@ class VakVM:
                                 frame.pc += instruction_size
                                 continue
                             except Exception as e:
-                                trace = self._format_stack_trace()
-                                raise VMError(f"Internal VM Crash: {e}\n{trace}")
+                                reason = f"{type(e).__name__}: {e}"
+                                self.jit.reject_runtime_function(func_name, reason)
+                                emit_audit_event("vak.jit.runtime_fallback", func_name, reason)
 
-                    func_bc = self._resolve_function_bytecode(func_name, func, frame)
+                    else:
+                        func_bc = self._resolve_function_bytecode(func_name, func, frame)
                     if func_bc and not is_async:
                         is_async = getattr(func_bc, 'is_async', False)
                     
                     if func_bc:
-                        # Also check bytecode is_async if not in tuple
-                        if not is_async:
-                            is_async = getattr(func_bc, 'is_async', False)
-                        
-                        # Check if this is an async function - if so, create coroutine wrapper
-                        if is_async:
-                            # Create coroutine but don't execute - return it to caller
-                            new_frame = CallFrame(func_bc)
-                            self._bind_call_arguments(new_frame, func_bc, args, kwargs)
-                            if len(func) >= 3:
-                                self._hydrate_closure_locals(new_frame, func[2])
-
-                            # Create and return coroutine
-                            coroutine = VakCoroutine(new_frame, func_bc, vm=self)
-                            self._push(coroutine)
+                        materialized = self._materialize_callable(
+                            func_bc,
+                            args,
+                            kwargs,
+                            closure_env=func[2] if len(func) >= 3 else None,
+                        )
+                        if not isinstance(materialized, CallFrame):
+                            self._push(materialized)
                             frame.pc += instruction_size
                             continue
-                        else:
-                            # Regular synchronous function - execute normally
-                            new_frame = CallFrame(func_bc)
-                            self._bind_call_arguments(new_frame, func_bc, args, kwargs)
-                            if len(func) >= 3:
-                                self._hydrate_closure_locals(new_frame, func[2])
-                            frame.pc += instruction_size
-                            self.frames.append(new_frame)
-                            self.current_frame = new_frame
-                            frame = new_frame
-                            code = frame.bytecode.code
-                            constants = frame.bytecode.constants
-                            frame.pc = 0
-                            continue
+                        new_frame = materialized
+                        frame.pc += instruction_size
+                        self.frames.append(new_frame)
+                        self.current_frame = new_frame
+                        frame = new_frame
+                        code = frame.bytecode.code
+                        constants = frame.bytecode.constants
+                        frame.pc = 0
+                        continue
                     else: raise VMError(f"Function not found: {func_name}")
 
                 elif isinstance(func, VakClass):
@@ -2612,11 +3102,20 @@ class VakVM:
                     constructor_name = self._get_constructor_name(func)
                     if constructor_name:
                         func_bc = func.methods[constructor_name]
-                        new_frame = CallFrame(func_bc, is_constructor=True)
-                        self._bind_call_arguments(new_frame, func_bc, args, kwargs, self_obj=instance)
                         closure_env = self._get_method_closure_env(func, constructor_name)
-                        if closure_env is not None:
-                            self._hydrate_closure_locals(new_frame, closure_env)
+                        materialized = self._materialize_callable(
+                            func_bc,
+                            args,
+                            kwargs,
+                            closure_env=closure_env,
+                            self_obj=instance,
+                            is_constructor=True,
+                        )
+                        if not isinstance(materialized, CallFrame):
+                            self._push(materialized)
+                            frame.pc += instruction_size
+                            continue
+                        new_frame = materialized
                         frame.pc += instruction_size
                         self.frames.append(new_frame)
                         self.current_frame = new_frame
@@ -2635,11 +3134,21 @@ class VakVM:
                     if isinstance(obj, VakInstance):
                         func_bc = obj.klass.methods.get(method_name)
                         if func_bc:
-                            new_frame = CallFrame(func_bc)
-                            self._bind_call_arguments(new_frame, func_bc, args, kwargs, self_obj=obj)
                             closure_env = self._get_method_closure_env(obj.klass, method_name)
-                            if closure_env is not None:
-                                self._hydrate_closure_locals(new_frame, closure_env)
+                            constructor_name = self._get_constructor_name(obj.klass)
+                            materialized = self._materialize_callable(
+                                func_bc,
+                                args,
+                                kwargs,
+                                closure_env=closure_env,
+                                self_obj=obj,
+                                is_constructor=(constructor_name == method_name),
+                            )
+                            if not isinstance(materialized, CallFrame):
+                                self._push(materialized)
+                                frame.pc += instruction_size
+                                continue
+                            new_frame = materialized
                             frame.pc += instruction_size
                             self.frames.append(new_frame)
                             self.current_frame = new_frame
@@ -2656,6 +3165,9 @@ class VakVM:
                         self._push(result)
                         frame.pc += instruction_size
                         continue
+                    except VakYieldSignal:
+                        frame.pc += instruction_size
+                        raise
                     except Exception as e: raise VMError(f"Error calling builtin: {e}")
                 else: raise VMError(f"Object not callable: {type(func).__name__}")
             elif op == OpCode.RETURN.value:
@@ -2719,7 +3231,12 @@ class VakVM:
                         methods[m_name] = m_bc
                         method_envs[m_name] = class_namespace
                 
-                vak_class = VakClass(class_name, methods, method_envs)
+                vak_class = VakClass(
+                    class_name,
+                    methods,
+                    method_envs,
+                    parent=parent_class if isinstance(parent_class, VakClass) else None,
+                )
                 class_namespace[class_name] = vak_class
                 frame.stack.append(vak_class)
                 frame.pc += 1
@@ -2737,11 +3254,21 @@ class VakVM:
                 if isinstance(obj, VakInstance):
                     if method_name in obj.klass.methods:
                         func_bc = obj.klass.methods[method_name]
-                        new_frame = CallFrame(func_bc)
-                        self._bind_call_arguments(new_frame, func_bc, args, kwargs, self_obj=obj)
                         closure_env = self._get_method_closure_env(obj.klass, method_name)
-                        if closure_env is not None:
-                            self._hydrate_closure_locals(new_frame, closure_env)
+                        constructor_name = self._get_constructor_name(obj.klass)
+                        materialized = self._materialize_callable(
+                            func_bc,
+                            args,
+                            kwargs,
+                            closure_env=closure_env,
+                            self_obj=obj,
+                            is_constructor=(constructor_name == method_name),
+                        )
+                        if not isinstance(materialized, CallFrame):
+                            frame.stack.append(materialized)
+                            frame.pc += instruction_size
+                            continue
+                        new_frame = materialized
                         frame.pc += instruction_size
                         self.frames.append(new_frame)
                         self.current_frame = new_frame
@@ -2771,11 +3298,18 @@ class VakVM:
                             func_name = func[1]
                             func_bc = self._resolve_function_bytecode(func_name, func, frame)
                             if func_bc:
-                                new_frame = CallFrame(func_bc)
-                                self._bind_call_arguments(new_frame, func_bc, args, kwargs)
-                                if len(func) >= 3:
-                                    self._hydrate_closure_locals(new_frame, func[2])
-                                            
+                                materialized = self._materialize_callable(
+                                    func_bc,
+                                    args,
+                                    kwargs,
+                                    closure_env=func[2] if len(func) >= 3 else None,
+                                )
+                                if not isinstance(materialized, CallFrame):
+                                    frame.stack.append(materialized)
+                                    frame.pc += instruction_size
+                                    continue
+                                new_frame = materialized
+
                                 frame.pc += instruction_size
                                 self.frames.append(new_frame)
                                 self.current_frame = new_frame
@@ -2785,7 +3319,14 @@ class VakVM:
                                 frame.pc = 0
                                 continue
                             else:
-                                raise VMError(f"Function not found in module: {func_name}")
+                                raise VMError(
+                                    self._missing_attribute_message(
+                                        owner_kind="module",
+                                        owner_name=obj.name,
+                                        attr_name=func_name,
+                                        available_names=set(obj.attrs),
+                                    )
+                                )
                         elif hasattr(func, 'methods') and hasattr(func, 'name'):
                             # It's a VakClass in a module. Instantiate it.
                             instance = VakInstance(func)
@@ -2794,11 +3335,19 @@ class VakVM:
                             constructor_name = self._get_constructor_name(func)
                             if constructor_name:
                                 func_bc = func.methods[constructor_name]
-                                new_frame = CallFrame(func_bc, is_constructor=True)
-                                self._bind_call_arguments(new_frame, func_bc, args, kwargs, self_obj=instance)
                                 closure_env = self._get_method_closure_env(func, constructor_name)
-                                if closure_env is not None:
-                                    self._hydrate_closure_locals(new_frame, closure_env)
+                                materialized = self._materialize_callable(
+                                    func_bc,
+                                    args,
+                                    kwargs,
+                                    closure_env=closure_env,
+                                    self_obj=instance,
+                                    is_constructor=True,
+                                )
+                                if not isinstance(materialized, CallFrame):
+                                    frame.stack.append(materialized)
+                                    continue
+                                new_frame = materialized
                                 self.frames.append(new_frame)
                                 self.current_frame = new_frame
                                 frame = new_frame
@@ -3055,9 +3604,11 @@ class VakVM:
                 if cycle_start is not None:
                     cycle = [name for name, _ in self._module_load_stack[cycle_start:]]
                     cycle.append(resolved_module_name)
+                    emit_audit_event("vak.import.error", resolved_module_name, "cycle")
                     raise VMError(f"Cyclic import detected: {' -> '.join(cycle)}")
                 cached_module = self.module_cache.get(cache_key)
                 if cached_module is not None:
+                    emit_audit_event("vak.import.cache_hit", resolved_module_name, target_path)
                     frame.stack.append(cached_module)
                     frame.pc += 3
                     continue
@@ -3191,6 +3742,7 @@ class VakVM:
                 mod_obj.name = resolved_module_name
                 mod_obj.attrs.clear()
                 mod_obj.attrs.update(exported_attrs)
+                emit_audit_event("vak.import.complete", resolved_module_name, target_path, len(exported_attrs))
                 frame.stack.append(mod_obj)
                 frame.pc += 3
 

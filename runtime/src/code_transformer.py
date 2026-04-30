@@ -70,21 +70,12 @@ class _EnglishSubsetValidator(ast.NodeVisitor):
         return self.blocked_reason is None
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        if node.decorator_list:
-            self.block(node, "Python decorator अभी समर्थित नहीं")
-            return
         self.generic_visit(node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        if node.decorator_list:
-            self.block(node, "Python decorator अभी समर्थित नहीं")
-            return
         self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        if node.decorator_list:
-            self.block(node, "Python decorator अभी समर्थित नहीं")
-            return
         if len(node.bases) > 1:
             self.block(node, "multiple inheritance अभी समर्थित नहीं")
             return
@@ -100,16 +91,19 @@ class _EnglishSubsetValidator(ast.NodeVisitor):
         self.block(node, "Python del अभी समर्थित नहीं")
 
     def visit_Yield(self, node: ast.Yield) -> None:
-        self.block(node, "Python yield अभी समर्थित नहीं")
+        self.generic_visit(node)
 
     def visit_YieldFrom(self, node: ast.YieldFrom) -> None:
-        self.block(node, "Python yield from अभी समर्थित नहीं")
+        self.generic_visit(node)
 
     def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
-        self.block(node, "Python async for अभी समर्थित नहीं")
+        self.generic_visit(node)
 
     def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
-        self.block(node, "Python async with अभी समर्थित नहीं")
+        if len(node.items) != 1:
+            self.block(node, "एक साथ अनेक async context managers अभी समर्थित नहीं")
+            return
+        self.generic_visit(node)
 
     def visit_Try(self, node: ast.Try) -> None:
         if node.orelse:
@@ -146,7 +140,7 @@ class _EnglishSubsetValidator(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
-        self.block(node, "generator expression अभी समर्थित नहीं")
+        self.generic_visit(node)
 
     def visit_SetComp(self, node: ast.SetComp) -> None:
         self.block(node, "set comprehension अभी समर्थित नहीं")
@@ -527,6 +521,8 @@ class VakCodeTransformer:
         return ''.join(result), replacements, None, features
 
     def _translate_token(self, token: str) -> str:
+        if token == "yield":
+            return "उपज"
         replacement = self.translator.english_code_to_sanskrit(token)
         if replacement is not None:
             return replacement

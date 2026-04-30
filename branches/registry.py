@@ -10,6 +10,7 @@ from branches.admission import (
     discover_branch_manifests,
     validate_manifest,
 )
+from runtime.src.audit import emit_audit_event
 from runtime.src.branching import BranchActivationError, BranchRuntime, VakBranch
 
 
@@ -29,6 +30,7 @@ class BranchRegistry:
         if not name:
             raise BranchActivationError("Branch name cannot be empty")
         self._factories[name] = factory
+        emit_audit_event("vak.branch.factory.register", name, getattr(factory, "__name__", repr(factory)))
         record = self._records.get(name)
         if record is None:
             self._records[name] = BranchRecord(
@@ -174,6 +176,7 @@ class BranchRegistry:
                     issues=issues,
                     source=str(manifest.manifest_path),
                 )
+                emit_audit_event("vak.branch.quarantine", manifest.name, issues)
                 continue
 
             self._records[manifest.name] = BranchRecord(
@@ -182,6 +185,7 @@ class BranchRegistry:
                 manifest=manifest,
                 source=str(manifest.manifest_path),
             )
+            emit_audit_event("vak.branch.manifest.registered", manifest.name, manifest.kind)
 
         self._quarantine_dependency_cycles()
 
@@ -248,6 +252,7 @@ class BranchRegistry:
             record = self._records[name]
             record.state = "quarantined"
             record.issues.append("dependency cycle detected")
+            emit_audit_event("vak.branch.quarantine", name, record.issues)
 
 
 def create_default_registry() -> BranchRegistry:

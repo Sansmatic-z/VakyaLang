@@ -308,6 +308,7 @@ class Lexer:
                 '.': TokenType.DOT,
                 ':': TokenType.COLON,
                 ';': TokenType.SEMICOLON,
+                '@': TokenType.AT,
             }
             if ch in single_map:
                 tt = single_map[ch]

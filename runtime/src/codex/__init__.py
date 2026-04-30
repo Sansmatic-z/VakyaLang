@@ -8,6 +8,7 @@ from .models import (
     CodexRuleEvent,
     CodexValidation,
 )
+from .promotion import CodexPromotionGate, CodexPromotionReport, evaluate_promotion_candidate
 
 __all__ = [
     "CodexDiagnostic",
@@ -17,6 +18,9 @@ __all__ = [
     "CodexResult",
     "CodexRuleEvent",
     "CodexValidation",
+    "CodexPromotionGate",
+    "CodexPromotionReport",
     "SanskritVakyaUniversalCodex",
     "build_default_codex",
+    "evaluate_promotion_candidate",
 ]

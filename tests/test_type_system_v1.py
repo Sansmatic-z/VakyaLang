@@ -13,12 +13,20 @@ from runtime.src.compiler import Compiler, CompileError
 from runtime.src.interpreter import VakInterpreter
 from runtime.src.lexer import Lexer
 from runtime.src.parser import Parser
+from runtime.src.type_checker import TypeChecker
+from runtime.src.types import FunctionType, INT
 
 
 class TypeSystemV1Tests(unittest.TestCase):
     def compile_source(self, source: str):
         ast = Parser(Lexer(source).tokenize()).parse()
         return Compiler().compile(ast)
+
+    def infer_globals(self, source: str):
+        ast = Parser(Lexer(source).tokenize()).parse()
+        checker = TypeChecker()
+        checker.check(ast)
+        return checker.globals
 
     def run_source(self, source: str):
         out = io.StringIO()
@@ -380,6 +388,61 @@ d["क"] = "गलत"
         मुद्रय त्रुटि
 """
         self.assertEqual(self.run_source(source).strip(), "शून्य")
+
+    def test_cross_function_inference_refines_return_type_for_callers(self):
+        globals_env = self.infer_globals(
+            """
+कर्म संख्या_दो():
+    वापस २
+
+कर्म दोगुना():
+    वापस संख्या_दो() * २
+"""
+        )
+        संख्या_दो = globals_env.lookup("संख्या_दो")
+        दोगुना = globals_env.lookup("दोगुना")
+
+        self.assertIsInstance(संख्या_दो, FunctionType)
+        self.assertIsInstance(दोगुना, FunctionType)
+        self.assertEqual(संख्या_दो.return_type, INT)
+        self.assertEqual(दोगुना.return_type, INT)
+
+    def test_cross_function_inference_flows_through_nested_local_helpers(self):
+        globals_env = self.infer_globals(
+            """
+कर्म बाह्य():
+    कर्म भीतर():
+        वापस ३
+    वापस भीतर()
+"""
+        )
+        बाह्य = globals_env.lookup("बाह्य")
+        self.assertIsInstance(बाह्य, FunctionType)
+        self.assertEqual(बाह्य.return_type, INT)
+
+    def test_interprocedural_constraints_refine_unannotated_parameters_through_helper_chain(self):
+        globals_env = self.infer_globals(
+            """
+कर्म आधार(x):
+    वापस x + १
+
+कर्म मध्य(y):
+    वापस आधार(y)
+
+कर्म बाह्य():
+    वापस मध्य(४)
+"""
+        )
+        आधार = globals_env.lookup("आधार")
+        मध्य = globals_env.lookup("मध्य")
+        बाह्य = globals_env.lookup("बाह्य")
+
+        self.assertIsInstance(आधार, FunctionType)
+        self.assertIsInstance(मध्य, FunctionType)
+        self.assertIsInstance(बाह्य, FunctionType)
+        self.assertEqual(आधार.return_type, INT)
+        self.assertEqual(मध्य.return_type, INT)
+        self.assertEqual(बाह्य.return_type, INT)
 
 
 if __name__ == "__main__":

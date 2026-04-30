@@ -24,6 +24,9 @@ class UniversalCodexTests(unittest.TestCase):
         self.assertIn("math_logic", pages)
         self.assertIn("sanskrit_notation", pages)
         self.assertIn("english_vak", pages)
+        self.assertIn("python_vak", pages)
+        self.assertIn("javascript_vak", pages)
+        self.assertIn("pseudocode_vak", pages)
         self.assertIn("vak_native", pages)
         self.assertIn("vak_legacy_native", pages)
         self.assertIn("math_logic_native", pages)
@@ -33,6 +36,7 @@ class UniversalCodexTests(unittest.TestCase):
         self.assertEqual(pages["vak_native"]["kind"], "vak_module")
         self.assertEqual(pages["vak"]["chapter"], "vak_core")
         self.assertEqual(pages["english_vak"]["chapter"], "bridges")
+        self.assertEqual(pages["python_vak"]["chapter"], "bridges")
         self.assertIn("normalize", pages["vak_native"]["capabilities"])
         self.assertTrue(pages["vak_native"]["emits_vak"])
         self.assertGreaterEqual(pages["vak"]["max_fixpoint_passes"], 2)
@@ -74,7 +78,110 @@ class UniversalCodexTests(unittest.TestCase):
         self.assertTrue(result.applied_rules)
         self.assertTrue(result.validation_history)
 
-    def test_codex_english_page_translates_to_vak(self):
+    def test_codex_vak_page_normalizes_augmented_assignment_drift(self):
+        codex = build_default_codex()
+        result = codex.transform_source(
+            textwrap.dedent(
+                """
+                चर कुल = ०
+                कुल += ३
+                चर सूचक = ०
+                सूचक++
+                """
+            ),
+            filename="drift.vak",
+            page="vak",
+        )
+        self.assertEqual(result.page, "vak")
+        self.assertIn("कुल = कुल + ३", result.source)
+        self.assertIn("सूचक = सूचक + १", result.source)
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.compiled)
+
+    def test_codex_vak_page_normalizes_python_order_import_drift(self):
+        codex = build_default_codex()
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_root = Path(tempdir)
+            (temp_root / "demo.vak").write_text(
+                "कर्म प्रतिज्ञा():\n    प्रत्यागच्छ ११\n",
+                encoding="utf-8",
+            )
+            main_path = temp_root / "main.vak"
+            result = codex.transform_source(
+                "from demo import प्रतिग्ञा\nमुद्रय प्रतिग्ञा()\n",
+                filename=str(main_path),
+                page="vak",
+            )
+            self.assertEqual(result.page, "vak")
+            self.assertIn("आयात प्रतिज्ञा से demo", result.source)
+            self.assertIn("मुद्रय प्रतिज्ञा()", result.source)
+            self.assertIsNotNone(result.validation)
+            self.assertTrue(result.validation.compiled)
+
+    def test_codex_vak_page_normalizes_legacy_generator_surface(self):
+        codex = build_default_codex()
+        result = codex.transform_source(
+            textwrap.dedent(
+                """
+                श्रेणी गणक {
+                    परिवर्तनी गुणक = २
+                    कार्य दुगुना(स्वयं, x) {
+                        लौटाओ x * स्वयं.गुणक
+                    }
+                }
+                """
+            ),
+            filename="generated.vak",
+            page="vak",
+        )
+        self.assertEqual(result.page, "vak")
+        self.assertIn("वर्ग गणक:", result.source)
+        self.assertIn("कर्म दुगुना(स्वयं, x):", result.source)
+        self.assertIn("प्रत्यागच्छ x * स्वयं.गुणक", result.source)
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.compiled)
+
+    def test_codex_vak_page_normalizes_generated_control_flow_surface(self):
+        codex = build_default_codex()
+        result = codex.transform_source(
+            textwrap.dedent(
+                """
+                चर items = [१, २]
+                foreach item in items {
+                    मुद्रय item
+                }
+                if सत्य {
+                    मुद्रय १
+                } else {
+                    मुद्रय २
+                }
+                """
+            ),
+            filename="generated_control.vak",
+            page="vak",
+        )
+        self.assertEqual(result.page, "vak")
+        self.assertIn("प्रत्येक चर item अन्तर्गत items:", result.source)
+        self.assertIn("यदि सत्य:", result.source)
+        self.assertIn("अन्यथा:", result.source)
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.compiled)
+
+    def test_codex_vak_page_removes_branch_pseudomodule_import(self):
+        codex = build_default_codex()
+        result = codex.transform_source(
+            "आयात चित्रकला\nचर क = चित्रकला.कैनवास_निर्माण(१०, १०)\nचित्रकला.रेखा(क, ०, ०, ९, ९)\n",
+            filename="branch_import.vak",
+            page="vak",
+        )
+        self.assertEqual(result.page, "vak")
+        self.assertNotIn("आयात चित्रकला", result.source)
+        self.assertIn("_chitra_canvas", result.source)
+        self.assertIn("_chitra_line", result.source)
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.compiled)
+
+    def test_codex_python_page_translates_to_vak(self):
         codex = build_default_codex()
         result = codex.transform_source(
             textwrap.dedent(
@@ -85,10 +192,51 @@ class UniversalCodexTests(unittest.TestCase):
             ),
             filename="sample.py",
         )
+        self.assertEqual(result.page, "python_vak")
+        self.assertIn("कर्म add(a, b):", result.source)
+        self.assertIn("प्रत्यागच्छ (a + b)", result.source)
+        self.assertEqual(result.confidence, "safe_auto_fix")
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.compiled)
+
+    def test_codex_english_page_remains_force_selectable(self):
+        codex = build_default_codex()
+        result = codex.transform_source(
+            textwrap.dedent(
+                """
+                def add(a, b):
+                    return a + b
+                """
+            ),
+            filename="sample.py",
+            page="english_vak",
+        )
         self.assertEqual(result.page, "english_vak")
         self.assertIn("कर्म add(a, b):", result.source)
         self.assertIn("प्रत्यागच्छ a + b", result.source)
-        self.assertEqual(result.confidence, "safe_auto_fix")
+
+    def test_codex_promoted_javascript_page_translates_without_branch(self):
+        codex = build_default_codex()
+        result = codex.transform_source(
+            "function greet() { return 'hi'; }\n",
+            filename="sample.js",
+        )
+        self.assertEqual(result.page, "javascript_vak")
+        self.assertIn("कर्म greet():", result.source)
+        self.assertIn("प्रत्यागच्छ 'hi'", result.source)
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.compiled)
+
+    def test_codex_promoted_pseudocode_page_translates_without_branch(self):
+        codex = build_default_codex()
+        result = codex.transform_source(
+            "set x = 1\nif x > 0 then\nreturn x\n",
+            filename="sample.pseudo",
+        )
+        self.assertEqual(result.page, "pseudocode_vak")
+        self.assertIn("चर x = 1", result.source)
+        self.assertIn("यदि (x > 0):", result.source)
+        self.assertIn("प्रत्यागच्छ x", result.source)
         self.assertIsNotNone(result.validation)
         self.assertTrue(result.validation.compiled)
 
@@ -178,6 +326,116 @@ class UniversalCodexTests(unittest.TestCase):
         self.assertIn("c_subset", pages)
         self.assertIn("rust_subset", pages)
         self.assertIn("natural_language", pages)
+        self.assertIn("python_to_vak_experimental", pages)
+        self.assertIn("javascript_to_vak_experimental", pages)
+        self.assertIn("pseudocode_to_vak_experimental", pages)
+
+    def test_branch_full_codex_system_pack_is_discovered(self):
+        codex = build_default_codex(active_branches=["universal_codex_lab"])
+        pages = {item["name"] for item in codex.list_pages()}
+        codex_system_pages = {name for name in pages if name.startswith("codex_system_")}
+        self.assertGreaterEqual(len(codex_system_pages), 25)
+        self.assertIn("codex_system_python_to_vak", codex_system_pages)
+        self.assertIn("codex_system_api_generator", codex_system_pages)
+        self.assertIn("codex_system_grammar_engine", codex_system_pages)
+        self.assertIn("codex_system_knowledge_graph", codex_system_pages)
+        self.assertIn("codex_system_bytecode_decoder", codex_system_pages)
+        self.assertIn("codex_system_vak_native", codex_system_pages)
+
+    def test_branch_python_translator_page_handles_python_source(self):
+        codex = build_default_codex(active_branches=["universal_codex_lab"])
+        result = codex.transform_source(
+            "def add(a, b):\n    return a + b\n",
+            filename="sample.py",
+            page="python_to_vak_experimental",
+        )
+        self.assertEqual(result.page, "python_to_vak_experimental")
+        self.assertIn("कर्म add(a, b):", result.source)
+        self.assertIn("प्रत्यागच्छ (a + b)", result.source)
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.compiled)
+
+    def test_branch_javascript_translator_page_handles_simple_function(self):
+        codex = build_default_codex(active_branches=["universal_codex_lab"])
+        result = codex.transform_source(
+            "function greet() { return 'hi'; }\n",
+            filename="sample.js",
+            page="javascript_to_vak_experimental",
+        )
+        self.assertEqual(result.page, "javascript_to_vak_experimental")
+        self.assertIn("कर्म greet():", result.source)
+        self.assertIn("प्रत्यागच्छ 'hi'", result.source)
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.compiled)
+
+    def test_branch_pseudocode_translator_page_handles_basic_flow(self):
+        codex = build_default_codex(active_branches=["universal_codex_lab"])
+        result = codex.transform_source(
+            "set x = 1\nif x > 0 then\nreturn x\n",
+            filename="sample.pseudo",
+            page="pseudocode_to_vak_experimental",
+        )
+        self.assertEqual(result.page, "pseudocode_to_vak_experimental")
+        self.assertIn("चर x = 1", result.source)
+        self.assertIn("यदि (x > 0):", result.source)
+        self.assertIn("प्रत्यागच्छ x", result.source)
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.compiled)
+
+    def test_branch_codex_system_python_page_is_force_selectable(self):
+        codex = build_default_codex(active_branches=["universal_codex_lab"])
+        result = codex.transform_source(
+            "def add(a, b):\n    return a + b\n",
+            filename="sample.py",
+            page="codex_system_python_to_vak",
+        )
+        self.assertEqual(result.page, "codex_system_python_to_vak")
+        self.assertIn("कर्म", result.source)
+        self.assertIn("प्रत्यागच्छ", result.source)
+        self.assertEqual(result.metadata["integration_pack"], "codex_system_full")
+        self.assertEqual(result.metadata["vendor_page"], "python_to_vak")
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.compiled)
+
+    def test_branch_codex_system_api_generator_page_is_force_selectable(self):
+        codex = build_default_codex(active_branches=["universal_codex_lab"])
+        spec = """
+        {
+            "type": "rest",
+            "name": "TestAPI",
+            "endpoints": [
+                {"method": "GET", "path": "/items"},
+                {"method": "POST", "path": "/items"}
+            ],
+            "models": [
+                {"name": "Item", "fields": ["id: int", "name: string"]}
+            ]
+        }
+        """
+        result = codex.transform_source(
+            textwrap.dedent(spec),
+            filename="api.json",
+            page="codex_system_api_generator",
+        )
+        self.assertEqual(result.page, "codex_system_api_generator")
+        self.assertIn("कर्म", result.source)
+        self.assertIn("वर्ग", result.source)
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.compiled)
+
+    def test_branch_codex_system_vak_native_page_is_force_selectable(self):
+        codex = build_default_codex(active_branches=["universal_codex_lab"])
+        result = codex.transform_source(
+            "चर x = 0\nजबतक x < 1:\n    x = x + 1\n",
+            filename="legacy.vak",
+            page="codex_system_vak_native",
+        )
+        self.assertEqual(result.page, "codex_system_vak_native")
+        self.assertIn("यावत् x < 1:", result.source)
+        self.assertEqual(result.metadata["integration_pack"], "codex_system_full")
+        self.assertEqual(result.metadata["vendor_page"], "vak_native")
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.compiled)
 
     def test_branch_c_subset_page_translates_simple_c(self):
         codex = build_default_codex(active_branches=["universal_codex_lab"])
@@ -198,6 +456,25 @@ class UniversalCodexTests(unittest.TestCase):
         self.assertIn("चर x = 1", result.source)
         self.assertIn("मुद्रय(x)", result.source)
 
+    def test_branch_c_subset_page_translates_simple_for_loop(self):
+        codex = build_default_codex(active_branches=["universal_codex_lab"])
+        result = codex.transform_source(
+            textwrap.dedent(
+                """
+                int main() {
+                    for (int i = 0; i < 3; i++) {
+                        printf("%d", i);
+                    }
+                    return 0;
+                }
+                """
+            ),
+            filename="loop.c",
+        )
+        self.assertEqual(result.page, "c_subset")
+        self.assertIn("प्रत्येक चर i अन्तर्गत परास(0, 3):", result.source)
+        self.assertIn("मुद्रय(i)", result.source)
+
     def test_branch_rust_subset_page_translates_simple_rust(self):
         codex = build_default_codex(active_branches=["universal_codex_lab"])
         result = codex.transform_source(
@@ -216,6 +493,24 @@ class UniversalCodexTests(unittest.TestCase):
         self.assertIn("चर x = 1", result.source)
         self.assertIn("मुद्रय(x)", result.source)
 
+    def test_branch_rust_subset_page_translates_range_for_loop(self):
+        codex = build_default_codex(active_branches=["universal_codex_lab"])
+        result = codex.transform_source(
+            textwrap.dedent(
+                """
+                fn main() {
+                    for i in 1..=3 {
+                        println!("{}", i);
+                    }
+                }
+                """
+            ),
+            filename="loop.rs",
+        )
+        self.assertEqual(result.page, "rust_subset")
+        self.assertIn("प्रत्येक चर i अन्तर्गत परास(1, (3) + 1):", result.source)
+        self.assertIn("मुद्रय(i)", result.source)
+
     def test_branch_natural_language_page_handles_simple_command(self):
         codex = build_default_codex(active_branches=["universal_codex_lab"])
         result = codex.transform_source(
@@ -224,6 +519,17 @@ class UniversalCodexTests(unittest.TestCase):
         )
         self.assertEqual(result.page, "natural_language")
         self.assertIn("यदि i % 2 == 0:", result.source)
+        self.assertEqual(result.confidence, "suggest_only")
+
+    def test_branch_natural_language_page_handles_repeat_print_command(self):
+        codex = build_default_codex(active_branches=["universal_codex_lab"])
+        result = codex.transform_source(
+            'repeat 3 times print "जय"',
+            filename="repeat.txt",
+        )
+        self.assertEqual(result.page, "natural_language")
+        self.assertIn("प्रत्येक चर", result.source)
+        self.assertIn('मुद्रय("जय")', result.source)
         self.assertEqual(result.confidence, "suggest_only")
 
     def test_interpreter_exposes_codex_source(self):
@@ -246,6 +552,35 @@ class UniversalCodexTests(unittest.TestCase):
         self.assertEqual(payload["page"], "vak_legacy")
         self.assertEqual(payload["source_kind"], "vak")
         self.assertTrue(payload["validation"]["compiled"])
+
+    def test_codex_promotion_report_and_builtin_reflect_experimental_gate(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            corpus_root = Path(tempdir)
+            sample = corpus_root / "sample.c"
+            sample.write_text(
+                textwrap.dedent(
+                    """
+                    int main() {
+                        int x = 1;
+                        printf("%d", x);
+                        return 0;
+                    }
+                    """
+                ),
+                encoding="utf-8",
+            )
+            codex = build_default_codex(active_branches=["universal_codex_lab"])
+            report = codex.promotion_report("c_subset", corpus_root=corpus_root)
+            self.assertEqual(report.page, "c_subset")
+            self.assertEqual(report.total_cases, 1)
+            self.assertFalse(report.ready_for_main)
+            self.assertTrue(any(gate.name == "deterministic_support" and not gate.passed for gate in report.gates))
+
+            interpreter = VakInterpreter(active_branches=["universal_codex_lab"])
+            payload = interpreter.vm.builtins["कोडेक्स_उन्नयन"]("c_subset", str(corpus_root))
+            self.assertEqual(payload["page"], "c_subset")
+            self.assertEqual(payload["total_cases"], 1)
+            self.assertFalse(payload["ready_for_main"])
 
     def test_cli_codex_writes_output(self):
         with tempfile.TemporaryDirectory() as tempdir:

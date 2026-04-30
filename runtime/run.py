@@ -5,6 +5,12 @@
 import sys
 import os
 
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 if __package__ in (None, ""):
     # Ensure runtime and project root are on the path when executed as a script.
     RUNTIME_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -16,6 +22,7 @@ if __package__ in (None, ""):
     from src.parser      import Parser
     from src.interpreter import VakInterpreter
     from src.compiler    import Compiler
+    from src.bytecode    import Bytecode
     from src.vm          import VakVM
     from src.errors      import VakError, format_vak_error_with_suggestions
     from src.rupantar    import VakyaRupantar
@@ -26,6 +33,7 @@ else:
     from .src.parser      import Parser
     from .src.interpreter import VakInterpreter
     from .src.compiler    import Compiler
+    from .src.bytecode    import Bytecode
     from .src.vm          import VakVM
     from .src.errors      import VakError, format_vak_error_with_suggestions
     from .src.rupantar    import VakyaRupantar
@@ -93,11 +101,29 @@ def run_file(path: str):
         print(f"  फ़ाइल नहीं मिली: '{path}' (file not found)", file=sys.stderr)
         sys.exit(1)
 
-    with open(path, encoding='utf-8') as f:
-        source = f.read()
-
     interp = VakInterpreter()
-    ok = run_source(source, interp, filename=path)
+    if path.endswith('.vakc'):
+        with open(path, 'rb') as f:
+            bytecode = Bytecode.from_bytes(f.read())
+        bytecode = interp.hydrate_bytecode_functions(bytecode, compiled_path=path)
+        has_callable_refs = any(
+            isinstance(value, tuple) and value and value[0] in {"function", "coroutine"}
+            for value in bytecode.constants
+        )
+        if has_callable_refs and not bytecode.functions:
+            print(
+                "  यह .vakc फ़ाइल कार्य/कोरूटीन संदर्भ रखती है, "
+                "पर वर्तमान स्वतंत्र .vakc पथ उनके अंतः-बाइटकोड निकाय पुनर्स्थापित नहीं करता। "
+                "स्रोत .vak चलाएँ या --disassemble उपयोग करें।",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        interp.run_bytecode(bytecode)
+        ok = True
+    else:
+        with open(path, encoding='utf-8') as f:
+            source = f.read()
+        ok = run_source(source, interp, filename=path)
     sys.exit(0 if ok else 1)
 
 
@@ -181,6 +207,20 @@ def main():
             print(f"{page['name']}: {page['description']}")
         return
 
+    if args[0] == '--codex-chapters':
+        if __package__ in (None, ""):
+            from src.codex import build_default_codex
+        else:
+            from .src.codex import build_default_codex
+        codex = build_default_codex(
+            active_branches=active_branches,
+            deep_meaning_mode=deep_meaning_mode,
+        )
+        for chapter in codex.list_chapters():
+            print(f"{chapter['name']}: {chapter['title']}")
+            print(f"  pages: {', '.join(chapter['pages'])}")
+        return
+
     if args[0] in ('--कोडेक्स', '--codex'):
         if len(args) < 3:
             print("उपयोग: python run.py --कोडेक्स input output", file=sys.stderr)
@@ -256,10 +296,48 @@ def main():
             sys.exit(0 if ok else 1)
         return
 
+    if len(args) >= 2 and args[1] == '--disassemble' and args[0].endswith('.vakc'):
+        if not os.path.exists(args[0]):
+            print(f"  फ़ाइल नहीं मिली: '{args[0]}' (file not found)", file=sys.stderr)
+            sys.exit(1)
+        interp = VakInterpreter(
+            active_branches=active_branches,
+            deep_meaning_mode=deep_meaning_mode,
+        )
+        with open(args[0], 'rb') as f:
+            bytecode = Bytecode.from_bytes(f.read())
+        bytecode = interp.hydrate_bytecode_functions(bytecode, compiled_path=args[0])
+        print(bytecode.disassemble())
+        return
+
     # Run file
     if not os.path.exists(args[0]):
         print(f"  फ़ाइल नहीं मिली: '{args[0]}' (file not found)", file=sys.stderr)
         sys.exit(1)
+    if args[0].endswith('.vakc'):
+        with open(args[0], 'rb') as f:
+            bytecode = Bytecode.from_bytes(f.read())
+        interp = VakInterpreter(
+            active_branches=active_branches,
+            deep_meaning_mode=deep_meaning_mode,
+        )
+        bytecode = interp.hydrate_bytecode_functions(bytecode, compiled_path=args[0])
+        has_callable_refs = any(
+            isinstance(value, tuple) and value and value[0] in {"function", "coroutine"}
+            for value in bytecode.constants
+        )
+        if has_callable_refs and not bytecode.functions:
+            print(
+                "  यह .vakc फ़ाइल कार्य/कोरूटीन संदर्भ रखती है, "
+                "पर वर्तमान स्वतंत्र .vakc पथ उनके अंतः-बाइटकोड निकाय पुनर्स्थापित नहीं करता। "
+                "स्रोत .vak चलाएँ या --disassemble उपयोग करें।",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        result = interp.run_bytecode(bytecode)
+        if result is not None:
+            print(result)
+        sys.exit(0)
 
     with open(args[0], encoding='utf-8') as f:
         source = f.read()

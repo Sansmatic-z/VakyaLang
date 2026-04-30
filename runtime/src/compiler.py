@@ -1,25 +1,20 @@
 # वाक् भाषा - संकलक (Compiler)
 # Vak Language - AST to Bytecode Compiler
 
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import fields, is_dataclass
 from typing import Any, Optional
 from .bytecode import Bytecode, NO_DEFAULT
+from .compiler_support import (
+    FunctionScopeInfo,
+    RETURN_TYPE_HINT_KEY,
+    copy_dynamic_node_attrs,
+    function_contains_yield,
+    iter_child_nodes,
+)
 from .opcodes import OpCode
 from .runtime_catalog import compiled_builtin_index
 from .ast_nodes import *
 from .errors import CompileError
-
-
-@dataclass
-class FunctionScopeInfo:
-    local_names: set[str] = field(default_factory=set)
-    global_names: set[str] = field(default_factory=set)
-    nonlocal_names: set[str] = field(default_factory=set)
-    used_names: set[str] = field(default_factory=set)
-    closure_names: set[str] = field(default_factory=set)
-
-
-RETURN_TYPE_HINT_KEY = "__return__"
 
 
 class Compiler:
@@ -181,28 +176,10 @@ class Compiler:
         self.bytecode.emit(OpCode.CALL, 1)
 
     def _copy_dynamic_node_attrs(self, source: Node, target: Node) -> Node:
-        """Preserve compiler metadata attached outside dataclass fields."""
-        target_fields = set(getattr(target, "__dataclass_fields__", {}).keys())
-        for key, value in getattr(source, "__dict__", {}).items():
-            if key not in target_fields:
-                setattr(target, key, value)
-        return target
+        return copy_dynamic_node_attrs(source, target)
 
     def _iter_child_nodes(self, value: Any):
-        if isinstance(value, Node):
-            yield value
-            return
-        if isinstance(value, list):
-            for item in value:
-                yield from self._iter_child_nodes(item)
-            return
-        if isinstance(value, tuple):
-            for item in value:
-                yield from self._iter_child_nodes(item)
-            return
-        if isinstance(value, dict):
-            for item in value.values():
-                yield from self._iter_child_nodes(item)
+        yield from iter_child_nodes(value)
 
     def _prepare_scope_metadata(
         self,
@@ -227,6 +204,7 @@ class Compiler:
                 node.params,
                 node.varargs,
                 node.line,
+                kwargs_name=getattr(node, "kwargs_name", None),
                 enclosing_scopes=scope_chain,
             )
             setattr(node, "_scope_info", scope_info)
@@ -329,7 +307,7 @@ class Compiler:
             self._collect_scope_directives(node.else_body, global_names, nonlocal_names)
             return
 
-        if isinstance(node, (WhileStmt, ForStmt, WithStmt)):
+        if isinstance(node, (WhileStmt, ForStmt, AsyncForStmt, WithStmt, AsyncWithStmt)):
             self._collect_scope_directives(node.body, global_names, nonlocal_names)
             return
 
@@ -468,7 +446,7 @@ class Compiler:
                 )
             return
 
-        if isinstance(node, ForStmt):
+        if isinstance(node, (ForStmt, AsyncForStmt)):
             for var_name in node.var_names:
                 self._record_local_binding(
                     var_name,
@@ -482,7 +460,7 @@ class Compiler:
             self._collect_bound_names(node.body, bindings, global_names, nonlocal_names)
             return
 
-        if isinstance(node, WithStmt):
+        if isinstance(node, (WithStmt, AsyncWithStmt)):
             if node.var_name:
                 self._record_local_binding(
                     node.var_name,
@@ -820,6 +798,7 @@ class Compiler:
         params: list[Any],
         varargs: Optional[str],
         line: int,
+        kwargs_name: Optional[str] = None,
         enclosing_scopes: Optional[list[set[str]]] = None,
     ) -> FunctionScopeInfo:
         scope_chain = (
@@ -851,6 +830,13 @@ class Compiler:
                     line,
                 )
             local_names.add(varargs)
+        if kwargs_name:
+            if kwargs_name in global_names or kwargs_name in nonlocal_names:
+                raise CompileError(
+                    f"नामित-संग्रह '{kwargs_name}' को वैश्विक/अस्थानिक घोषित नहीं किया जा सकता",
+                    line,
+                )
+            local_names.add(kwargs_name)
 
         self._collect_bound_names(body, local_names, global_names, nonlocal_names)
 
@@ -933,7 +919,14 @@ class Compiler:
 
         scope_info = getattr(node, "_scope_info", None)
         if scope_info is None:
-            scope_info = self._analyze_function_scope(node.body, node.params, node.varargs, node.line)
+            scope_info = self._analyze_function_scope(
+                node.body,
+                node.params,
+                node.varargs,
+                node.line,
+                kwargs_name=getattr(node, "kwargs_name", None),
+            )
+        is_generator = function_contains_yield(node.body)
 
         # Create separate bytecode for function
         func_compiler = Compiler(
@@ -944,6 +937,8 @@ class Compiler:
         func_compiler.scope_info = scope_info
         func_compiler.bytecode.name = node.name
         func_compiler.bytecode.is_async = node.is_async  # Mark as async coroutine
+        if is_generator:
+            func_compiler.bytecode.type_hints["__vak_is_generator__"] = "1"
         func_compiler.bytecode.global_names = set(scope_info.global_names)
         func_compiler.bytecode.nonlocal_names = set(scope_info.nonlocal_names)
         func_compiler.bytecode.local_names = set(scope_info.local_names)
@@ -1005,6 +1000,10 @@ class Compiler:
         if node.varargs:
             func_compiler.bytecode.varargs_name = node.varargs
             func_compiler.bytecode.get_var_slot(node.varargs)
+        kwargs_name = getattr(node, "kwargs_name", None)
+        if kwargs_name:
+            func_compiler.bytecode.type_hints["__vak_kwargs_capture__"] = kwargs_name
+            func_compiler.bytecode.get_var_slot(kwargs_name)
 
         # Handle default values
         for default_node in node.defaults:
@@ -1041,6 +1040,40 @@ class Compiler:
         self.bytecode.emit_16bit(OpCode.LOAD_CONST, idx)
         slot = self.bytecode.get_var_slot(node.name)
         self.bytecode.emit(OpCode.STORE_VAR, slot)
+
+    def _compile_YieldStmt(self, node: YieldStmt):
+        if dict(getattr(self.bytecode, "type_hints", {}) or {}).get("__vak_is_generator__") != "1":
+            raise CompileError("उपज केवल जनक कर्म के भीतर प्रयोग किया जा सकता है", node.line)
+
+        builtin_slot = self.bytecode.get_var_slot("__vak_internal_yield__")
+        self.bytecode.emit(OpCode.LOAD_VAR, builtin_slot)
+        if node.value is not None:
+            self._compile_node(node.value)
+        else:
+            self.bytecode.emit_16bit(OpCode.LOAD_CONST, self.bytecode.add_constant(None))
+        self.bytecode.emit(OpCode.CALL, 1)
+
+    def _compile_YieldFromStmt(self, node: YieldFromStmt):
+        if dict(getattr(self.bytecode, "type_hints", {}) or {}).get("__vak_is_generator__") != "1":
+            raise CompileError("उपज से केवल जनक कर्म के भीतर प्रयोग किया जा सकता है", node.line)
+
+        self._compile_node(node.iterable)
+        self.bytecode.emit(OpCode.GET_ITER)
+        loop_start = self.bytecode.get_current_offset()
+        self.bytecode.emit_16bit(OpCode.FOR_ITER, 0)
+        for_iter_offset = loop_start
+
+        builtin_slot = self.bytecode.get_var_slot("__vak_internal_yield__")
+        self.bytecode.emit(OpCode.LOAD_VAR, builtin_slot)
+        self.bytecode.emit(OpCode.SWAP)
+        self.bytecode.emit(OpCode.CALL, 1)
+
+        jump_back = self.bytecode.get_current_offset()
+        self.bytecode.emit_16bit(OpCode.JUMP, 0)
+
+        loop_end = self.bytecode.get_current_offset()
+        self.bytecode.patch_jump(for_iter_offset, loop_end)
+        self.bytecode.patch_jump(jump_back, loop_start)
 
     def _compile_DataDecl(self, node: DataDecl):
         metadata = DictLiteral(
@@ -1224,7 +1257,7 @@ class Compiler:
         if isinstance(node, ExprStmt):
             return self._node_mutates_symbol(node.expr, symbol)
 
-        if isinstance(node, ForStmt):
+        if isinstance(node, (ForStmt, AsyncForStmt)):
             return symbol in node.var_names or self._node_mutates_symbol(node.body, symbol)
 
         if isinstance(node, Block):
@@ -1251,7 +1284,7 @@ class Compiler:
                 if part is not None
             )
 
-        if isinstance(node, WithStmt):
+        if isinstance(node, (WithStmt, AsyncWithStmt)):
             return self._node_mutates_symbol(node.body, symbol)
 
         if isinstance(node, MatchStmt):
@@ -1434,6 +1467,61 @@ class Compiler:
         for break_jump in loop_ctx["break_patches"]:
             self.bytecode.patch_jump(break_jump, loop_end)
 
+    def _compile_AsyncForStmt(self, node: AsyncForStmt):
+        if not self.bytecode.is_async:
+            raise CompileError("अतुल्यकालिक प्रत्येक केवल async कर्म के भीतर प्रयोग किया जा सकता है", node.line)
+        iter_slot_name = f"__async_iter_{self.bytecode.get_current_offset()}"
+        next_pair_slot = self.bytecode.get_var_slot("__vak_internal_async_next_pair__")
+        iter_slot = self.bytecode.get_var_slot(iter_slot_name)
+        done_slot = self.bytecode.get_var_slot(f"__async_done_{self.bytecode.get_current_offset()}")
+        value_slot = self.bytecode.get_var_slot(f"__async_value_{self.bytecode.get_current_offset()}")
+
+        self._compile_node(node.iterable)
+        self.bytecode.emit(OpCode.STORE_VAR, iter_slot)
+
+        loop_start = self.bytecode.get_current_offset()
+
+        self.bytecode.emit(OpCode.LOAD_VAR, next_pair_slot)
+        self.bytecode.emit(OpCode.LOAD_VAR, iter_slot)
+        self.bytecode.emit(OpCode.CALL, 1)
+        self.bytecode.emit(OpCode.AWAIT)
+        self.bytecode.emit(OpCode.UNPACK_SEQUENCE, 2)
+        self.bytecode.emit(OpCode.STORE_VAR, done_slot)
+        self.bytecode.emit(OpCode.STORE_VAR, value_slot)
+
+        self.bytecode.emit(OpCode.LOAD_VAR, done_slot)
+        jump_end = self.bytecode.get_current_offset()
+        self.bytecode.emit_16bit(OpCode.JUMP_IF_TRUE, 0)
+
+        if len(node.var_names) == 1:
+            var_slot = self.bytecode.get_var_slot(node.var_names[0])
+            self.bytecode.emit(OpCode.LOAD_VAR, value_slot)
+            self.bytecode.emit(OpCode.STORE_VAR, var_slot)
+        else:
+            self.bytecode.emit(OpCode.LOAD_VAR, value_slot)
+            self.bytecode.emit(OpCode.UNPACK_SEQUENCE, len(node.var_names))
+            for var_name in node.var_names:
+                var_slot = self.bytecode.get_var_slot(var_name)
+                self.bytecode.emit(OpCode.STORE_VAR, var_slot)
+
+        loop_ctx = {
+            "continue_target": loop_start,
+            "break_patches": [],
+            "break_cleanup_ops": 0,
+        }
+        self.loop_stack.append(loop_ctx)
+        self._compile_node(node.body)
+        loop_ctx = self.loop_stack.pop()
+
+        current_pos = self.bytecode.get_current_offset()
+        back_jump_dist = loop_start - (current_pos + 3)
+        self.bytecode.emit_16bit(OpCode.JUMP, back_jump_dist)
+
+        loop_end = self.bytecode.get_current_offset()
+        self.bytecode.patch_jump(jump_end, loop_end)
+        for break_jump in loop_ctx["break_patches"]:
+            self.bytecode.patch_jump(break_jump, loop_end)
+
     def _compile_BreakStmt(self, node: BreakStmt):
         if not self.loop_stack:
             raise CompileError("विराम (break) outside loop", node.line)
@@ -1601,6 +1689,57 @@ class Compiler:
         self.bytecode.emit(OpCode.LOAD_VAR, slot)
         self.bytecode.emit(OpCode.WITH_CLEANUP)
 
+    def _compile_AsyncWithStmt(self, node: AsyncWithStmt):
+        if not self.bytecode.is_async:
+            raise CompileError("अतुल्यकालिक साथ केवल async कर्म के भीतर प्रयोग किया जा सकता है", node.line)
+
+        hidden_name = f"__async_ctx_{id(node)}"
+        slot = self.bytecode.get_var_slot(hidden_name)
+        self.bytecode.local_names.add(hidden_name)
+
+        self._compile_node(node.expr)
+        self.bytecode.emit(OpCode.DUP)
+        self.bytecode.emit(OpCode.STORE_VAR, slot)
+
+        enter_idx = self.bytecode.add_constant('__aenter__')
+        self.bytecode.emit_16bit(OpCode.LOAD_CONST, enter_idx)
+        self.bytecode.emit(OpCode.CALL_METHOD, 0)
+        self.bytecode.emit(OpCode.AWAIT)
+
+        if node.var_name:
+            user_slot = self.bytecode.get_var_slot(node.var_name)
+            self.bytecode.emit(OpCode.STORE_VAR, user_slot)
+        else:
+            self.bytecode.emit(OpCode.POP)
+
+        cleanup_call = ExprStmt(
+            expr=AwaitExpr(
+                operand=CallExpr(
+                    callee=MemberExpr(
+                        obj=IdentifierExpr(name=hidden_name, line=node.line),
+                        attr='__aexit__',
+                        line=node.line,
+                    ),
+                    args=[
+                        NullLiteral(line=node.line),
+                        NullLiteral(line=node.line),
+                        NullLiteral(line=node.line),
+                    ],
+                    kwargs={},
+                    line=node.line,
+                ),
+                line=node.line,
+            ),
+            line=node.line,
+        )
+        synthetic = TryStmt(
+            try_body=node.body,
+            handlers=[],
+            finally_body=Block(stmts=[cleanup_call], line=node.line),
+            line=node.line,
+        )
+        self._compile_node(synthetic)
+
     def _compile_ThrowStmt(self, node: ThrowStmt):
         self._compile_node(node.value)
         self.bytecode.emit(OpCode.THROW)
@@ -1632,6 +1771,152 @@ class Compiler:
     def _compile_ExprStmt(self, node: ExprStmt):
         self._compile_node(node.expr)
         self.bytecode.emit(OpCode.POP)  # Discard result
+
+    def _compile_hidden_function_expr(
+        self,
+        name: str,
+        body: Block,
+        *,
+        line: int,
+        is_async: bool = False,
+    ) -> None:
+        synthetic = FuncDecl(
+            name=name,
+            params=[],
+            defaults=[],
+            varargs=None,
+            body=body,
+            is_async=is_async,
+            line=line,
+        )
+        self._compile_FuncDecl(synthetic)
+        slot = self.bytecode.get_var_slot(name)
+        self.bytecode.emit(OpCode.LOAD_VAR, slot)
+
+    def _build_generator_expr_body(self, node: GeneratorExpr) -> Block:
+        yield_stmt = YieldStmt(value=node.expr, line=node.line)
+        body_stmts: list[Node]
+        if node.filter_expr is not None:
+            body_stmts = [
+                IfStmt(
+                    condition=node.filter_expr,
+                    then_body=Block(stmts=[yield_stmt], line=node.line),
+                    elif_clauses=[],
+                    else_body=None,
+                    line=node.line,
+                )
+            ]
+        else:
+            body_stmts = [yield_stmt]
+
+        loop_cls = AsyncForStmt if node.is_async else ForStmt
+        loop = loop_cls(
+            var_names=[node.var_name],
+            iterable=node.iterable,
+            body=Block(stmts=body_stmts, line=node.line),
+            line=node.line,
+        )
+        return Block(stmts=[loop], line=node.line)
+
+    def _build_async_list_comp_body(self, node: ListComp, result_name: str) -> Block:
+        append_stmt = ExprStmt(
+            expr=CallExpr(
+                callee=MemberExpr(
+                    obj=IdentifierExpr(name=result_name, line=node.line),
+                    attr='जोड़ो',
+                    line=node.line,
+                ),
+                args=[node.expr],
+                kwargs={},
+                line=node.line,
+            ),
+            line=node.line,
+        )
+        loop_body_stmts: list[Node]
+        if node.filter_expr is not None:
+            loop_body_stmts = [
+                IfStmt(
+                    condition=node.filter_expr,
+                    then_body=Block(stmts=[append_stmt], line=node.line),
+                    elif_clauses=[],
+                    else_body=None,
+                    line=node.line,
+                )
+            ]
+        else:
+            loop_body_stmts = [append_stmt]
+
+        loop = AsyncForStmt(
+            var_names=[node.var_name],
+            iterable=node.iterable,
+            body=Block(stmts=loop_body_stmts, line=node.line),
+            line=node.line,
+        )
+        return Block(
+            stmts=[
+                VarDecl(
+                    names=[result_name],
+                    value=ListLiteral(elements=[], line=node.line),
+                    line=node.line,
+                ),
+                loop,
+                ReturnStmt(
+                    value=IdentifierExpr(name=result_name, line=node.line),
+                    line=node.line,
+                ),
+            ],
+            line=node.line,
+        )
+
+    def _build_async_dict_comp_body(self, node: DictComp, result_name: str) -> Block:
+        assign_stmt = ExprStmt(
+            expr=AssignExpr(
+                target=IndexExpr(
+                    obj=IdentifierExpr(name=result_name, line=node.line),
+                    index=node.key_expr,
+                    line=node.line,
+                ),
+                op='=',
+                value=node.value_expr,
+                line=node.line,
+            ),
+            line=node.line,
+        )
+        loop_body_stmts: list[Node]
+        if node.filter_expr is not None:
+            loop_body_stmts = [
+                IfStmt(
+                    condition=node.filter_expr,
+                    then_body=Block(stmts=[assign_stmt], line=node.line),
+                    elif_clauses=[],
+                    else_body=None,
+                    line=node.line,
+                )
+            ]
+        else:
+            loop_body_stmts = [assign_stmt]
+
+        loop = AsyncForStmt(
+            var_names=[node.var_name],
+            iterable=node.iterable,
+            body=Block(stmts=loop_body_stmts, line=node.line),
+            line=node.line,
+        )
+        return Block(
+            stmts=[
+                VarDecl(
+                    names=[result_name],
+                    value=DictLiteral(pairs=[], line=node.line),
+                    line=node.line,
+                ),
+                loop,
+                ReturnStmt(
+                    value=IdentifierExpr(name=result_name, line=node.line),
+                    line=node.line,
+                ),
+            ],
+            line=node.line,
+        )
 
     def _compile_BinaryExpr(self, node: BinaryExpr):
         self._compile_node(node.left)
@@ -1702,7 +1987,7 @@ class Compiler:
             
     def _compile_AssignExpr(self, node: AssignExpr):
         # Determine value to store
-        if node.op == '=':
+        if node.op in ('=', ':='):
             self._compile_node(node.value)
         else:
             # Compound assignment (+=, -=, etc.)
@@ -1723,10 +2008,9 @@ class Compiler:
             self._compile_node(node.value)
 
             # Apply operator
-            op_map = {'+=': OpCode.ADD, '-=': OpCode.SUB, '*=': OpCode.MUL, '/=': OpCode.DIV, '%=': OpCode.MOD, ':=': None}
+            op_map = {'+=': OpCode.ADD, '-=': OpCode.SUB, '*=': OpCode.MUL, '/=': OpCode.DIV, '%=': OpCode.MOD}
             if node.op in op_map:
-                if op_map[node.op]:
-                    self.bytecode.emit(op_map[node.op])
+                self.bytecode.emit(op_map[node.op])
             else:
                 raise CompileError(f"Unknown assignment operator: {node.op}", node.line)
 
@@ -1890,6 +2174,21 @@ class Compiler:
         self.bytecode.emit(OpCode.BUILD_TUPLE, len(node.elements))
 
     def _compile_ListComp(self, node: ListComp):
+        if getattr(node, "is_async", False):
+            if not self.bytecode.is_async:
+                raise CompileError("अतुल्य comprehension केवल async कर्म के भीतर प्रयोग किया जा सकता है", node.line)
+            hidden_name = f"__async_list_comp_{id(node)}"
+            result_name = f"__async_list_result_{id(node)}"
+            self._compile_hidden_function_expr(
+                hidden_name,
+                self._build_async_list_comp_body(node, result_name),
+                line=node.line,
+                is_async=True,
+            )
+            self.bytecode.emit(OpCode.CALL, 0)
+            self.bytecode.emit(OpCode.AWAIT)
+            return
+
         # Create an empty list
         self.bytecode.emit(OpCode.BUILD_LIST, 0)
 
@@ -1937,6 +2236,21 @@ class Compiler:
         self.bytecode.patch_jump(jump_exit, exit_offset)
 
     def _compile_DictComp(self, node: DictComp):
+        if getattr(node, "is_async", False):
+            if not self.bytecode.is_async:
+                raise CompileError("अतुल्य comprehension केवल async कर्म के भीतर प्रयोग किया जा सकता है", node.line)
+            hidden_name = f"__async_dict_comp_{id(node)}"
+            result_name = f"__async_dict_result_{id(node)}"
+            self._compile_hidden_function_expr(
+                hidden_name,
+                self._build_async_dict_comp_body(node, result_name),
+                line=node.line,
+                is_async=True,
+            )
+            self.bytecode.emit(OpCode.CALL, 0)
+            self.bytecode.emit(OpCode.AWAIT)
+            return
+
         dict_name = f"__dict_comp_{id(node)}"
         dict_slot = self.bytecode.get_var_slot(dict_name)
         self.bytecode.local_names.add(dict_name)
@@ -1975,6 +2289,16 @@ class Compiler:
         exit_offset = self.bytecode.get_current_offset()
         self.bytecode.patch_jump(jump_exit, exit_offset)
         self.bytecode.emit(OpCode.LOAD_VAR, dict_slot)
+
+    def _compile_GeneratorExpr(self, node: GeneratorExpr):
+        hidden_name = f"__generator_expr_{id(node)}"
+        self._compile_hidden_function_expr(
+            hidden_name,
+            self._build_generator_expr_body(node),
+            line=node.line,
+            is_async=node.is_async,
+        )
+        self.bytecode.emit(OpCode.CALL, 0)
 
     def _compile_DictLiteral(self, node: DictLiteral):
         for key, val in node.pairs:
@@ -2015,6 +2339,7 @@ class Compiler:
             node.statement,
             node.evidence_body,
             statement_expr=getattr(node, 'statement_expr', None),
+            kernel_expr=getattr(node, 'kernel_expr', None),
             certificate_hint=node.certificate,
         )
 
@@ -2227,9 +2552,20 @@ class Compiler:
                     body=self._constant_fold(node.body),
                     return_type=node.return_type,
                     is_async=node.is_async,
-                    vibhakti_signature=getattr(node, "vibhakti_signature", None),
                     line=node.line,
                 ),
+            )
+
+        elif isinstance(node, YieldStmt):
+            return YieldStmt(
+                value=self._constant_fold(node.value) if isinstance(node.value, Node) else node.value,
+                line=node.line,
+            )
+
+        elif isinstance(node, YieldFromStmt):
+            return YieldFromStmt(
+                iterable=self._constant_fold(node.iterable) if isinstance(node.iterable, Node) else node.iterable,
+                line=node.line,
             )
         
         # For other nodes, return as-is
@@ -2240,7 +2576,7 @@ class Compiler:
         if node is None:
             return {"fallthrough"}
 
-        if isinstance(node, (VarDecl, ConstDecl, PrintStmt, ImportStmt, ExprStmt, GlobalStmt, NonlocalStmt, FuncDecl, ClassDecl, DataDecl, ProofDeclaration, SutraDecl, ParinamaDecl)):
+        if isinstance(node, (VarDecl, ConstDecl, PrintStmt, ImportStmt, ExprStmt, GlobalStmt, NonlocalStmt, FuncDecl, ClassDecl, DataDecl, ProofDeclaration, SutraDecl, ParinamaDecl, YieldStmt, YieldFromStmt)):
             return {"fallthrough"}
 
         if isinstance(node, ReturnStmt):
@@ -2297,7 +2633,7 @@ class Compiler:
                 outcomes.update(self._stmt_completion_kinds(handler.body))
             return outcomes
 
-        if isinstance(node, WithStmt):
+        if isinstance(node, (WithStmt, AsyncWithStmt)):
             return self._stmt_completion_kinds(node.body)
 
         if isinstance(node, WhileStmt):
@@ -2316,6 +2652,14 @@ class Compiler:
             return {"fallthrough"} | escaping
 
         if isinstance(node, ForStmt):
+            body_kinds = self._stmt_completion_kinds(node.body)
+            escaping = {
+                kind for kind in body_kinds
+                if kind not in {"fallthrough", "break", "continue"}
+            }
+            return {"fallthrough"} | escaping
+
+        if isinstance(node, AsyncForStmt):
             body_kinds = self._stmt_completion_kinds(node.body)
             escaping = {
                 kind for kind in body_kinds
@@ -2382,6 +2726,14 @@ class Compiler:
             node.body = self._eliminate_dead_code(node.body)
             return node
 
+        if isinstance(node, YieldStmt):
+            node.value = self._eliminate_dead_code(node.value)
+            return node
+
+        if isinstance(node, YieldFromStmt):
+            node.iterable = self._eliminate_dead_code(node.iterable)
+            return node
+
         if isinstance(node, LambdaExpr):
             node.body = self._eliminate_dead_code(node.body)
             return node
@@ -2411,7 +2763,12 @@ class Compiler:
             node.body = self._eliminate_dead_code(node.body)
             return node
 
-        if isinstance(node, WithStmt):
+        if isinstance(node, AsyncForStmt):
+            node.iterable = self._eliminate_dead_code(node.iterable)
+            node.body = self._eliminate_dead_code(node.body)
+            return node
+
+        if isinstance(node, (WithStmt, AsyncWithStmt)):
             node.expr = self._eliminate_dead_code(node.expr)
             node.body = self._eliminate_dead_code(node.body)
             return node
@@ -2541,6 +2898,12 @@ class Compiler:
         if isinstance(node, DictComp):
             node.key_expr = self._eliminate_dead_code(node.key_expr)
             node.value_expr = self._eliminate_dead_code(node.value_expr)
+            node.iterable = self._eliminate_dead_code(node.iterable)
+            node.filter_expr = self._eliminate_dead_code(node.filter_expr)
+            return node
+
+        if isinstance(node, GeneratorExpr):
+            node.expr = self._eliminate_dead_code(node.expr)
             node.iterable = self._eliminate_dead_code(node.iterable)
             node.filter_expr = self._eliminate_dead_code(node.filter_expr)
             return node

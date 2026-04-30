@@ -22,6 +22,7 @@ class TokenType(Enum):
     CLASS       = auto()   # वर्ग    (class / category)
     DATA        = auto()   # डेटा   (algebraic data / tagged union)
     RETURN      = auto()   # प्रत्यागच्छ (return / come back)
+    YIELD       = auto()   # उपज (yield / produce)
     IF          = auto()   # यदि     (if)
     ELIF        = auto()   # अन्यत्  (else-if / otherwise)
     ELSE        = auto()   # अन्यथा  (else / otherwise)
@@ -98,6 +99,7 @@ class TokenType(Enum):
     DOT         = auto()   # .
     COLON       = auto()   # :
     SEMICOLON   = auto()   # ;
+    AT          = auto()   # @
 
     # ── Structure ─────────────────────────────────────────────────────────────
     NEWLINE     = auto()
@@ -141,6 +143,7 @@ KEYWORDS = {
     'डेटा':        TokenType.DATA,
     'प्रत्यागच्छ':  TokenType.RETURN,
     'वापस':         TokenType.RETURN,
+    'उपज':          TokenType.YIELD,
     'यदि':          TokenType.IF,
     'अन्यत्':       TokenType.ELIF,
     'अन्यथा':       TokenType.ELSE,

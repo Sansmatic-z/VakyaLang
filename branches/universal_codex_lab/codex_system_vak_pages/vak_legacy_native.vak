@@ -1,0 +1,24 @@
+स्थिर CODEX_PAGE_NAME = "vak_legacy_native"
+स्थिर CODEX_PAGE_DESCRIPTION = "Vak-native legacy Vak compatibility page"
+स्थिर CODEX_PAGE_PRIORITY = 42
+स्थिर CODEX_PAGE_KIND = "vak_module"
+स्थिर CODEX_PAGE_CHAPTER = "vak_native"
+स्थिर CODEX_PAGE_CHAPTER_TITLE = "Vak Native Pages"
+स्थिर CODEX_PAGE_CHAPTER_ORDER = 50
+स्थिर CODEX_PAGE_CAPABILITIES = ["vak", "legacy", "normalize", "repair"]
+स्थिर CODEX_PAGE_EMITS_VAK = सत्य
+स्थिर CODEX_PAGE_EXTENSIONS = ["vak"]
+स्थिर CODEX_PAGE_HINTS = ["जबतक ", "अन्यथा_यदि", "के प्रकार", "विच्छेद", "निरंतर"]
+स्थिर CODEX_PAGE_MAX_FIXPOINT_PASSES = 2
+
+कर्म codex_probe(source, filename = शून्य):
+    यदि "जबतक " अन्तर्गत source अथवा "अन्यथा_यदि" अन्तर्गत source:
+        प्रत्यागच्छ {"score": 54, "reason": "legacy Vak loop/elif markers detected by Vak page"}
+    यदि "के प्रकार" अन्तर्गत source अथवा "विच्छेद" अन्तर्गत source अथवा "निरंतर" अन्तर्गत source:
+        प्रत्यागच्छ {"score": 52, "reason": "legacy Vak drift markers detected by Vak page"}
+    यदि filename != शून्य और ".vak" अन्तर्गत filename:
+        प्रत्यागच्छ {"score": 18, "reason": "Vak-native legacy fallback on .vak path"}
+    प्रत्यागच्छ {"score": 0, "reason": "not a legacy Vak-native candidate"}
+
+कर्म codex_transform(source, filename = शून्य):
+    प्रत्यागच्छ कोडेक्स_विवरण(source, "vak_legacy", filename)

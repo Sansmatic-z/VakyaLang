@@ -2,9 +2,12 @@
 # Vak Language - High-level interface (Lexer → Parser → Compiler → VM)
 
 from typing import Any, Optional
+from pathlib import Path
+from time import perf_counter
 
 from .lexer import Lexer
 from .parser import Parser
+from .bytecode import Bytecode
 from .compiler import Compiler, CompileError
 from .vm import VakVM, VMError
 from .errors import TranslationError, VakError, format_vak_error_with_suggestions
@@ -12,6 +15,7 @@ from .audit import emit_audit_event
 from .branching import BranchActivationError
 from .code_transformer import TransformResult, VakCodeTransformer
 from .codex import CodexResult, build_default_codex
+from .performance import VakPerformanceProfile, aggregate_stage_samples
 from .rupantar import RupantarResult, VakyaRupantar
 
 class VakInterpreter:
@@ -31,6 +35,9 @@ class VakInterpreter:
         self.branch_runtime = None
         self.branch_registry = branch_registry
         self.deep_meaning_mode = deep_meaning_mode
+        self.last_filename: str | None = None
+        self.last_input_source: str = ""
+        self.last_prepared_source: str = ""
         self.code_transformer = VakCodeTransformer(deep_meaning_mode=deep_meaning_mode)
         self.last_transform_result = TransformResult("", "", False, 0)
         if active_branches:
@@ -91,6 +98,9 @@ class VakInterpreter:
             "frame": self.vm.current_frame,
             "globals": self.vm.globals,
             "builtins": self.vm.builtins,
+            "filename": self.last_filename,
+            "input_source": self.last_input_source,
+            "prepared_source": self.last_prepared_source,
             "translation": {
                 "language": self.last_transform_result.language,
                 "confidence": self.last_transform_result.confidence,
@@ -106,12 +116,14 @@ class VakInterpreter:
         }
 
     def prepare_source(self, source: str) -> str:
+        self.last_input_source = source
         self.last_transform_result = self.code_transformer.transform(source)
         if self.last_transform_result.blocked_reason:
             raise TranslationError(
                 self.last_transform_result.blocked_reason,
                 self.last_transform_result.blocked_line,
             )
+        self.last_prepared_source = self.last_transform_result.source
         return self.last_transform_result.source
 
     def translation_status_message(self) -> str | None:
@@ -123,6 +135,127 @@ class VakInterpreter:
         if self.last_transform_result.transformed:
             return self.last_transform_result.source
         return None
+
+    def _spawn_profile_interpreter(self) -> "VakInterpreter":
+        active_names = (
+            self.branch_runtime.active_names()
+            if self.branch_runtime is not None
+            else None
+        )
+        return VakInterpreter(
+            active_branches=active_names,
+            branch_registry=self.branch_registry,
+            deep_meaning_mode=self.deep_meaning_mode,
+        )
+
+    def profile_source(
+        self,
+        source: str,
+        *,
+        filename: str | None = None,
+        repeat: int = 3,
+        execute: bool = True,
+        source_prepared: bool = False,
+    ) -> VakPerformanceProfile:
+        iterations = max(int(repeat), 1)
+        samples: dict[str, list[float]] = {
+            "prepare": [],
+            "lex": [],
+            "parse": [],
+            "compile": [],
+        }
+        if execute:
+            samples["execute"] = []
+
+        for _ in range(iterations):
+            profiler = self._spawn_profile_interpreter()
+            profiler.last_filename = filename
+
+            prepared_source = source
+            if not source_prepared:
+                start = perf_counter()
+                prepared_source = profiler.prepare_source(source)
+                samples["prepare"].append((perf_counter() - start) * 1000.0)
+            else:
+                profiler.last_input_source = source
+                profiler.last_prepared_source = source
+                profiler.last_transform_result = TransformResult(source, source, False, 0)
+                samples["prepare"].append(0.0)
+
+            start = perf_counter()
+            tokens = Lexer(prepared_source).tokenize()
+            samples["lex"].append((perf_counter() - start) * 1000.0)
+
+            start = perf_counter()
+            parser = Parser(tokens)
+            ast = parser.parse()
+            if profiler.branch_runtime is not None:
+                profiler.branch_runtime.on_program_parsed(
+                    ast,
+                    filename=filename,
+                    interpreter=profiler,
+                )
+            samples["parse"].append((perf_counter() - start) * 1000.0)
+
+            start = perf_counter()
+            compiler = Compiler(
+                branch_runtime=profiler.branch_runtime,
+                source_path=filename,
+            )
+            bytecode = compiler.compile(ast)
+            bytecode.source_path = filename
+            samples["compile"].append((perf_counter() - start) * 1000.0)
+
+            if execute:
+                start = perf_counter()
+                previous_suppress = profiler.vm.suppress_output
+                profiler.vm.suppress_output = True
+                try:
+                    profiler.vm.run(bytecode)
+                finally:
+                    profiler.vm.suppress_output = previous_suppress
+                samples["execute"].append((perf_counter() - start) * 1000.0)
+
+        profile = aggregate_stage_samples("source", filename, iterations, samples)
+        emit_audit_event(
+            "vak.profile.source",
+            filename or "<memory>",
+            iterations,
+            round(profile.total_ms, 6),
+        )
+        return profile
+
+    def profile_import(
+        self,
+        module_name: str,
+        *,
+        filename: str | None = None,
+        repeat: int = 3,
+    ) -> VakPerformanceProfile:
+        source = f"आयात {module_name}\n"
+        profile = self.profile_source(
+            source,
+            filename=filename,
+            repeat=repeat,
+            execute=True,
+            source_prepared=False,
+        )
+        payload = profile.payload()
+        payload["mode"] = "import"
+        imported = VakPerformanceProfile(
+            mode="import",
+            filename=filename or module_name,
+            iterations=profile.iterations,
+            stages=profile.stages,
+            total_ms=profile.total_ms,
+        )
+        emit_audit_event(
+            "vak.profile.import",
+            str(module_name),
+            repeat,
+            round(imported.total_ms, 6),
+        )
+        return imported
 
     def _debug_print(self, text: str) -> None:
         try:
@@ -155,6 +288,12 @@ class VakInterpreter:
         4. Execution (VM)
         """
         self.debug = debug
+        self.last_filename = filename
+        if not source_prepared:
+            self.last_input_source = source
+            self.last_prepared_source = ""
+        else:
+            self.last_prepared_source = source
         emit_audit_event("vak.interpreter.run.start", filename or "<memory>", debug)
         
         try:
@@ -247,6 +386,12 @@ class VakInterpreter:
     ) -> 'Bytecode':
         """Compile source to bytecode without executing."""
         emit_audit_event("vak.interpreter.compile.start", filename or "<memory>")
+        self.last_filename = filename
+        if not source_prepared:
+            self.last_input_source = source
+            self.last_prepared_source = ""
+        else:
+            self.last_prepared_source = source
         if not source_prepared:
             source = self.prepare_source(source)
         lexer = Lexer(source)
@@ -277,6 +422,97 @@ class VakInterpreter:
         """Execute pre-compiled bytecode."""
         emit_audit_event("vak.interpreter.bytecode.run", getattr(bytecode, "name", "<unknown>"))
         return self.vm.run(bytecode)
+
+    def hydrate_bytecode_functions(
+        self,
+        bytecode: Any,
+        *,
+        compiled_path: str | Path | None = None,
+    ) -> Any:
+        """
+        Recover nested function/class bytecode tables for serialized .vakc files.
+
+        This does not alter the bytecode wire format. It recompiles the original
+        source when available and copies only the nested bytecode map needed for
+        runtime call resolution.
+        """
+        if getattr(bytecode, "functions", None):
+            return bytecode
+
+        companion_path = None
+        if compiled_path is not None:
+            companion_path = Bytecode.companion_path(compiled_path)
+        if companion_path is not None and companion_path.exists():
+            try:
+                companion = Bytecode.from_abi_json(
+                    companion_path.read_text(encoding="utf-8")
+                )
+            except Exception:
+                companion = None
+            if companion is not None:
+                self._merge_bytecode_metadata(bytecode, companion)
+                if getattr(bytecode, "functions", None):
+                    return bytecode
+
+        source_candidate = self._resolve_bytecode_source_path(
+            bytecode,
+            compiled_path=compiled_path,
+        )
+        if source_candidate is None:
+            return bytecode
+
+        try:
+            source = source_candidate.read_text(encoding="utf-8")
+        except OSError:
+            return bytecode
+
+        hydrated = self.compile_only(
+            source,
+            filename=str(source_candidate),
+            source_prepared=False,
+        )
+        if getattr(hydrated, "functions", None):
+            self._merge_bytecode_metadata(bytecode, hydrated)
+        return bytecode
+
+    def _resolve_bytecode_source_path(
+        self,
+        bytecode: Any,
+        *,
+        compiled_path: str | Path | None = None,
+    ) -> Path | None:
+        candidates: list[Path] = []
+
+        source_path = getattr(bytecode, "source_path", None)
+        if source_path:
+            source_candidate = Path(source_path)
+            candidates.append(source_candidate)
+            if compiled_path is not None and not source_candidate.is_absolute():
+                candidates.append(Path(compiled_path).resolve().parent / source_candidate)
+
+        if compiled_path is not None:
+            candidates.append(Path(compiled_path).resolve().with_suffix(".vak"))
+
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return None
+
+    def _merge_bytecode_metadata(self, target: Any, source: Any) -> None:
+        if not getattr(target, "functions", None) and getattr(source, "functions", None):
+            target.functions = dict(source.functions)
+        if not getattr(target, "source_path", None) and getattr(source, "source_path", None):
+            target.source_path = source.source_path
+        if not getattr(target, "param_names", None) and getattr(source, "param_names", None):
+            target.param_names = list(source.param_names)
+        if not getattr(target, "defaults", None) and getattr(source, "defaults", None):
+            target.defaults = list(source.defaults)
+        if not getattr(target, "varargs_name", None) and getattr(source, "varargs_name", None):
+            target.varargs_name = source.varargs_name
+        if not getattr(target, "type_hints", None) and getattr(source, "type_hints", None):
+            target.type_hints = dict(source.type_hints)
+        if not getattr(target, "vibhakti_signature", None) and getattr(source, "vibhakti_signature", None):
+            target.vibhakti_signature = source.vibhakti_signature
 
     def _read_repl_source(self) -> str | None:
         line = input("वाक्> ")

@@ -57,6 +57,117 @@ class VakyaRupantarTests(unittest.TestCase):
         self.assertTrue(result.syntax_valid)
         self.assertTrue(result.compiled)
 
+    def test_rupantar_normalizes_augmented_assignments_and_increment_syntax(self):
+        engine = VakyaRupantar()
+        result = engine.transform_source(
+            textwrap.dedent(
+                """
+                चर कुल = ०
+                कुल += ३
+                कुल *= २
+                चर सूचक = ०
+                सूचक++
+                --सूचक
+                मुद्रय कुल
+                मुद्रय सूचक
+                """
+            )
+        )
+        self.assertIn("कुल = कुल + ३", result.source)
+        self.assertIn("कुल = कुल * २", result.source)
+        self.assertIn("सूचक = सूचक + १", result.source)
+        self.assertIn("सूचक = सूचक - १", result.source)
+        self.assertTrue(result.syntax_valid)
+        self.assertTrue(result.compiled)
+
+    def test_rupantar_normalizes_python_order_import_syntax(self):
+        engine = VakyaRupantar()
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_root = Path(tempdir)
+            module_path = temp_root / "demo.vak"
+            main_path = temp_root / "main.vak"
+            module_path.write_text(
+                textwrap.dedent(
+                    """
+                    कर्म प्रतिज्ञा():
+                        प्रत्यागच्छ ११
+                    """
+                ),
+                encoding="utf-8",
+            )
+            source = "from demo import प्रतिग्ञा\nमुद्रय प्रतिग्ञा()\n"
+            result = engine.transform_source(source, source_path=str(main_path))
+            self.assertIn("आयात प्रतिज्ञा से demo", result.source)
+            self.assertIn("मुद्रय प्रतिज्ञा()", result.source)
+            self.assertTrue(result.syntax_valid)
+            self.assertTrue(result.compiled)
+
+    def test_rupantar_normalizes_legacy_generator_surface_blocks(self):
+        engine = VakyaRupantar()
+        result = engine.transform_source(
+            textwrap.dedent(
+                """
+                श्रेणी गणक {
+                    परिवर्तनी गुणक = २
+                    कार्य दुगुना(स्वयं, x) {
+                        लौटाओ x * स्वयं.गुणक
+                    }
+                }
+
+                चर g = नव गणक()
+                मुद्रय g.दुगुना(४)
+                """
+            )
+        )
+        self.assertIn("वर्ग गणक:", result.source)
+        self.assertIn("चर गुणक = २", result.source)
+        self.assertIn("कर्म दुगुना(स्वयं, x):", result.source)
+        self.assertIn("प्रत्यागच्छ x * स्वयं.गुणक", result.source)
+        self.assertNotIn("{", result.source)
+        self.assertTrue(result.syntax_valid)
+        self.assertTrue(result.compiled)
+
+    def test_rupantar_normalizes_generated_foreach_and_else_blocks(self):
+        engine = VakyaRupantar()
+        result = engine.transform_source(
+            textwrap.dedent(
+                """
+                चर items = [१, २]
+                foreach item in items {
+                    मुद्रय item
+                }
+                if सत्य {
+                    मुद्रय १
+                } else {
+                    मुद्रय २
+                }
+                """
+            )
+        )
+        self.assertIn("प्रत्येक चर item अन्तर्गत items:", result.source)
+        self.assertIn("यदि सत्य:", result.source)
+        self.assertIn("अन्यथा:", result.source)
+        self.assertNotIn("{", result.source)
+        self.assertTrue(result.syntax_valid)
+        self.assertTrue(result.compiled)
+
+    def test_rupantar_removes_branch_pseudomodule_import_when_branch_builtins_exist(self):
+        engine = VakyaRupantar()
+        result = engine.transform_source(
+            textwrap.dedent(
+                """
+                आयात चित्रकला
+                चर क = चित्रकला.कैनवास_निर्माण(१०, १०)
+                चित्रकला.रेखा(क, ०, ०, ९, ९)
+                """
+            )
+        )
+        self.assertNotIn("आयात चित्रकला", result.source)
+        self.assertIn("_chitra_canvas", result.source)
+        self.assertIn("_chitra_line", result.source)
+        self.assertTrue(result.syntax_valid)
+        self.assertTrue(result.compiled)
+
     def test_rupantar_renames_reserved_keyword_identifiers_in_block_scope(self):
         engine = VakyaRupantar()
         result = engine.transform_source(
@@ -338,14 +449,25 @@ class VakyaRupantarTests(unittest.TestCase):
         payload = result.report_payload()
         self.assertIn("rejected_fixes", payload)
 
+    def test_rupantar_report_exposes_original_source_and_diff(self):
+        engine = VakyaRupantar()
+        source = "चर सूची = []\nसूची.apend(१)\n"
+        result = engine.transform_source(source)
+        payload = result.report_payload()
+        self.assertEqual(payload["original_source"], source)
+        self.assertTrue(payload["diff"])
+        self.assertIn("सूची.apend(१)", "\n".join(payload["diff"]))
+        self.assertIn("सूची.जोड़ो(१)", "\n".join(payload["diff"]))
+        self.assertIn("अंतर:", result.report_text())
+
     def test_rupantar_marks_blocked_translation_as_do_not_touch(self):
         engine = VakyaRupantar()
         result = engine.transform_source(
             textwrap.dedent(
                 """
-                @decorator
-                def broken():
-                    return 1
+                async def broken(first, second):
+                    async with first, second:
+                        print(item)
                 """
             )
         )

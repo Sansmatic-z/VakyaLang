@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Optional
+from .audit import emit_audit_event
 
 
 class BranchError(Exception):
@@ -103,8 +104,13 @@ class BranchRuntime:
         self._state: dict[str, BranchState] = {
             branch.name: BranchState() for branch in self.branches
         }
+        emit_audit_event(
+            "vak.branch.runtime.create",
+            [branch.name for branch in self.branches],
+        )
         for branch in self.branches:
             branch.register(self)
+            emit_audit_event("vak.branch.activate", branch.name, getattr(branch, "kind", "unknown"))
 
     def active_names(self) -> list[str]:
         return [branch.name for branch in self.branches]
@@ -120,9 +126,11 @@ class BranchRuntime:
         self._state[branch_name].diagnostics.append(
             BranchDiagnostic(level=level, message=message, phase=phase)
         )
+        emit_audit_event("vak.branch.diagnostic", branch_name, phase, level, message)
 
     def set_metadata(self, branch_name: str, key: str, value: Any) -> None:
         self._state[branch_name].metadata[key] = value
+        emit_audit_event("vak.branch.metadata", branch_name, key, value)
 
     def report(self) -> dict[str, dict[str, Any]]:
         payload: dict[str, dict[str, Any]] = {}
@@ -155,6 +163,7 @@ class BranchRuntime:
             handler = getattr(branch, attr_name, None)
             if handler is None:
                 continue
+            emit_audit_event("vak.branch.hook", branch.name, phase, attr_name)
             context = BranchHookContext(
                 runtime=self,
                 branch_name=branch.name,
@@ -236,6 +245,7 @@ class BranchRuntime:
             handler = getattr(branch, "extend_vm_builtins", None)
             if handler is None:
                 continue
+            emit_audit_event("vak.branch.extend_vm_builtins", branch.name)
 
             previous_keys = set(builtins)
             previous_values = {key: builtins[key] for key in previous_keys}
@@ -269,6 +279,7 @@ class BranchRuntime:
             handler = getattr(branch, "extend_rupantar_rules", None)
             if handler is None:
                 continue
+            emit_audit_event("vak.branch.extend_rupantar_rules", branch.name)
             context = BranchHookContext(
                 runtime=self,
                 branch_name=branch.name,
@@ -281,6 +292,7 @@ class BranchRuntime:
             handler = getattr(branch, "extend_codex_pages", None)
             if handler is None:
                 continue
+            emit_audit_event("vak.branch.extend_codex_pages", branch.name)
             context = BranchHookContext(
                 runtime=self,
                 branch_name=branch.name,

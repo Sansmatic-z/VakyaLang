@@ -390,6 +390,222 @@ class RuntimeRegressionTests(unittest.TestCase):
         _, output = self.run_source(source)
         self.assertEqual(output.strip(), ">>राज:25!")
 
+    def test_kwargs_capture_collects_unknown_keyword_arguments(self):
+        source = """
+कर्म संग्रह(नाम, **विवरण):
+    मुद्रय नाम
+    मुद्रय विवरण["आयु"]
+    मुद्रय विवरण["नगर"]
+
+संग्रह("राज", आयु=२५, नगर="दिल्ली")
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.splitlines(), ["राज", "25", "दिल्ली"])
+
+    def test_varargs_and_kwargs_capture_can_coexist(self):
+        source = """
+कर्म पकड़ो(क, *शेष, **विवरण):
+    मुद्रय क
+    मुद्रय शेष
+    मुद्रय विवरण["नाम"]
+
+पकड़ो(१, २, ३, नाम="राज")
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.splitlines(), ["1", "[2, 3]", "राज"])
+
+    def test_walrus_assignment_binds_local_before_use(self):
+        source = """
+कर्म परीक्षण():
+    यदि (y := ३) > १:
+        मुद्रय y
+    मुद्रय y
+
+परीक्षण()
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.splitlines(), ["3", "3"])
+
+    def test_parent_constructor_can_be_called_via_abhivahak(self):
+        source = """
+वर्ग जीव:
+    कर्म __init__(स्वयं, नाम):
+        स्वयं.नाम = नाम
+
+वर्ग कुत्ता(जीव):
+    कर्म __init__(स्वयं, नाम, जाति):
+        अभिभावक().__init__(नाम)
+        स्वयं.जाति = जाति
+
+मान टॉमी = कुत्ता("टॉमी", "देशी")
+मुद्रय टॉमी.नाम
+मुद्रय टॉमी.जाति
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.splitlines(), ["टॉमी", "देशी"])
+
+    def test_decorator_syntax_wraps_function_result(self):
+        source = """
+कर्म दुगुना(कार्य):
+    कर्म लपेट(मान):
+        प्रत्यागच्छ कार्य(मान) * २
+    प्रत्यागच्छ लपेट
+
+@दुगुना
+कर्म मूल(मान):
+    प्रत्यागच्छ मान + १
+
+मुद्रय मूल(४)
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.strip(), "10")
+
+    def test_generator_function_yields_lazily_in_for_loop(self):
+        source = """
+कर्म गिनती(सीमा):
+    चर i = ०
+    यावत् i < सीमा:
+        उपज i
+        i = i + १
+
+प्रत्येक चर मान अन्तर्गत गिनती(४):
+    मुद्रय मान
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.splitlines(), ["0", "1", "2", "3"])
+
+    def test_generator_function_supports_yield_from_delegation(self):
+        source = """
+कर्म मूल():
+    उपज १
+    उपज २
+
+कर्म विस्तार():
+    उपज ०
+    उपज से मूल()
+    उपज ३
+
+प्रत्येक चर मान अन्तर्गत विस्तार():
+    मुद्रय मान
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.splitlines(), ["0", "1", "2", "3"])
+
+    def test_async_generator_advances_through_awaited_steps(self):
+        source = """
+अतुल्यकालिक कर्म गिनती(सीमा):
+    चर i = ०
+    यावत् i < सीमा:
+        प्रतीक्षा async_sleep(०.०१)
+        उपज i
+        i = i + १
+
+अतुल्यकालिक कर्म मुख्य():
+    चर जनक = गिनती(३)
+    मुद्रय प्रतीक्षा अतुल्य_अग्रिम(जनक)
+    मुद्रय प्रतीक्षा async_next(जनक)
+    मुद्रय प्रतीक्षा अतुल्य_अग्रिम(जनक)
+    मुद्रय प्रतीक्षा अतुल्य_अग्रिम(जनक)
+    मुद्रय अतुल्य_समाप्त(जनक)
+
+प्रतीक्षा मुख्य()
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.splitlines(), ["0", "1", "2", "None", "True"])
+
+    def test_async_for_consumes_async_generator_natively(self):
+        source = """
+अतुल्यकालिक कर्म गिनती(सीमा):
+    चर i = ०
+    यावत् i < सीमा:
+        प्रतीक्षा async_sleep(०.०१)
+        उपज i
+        i = i + १
+
+अतुल्यकालिक कर्म मुख्य():
+    अतुल्यकालिक प्रत्येक चर मान अन्तर्गत गिनती(३):
+        मुद्रय मान
+
+प्रतीक्षा मुख्य()
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.splitlines(), ["0", "1", "2"])
+
+    def test_async_with_awaits_context_manager_entry_and_exit(self):
+        source = """
+वर्ग संदर्भ:
+    कर्म प्रारम्भ(स्वयं):
+        स्वयं.घटनाएँ = []
+
+    अतुल्यकालिक कर्म __aenter__(स्वयं):
+        स्वयं.घटनाएँ.जोड़ो("enter")
+        प्रतीक्षा async_sleep(०.०१)
+        प्रत्यागच्छ "भीतर"
+
+    अतुल्यकालिक कर्म __aexit__(स्वयं, प्रकार, मान, पथ):
+        स्वयं.घटनाएँ.जोड़ो("exit")
+        प्रतीक्षा async_sleep(०.०१)
+        प्रत्यागच्छ असत्य
+
+अतुल्यकालिक कर्म मुख्य():
+    चर ctx = नव संदर्भ()
+    अतुल्यकालिक साथ ctx जैसे मान:
+        मुद्रय मान
+    मुद्रय ctx.घटनाएँ
+
+प्रतीक्षा मुख्य()
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.splitlines(), ["भीतर", "['enter', 'exit']"])
+
+    def test_async_comprehensions_and_generator_expression_work(self):
+        source = """
+अतुल्यकालिक कर्म गिनती(सीमा):
+    चर i = ०
+    यावत् i < सीमा:
+        प्रतीक्षा async_sleep(०.०१)
+        उपज i
+        i = i + १
+
+कर्म दुगुना():
+    प्रत्यागच्छ (मान * २ प्रत्येक चर मान अन्तर्गत [१, २, ३])
+
+अतुल्यकालिक कर्म मुख्य():
+    चर सूची = [मान * २ अतुल्यकालिक प्रत्येक चर मान अन्तर्गत गिनती(४) यदि मान > ०]
+    चर शब्द = {मान: मान * मान अतुल्यकालिक प्रत्येक चर मान अन्तर्गत गिनती(४) यदि मान > १}
+    मुद्रय सूची
+    मुद्रय शब्द
+    प्रत्येक चर मान अन्तर्गत दुगुना():
+        मुद्रय मान
+
+प्रतीक्षा मुख्य()
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(
+            output.splitlines(),
+            ["[2, 4, 6]", "{2: 4, 3: 9}", "2", "4", "6"],
+        )
+
+    def test_generator_constructor_returns_iterable_instance_proxy(self):
+        source = """
+वर्ग गिनक:
+    कर्म __init__(स्वयं, सीमा):
+        स्वयं.सीमा = सीमा
+        चर i = ०
+        यावत् i < सीमा:
+            उपज i
+            i = i + १
+        स्वयं.समाप्त = सत्य
+
+चर जनक = गिनक(३)
+प्रत्येक चर मान अन्तर्गत जनक:
+    मुद्रय मान
+मुद्रय जनक.सीमा
+मुद्रय जनक.समाप्त
+"""
+        _, output = self.run_source(source)
+        self.assertEqual(output.splitlines(), ["0", "1", "2", "3", "True"])
+
     def test_multiple_return_values_can_be_unpacked(self):
         source = """
 कर्म मिनमैक्स(सूची):

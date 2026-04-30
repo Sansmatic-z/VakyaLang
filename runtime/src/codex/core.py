@@ -16,10 +16,14 @@ from .models import (
     CodexRuleEvent,
     CodexValidation,
 )
+from .promotion import CodexPromotionReport, evaluate_promotion_candidate
 from .page import CodexPage
 from .pages import (
     EnglishVakCodexPage,
+    JavaScriptVakCodexPage,
     MathLogicCodexPage,
+    PseudocodeVakCodexPage,
+    PythonVakCodexPage,
     SanskritNotationCodexPage,
     VakCodexPage,
     VakLegacyCodexPage,
@@ -119,6 +123,21 @@ class SanskritVakyaUniversalCodex:
                     branch_registry=self.branch_registry,
                     deep_meaning_mode=self.deep_meaning_mode,
                 ),
+                PythonVakCodexPage(
+                    active_branches=list(self.active_branches),
+                    branch_registry=self.branch_registry,
+                    deep_meaning_mode=self.deep_meaning_mode,
+                ),
+                JavaScriptVakCodexPage(
+                    active_branches=list(self.active_branches),
+                    branch_registry=self.branch_registry,
+                    deep_meaning_mode=self.deep_meaning_mode,
+                ),
+                PseudocodeVakCodexPage(
+                    active_branches=list(self.active_branches),
+                    branch_registry=self.branch_registry,
+                    deep_meaning_mode=self.deep_meaning_mode,
+                ),
             ) + _discover_vak_pages(
                 active_branches=list(self.active_branches),
                 branch_registry=self.branch_registry,
@@ -133,6 +152,11 @@ class SanskritVakyaUniversalCodex:
             self.register_page(page)
 
     def register_page(self, page: CodexPage) -> None:
+        existing = self._pages.get(page.name)
+        if existing is not None and existing is not page:
+            if existing.manifest().payload() != page.manifest().payload():
+                raise ValueError(f"Duplicate Codex page name: {page.name}")
+            return
         self._pages[page.name] = page
 
     def list_pages(self) -> list[dict[str, Any]]:
@@ -185,6 +209,18 @@ class SanskritVakyaUniversalCodex:
         if name not in self._pages:
             raise KeyError(f"Unknown codex page: {name}")
         return self._pages[name].manifest()
+
+    def promotion_report(
+        self,
+        name: str,
+        *,
+        corpus_root: str | Path | None = None,
+    ) -> CodexPromotionReport:
+        return evaluate_promotion_candidate(
+            self,
+            name,
+            corpus_root=corpus_root,
+        )
 
     def _resolve_validation_branch_runtime(self) -> Any:
         if self._validation_branch_runtime is not None:

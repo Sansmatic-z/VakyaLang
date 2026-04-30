@@ -3,15 +3,98 @@
 
 import sys
 import argparse
+import os
+import tempfile
 from pathlib import Path
+
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
 
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
 from runtime.src.interpreter import VakInterpreter
+from runtime.src.bytecode import Bytecode
 from runtime.src.codex import build_default_codex
 from runtime.src.errors import VakError, format_vak_error_with_suggestions
 from runtime.src.rupantar import VakyaRupantar
+
+
+def _atomic_write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        dir=path.parent,
+        prefix=path.name + ".",
+        suffix=".tmp",
+    ) as handle:
+        handle.write(payload)
+        temp_path = Path(handle.name)
+    try:
+        os.replace(temp_path, path)
+    except PermissionError:
+        path.write_bytes(payload)
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+
+
+def _atomic_write_text(path: Path, payload: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        dir=path.parent,
+        prefix=path.name + ".",
+        suffix=".tmp",
+        mode="w",
+        encoding="utf-8",
+        newline="",
+    ) as handle:
+        handle.write(payload)
+        temp_path = Path(handle.name)
+    try:
+        os.replace(temp_path, path)
+    except PermissionError:
+        path.write_text(payload, encoding="utf-8", newline="")
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+
+
+def _handle_compiled_file(
+    source_path: Path,
+    interpreter: VakInterpreter,
+    *,
+    disassemble: bool = False,
+) -> None:
+    bytecode = Bytecode.from_bytes(source_path.read_bytes())
+    bytecode = interpreter.hydrate_bytecode_functions(
+        bytecode,
+        compiled_path=source_path,
+    )
+    if disassemble:
+        print(bytecode.disassemble())
+        return
+
+    has_callable_refs = any(
+        isinstance(value, tuple) and value and value[0] in {"function", "coroutine"}
+        for value in bytecode.constants
+    )
+    if has_callable_refs and not bytecode.functions:
+        raise VakError(
+            "यह .vakc फ़ाइल कार्य/कोरूटीन संदर्भ रखती है, "
+            "पर वर्तमान स्वतंत्र .vakc पथ उनके अंतः-बाइटकोड निकाय पुनर्स्थापित नहीं करता। "
+            "स्रोत .vak चलाएँ या --disassemble उपयोग करें।"
+        )
+
+    result = interpreter.run_bytecode(bytecode)
+    if result is not None:
+        print(result)
 
 def main():
     raw_args = sys.argv[1:]
@@ -153,6 +236,19 @@ Examples:
     if args.file:
         try:
             source_path = Path(args.file).resolve()
+            if source_path.suffix == '.vakc':
+                if args.compile:
+                    print(
+                        "Error: --compile expects a .vak source file, not compiled bytecode",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+                _handle_compiled_file(
+                    source_path,
+                    interpreter,
+                    disassemble=args.disassemble,
+                )
+                return
             source = source_path.read_text(encoding='utf-8')
             prepared_source = interpreter.prepare_source(source)
             
@@ -165,8 +261,11 @@ Examples:
                 if interpreter.translation_status_message():
                     print(interpreter.translation_status_message())
                 output_file = source_path.with_suffix('.vakc')
-                output_file.write_bytes(bytecode.to_bytes())
+                _atomic_write_bytes(output_file, bytecode.to_bytes())
+                companion_path = Bytecode.companion_path(output_file)
+                _atomic_write_text(companion_path, bytecode.to_abi_json())
                 print(f"Compiled to: {output_file}")
+                print(f"Metadata to: {companion_path}")
                 if args.disassemble:
                     print("\n" + bytecode.disassemble())
             else:

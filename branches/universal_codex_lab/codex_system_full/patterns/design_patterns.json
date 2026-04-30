@@ -1,0 +1,94 @@
+{
+  "patterns": [
+    {
+      "name": "factory_method",
+      "description": "Factory Method pattern: class with create/make methods returning instances",
+      "category": "design",
+      "regex": "(?:def\\s+(?:create|make|build|factory)\\w*\\s*\\(|class\\s+\\w+Factory)",
+      "template": "कर्म {factory_name}({params}) {\n    लौटाओ {product_class}({args})\n}",
+      "transform": "factory_to_vak",
+      "metadata": {"goaF_pattern": "creational", "complexity": "low"}
+    },
+    {
+      "name": "singleton",
+      "description": "Singleton pattern: class with instance management",
+      "category": "design",
+      "regex": "(?:_instance|getInstance|_shared_instance|class\\s+Singleton)",
+      "template": "श्रेणी {class_name} {\n    स्थिर _संस्था = अपरिभाषित\n    कर्म getInstance() {\n        यदि (_संस्था == अपरिभाषित) {\n            _संस्था = नया {class_name}()\n        }\n        लौटाओ _संस्था\n    }\n}",
+      "transform": "singleton_to_vak",
+      "metadata": {"goaF_pattern": "creational", "complexity": "low"}
+    },
+    {
+      "name": "observer",
+      "description": "Observer pattern: subscribe/notify/event handling",
+      "category": "design",
+      "regex": "(?:subscribe|notify|on_\\w+|emit|addEventListener|Observer)",
+      "template": "श्रेणी {subject_class} {\n    संग्रह observers = []\n    कर्म subscribe(observer) {\n        observers.जोडें(observer)\n    }\n    कर्म notify(data) {\n        के_लिए obs में observers {\n            obs.update(data)\n        }\n    }\n}",
+      "transform": "observer_to_vak",
+      "metadata": {"goaF_pattern": "behavioral", "complexity": "medium"}
+    },
+    {
+      "name": "strategy",
+      "description": "Strategy pattern: interchangeable algorithm families",
+      "category": "design",
+      "regex": "(?:Strategy|strategy|execute|algorithm|context)",
+      "template": "श्रेणी {context_class} {\n    परिवर्तनी strategy = अपरिभाषित\n    कर्म setStrategy(strategy) {\n        this.strategy = strategy\n    }\n    कर्म execute(data) {\n        लौटाओ strategy.execute(data)\n    }\n}",
+      "transform": "strategy_to_vak",
+      "metadata": {"goaF_pattern": "behavioral", "complexity": "medium"}
+    },
+    {
+      "name": "decorator",
+      "description": "Decorator pattern: wrapping objects to add behavior",
+      "category": "design",
+      "regex": "(?:@\\w+|decorator|wraps|@functools\\.wraps|class\\s+\\w+Decorator)",
+      "template": "कर्म {decorator_name}(func) {\n    कर्म wrapper(*args, **kwargs) {\n        # Before\n        result = func(*args, **kwargs)\n        # After\n        लौटाओ result\n    }\n    लौटाओ wrapper\n}",
+      "transform": "decorator_to_vak",
+      "metadata": {"goaF_pattern": "structural", "complexity": "medium"}
+    },
+    {
+      "name": "adapter",
+      "description": "Adapter pattern: interface conversion between incompatible interfaces",
+      "category": "design",
+      "regex": "(?:Adapter|adapter|Target|Adaptee|wrap)",
+      "template": "श्रेणी {adapter_class} {\n    परिवर्तनी adaptee = अपरिभाषित\n    कर्म __init__(adaptee) {\n        this.adaptee = adaptee\n    }\n    कर्म request() {\n        लौटाओ adaptee.specificRequest()\n    }\n}",
+      "transform": "adapter_to_vak",
+      "metadata": {"goaF_pattern": "structural", "complexity": "low"}
+    },
+    {
+      "name": "builder",
+      "description": "Builder pattern: step-by-step object construction",
+      "category": "design",
+      "regex": "(?:Builder|builder|build\\(\\)|step|Director)",
+      "template": "श्रेणी {builder_class} {\n    परिवर्तनी product = अपरिभाषित\n    कर्म step1() {\n        # configure part 1\n        लौटाओ self\n    }\n    कर्म step2() {\n        # configure part 2\n        लौटाओ self\n    }\n    कर्म build() {\n        लौटाओ product\n    }\n}",
+      "transform": "builder_to_vak",
+      "metadata": {"goaF_pattern": "creational", "complexity": "medium"}
+    },
+    {
+      "name": "command",
+      "description": "Command pattern: encapsulate requests as objects",
+      "category": "design",
+      "regex": "(?:Command|command|execute|undo|Invoker)",
+      "template": "श्रेणी {command_class} {\n    कर्म execute() {\n        # perform action\n    }\n    कर्म undo() {\n        # reverse action\n    }\n}",
+      "transform": "command_to_vak",
+      "metadata": {"goaF_pattern": "behavioral", "complexity": "medium"}
+    },
+    {
+      "name": "iterator",
+      "description": "Iterator pattern: sequential access to aggregate elements",
+      "category": "design",
+      "regex": "(?:Iterator|iterator|__iter__|__next__|hasNext|next)",
+      "template": "श्रेणी {iterator_class} {\n    कर्म __iter__() {\n        लौटाओ self\n    }\n    कर्म __next__() {\n        # return next element or raise StopIteration\n    }\n}",
+      "transform": "iterator_to_vak",
+      "metadata": {"goaF_pattern": "behavioral", "complexity": "low"}
+    },
+    {
+      "name": "proxy",
+      "description": "Proxy pattern: surrogate controlling access",
+      "category": "design",
+      "regex": "(?:Proxy|proxy|RealSubject|VirtualProxy|ProtectionProxy)",
+      "template": "श्रेणी {proxy_class} {\n    परिवर्तनी real_subject = अपरिभाषित\n    कर्म request() {\n        यदि (real_subject == अपरिभाषित) {\n            real_subject = RealSubject()\n        }\n        लौटाओ real_subject.request()\n    }\n}",
+      "transform": "proxy_to_vak",
+      "metadata": {"goaF_pattern": "structural", "complexity": "medium"}
+    }
+  ]
+}

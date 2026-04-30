@@ -170,19 +170,55 @@ def canonical_module_names(stdlib_root: str | Path | None = None) -> set[str]:
     return {spec.canonical or spec.name for spec in manifest.values()}
 
 
+def compatibility_module_names(stdlib_root: str | Path | None = None) -> set[str]:
+    manifest = build_stdlib_manifest(stdlib_root)
+    return {name for name, spec in manifest.items() if spec.tier == "compatibility"}
+
+
+def canonical_module_specs(stdlib_root: str | Path | None = None) -> dict[str, StdlibModuleSpec]:
+    manifest = build_stdlib_manifest(stdlib_root)
+    canonical: dict[str, StdlibModuleSpec] = {}
+    for spec in manifest.values():
+        key = spec.canonical or spec.name
+        canonical.setdefault(key, spec)
+    return canonical
+
+
+def resolve_module_name(name: str, stdlib_root: str | Path | None = None) -> str | None:
+    manifest = build_stdlib_manifest(stdlib_root)
+    aliases = module_alias_map(stdlib_root)
+    if name in manifest:
+        return manifest[name].canonical or manifest[name].name
+    return aliases.get(name) or aliases.get(name.lower())
+
+
 def format_stdlib_manifest(stdlib_root: str | Path | None = None) -> str:
     manifest = build_stdlib_manifest(stdlib_root)
     lines = ["वाक् मानक पुस्तकालय मानचित्र"]
+    grouped: dict[str, list[StdlibModuleSpec]] = {"main": [], "compatibility": [], "alias": []}
     emitted: set[str] = set()
     for spec in sorted(manifest.values(), key=lambda item: (item.tier != "main", item.name)):
         if spec.name in emitted:
             continue
         emitted.add(spec.name)
-        canonical = spec.canonical or spec.name
-        suffix = ""
-        if spec.name != canonical:
-            suffix = f" -> canonical {canonical}"
-        elif spec.aliases:
-            suffix = f" | aliases: {', '.join(spec.aliases)}"
-        lines.append(f"- {spec.name} [{spec.tier}]{suffix}")
+        grouped.setdefault(spec.tier, []).append(spec)
+
+    for tier in ("main", "compatibility", "alias"):
+        specs = grouped.get(tier, [])
+        if not specs:
+            continue
+        title = {
+            "main": "मुख्य मॉड्यूल",
+            "compatibility": "संगतता मॉड्यूल",
+            "alias": "उपनाम",
+        }.get(tier, tier)
+        lines.append(f"{title}:")
+        for spec in specs:
+            canonical = spec.canonical or spec.name
+            suffix = ""
+            if spec.name != canonical:
+                suffix = f" -> canonical {canonical}"
+            elif spec.aliases:
+                suffix = f" | aliases: {', '.join(spec.aliases)}"
+            lines.append(f"- {spec.name}{suffix}")
     return "\n".join(lines)

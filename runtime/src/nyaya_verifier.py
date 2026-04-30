@@ -166,6 +166,9 @@ class ProofSandbox:
         self.step_count = 0
         self.env: Dict[str, Any] = dict(initial_env or {})
         self.builtins: Dict[str, Any] = {}
+        self.kernel_verifier = KernelProofVerifier(
+            settings=getattr(self.engine, "settings", SansmaticSettings.from_env())
+        )
         self._install_builtins()
 
     def execute(self, evidence: Any) -> ProofResult:
@@ -214,6 +217,24 @@ class ProofSandbox:
             self.execution_trace.append(f"PRINT {rendered}")
             return None
 
+        def _kernel_spec(term: Any, expected_type: Any = None, context: Any = None) -> dict[str, Any]:
+            payload: dict[str, Any] = {"term": str(term)}
+            if expected_type is not None:
+                payload["type"] = str(expected_type)
+            if context is not None:
+                payload["context"] = context
+            self.execution_trace.append(f"KERNEL_SPEC {payload}")
+            return payload
+
+        def _kernel_report(term: Any, expected_type: Any = None, context: Any = None) -> dict[str, Any]:
+            certificate = self.kernel_verifier.verify(_kernel_spec(term, expected_type, context))
+            status = "✓" if certificate.verified else "✗"
+            self.execution_trace.append(f"KERNEL_VERIFY {status} {certificate.judgment}")
+            return certificate.payload
+
+        def _kernel_valid(term: Any, expected_type: Any = None, context: Any = None) -> bool:
+            return bool(_kernel_report(term, expected_type, context).get("verified"))
+
         self.builtins = {
             "परिभाषय": lambda name, props: self.engine.define(str(name), props),
             "दावा": lambda entity, relation, prop, proof_id=None: self.engine.assert_fact(
@@ -253,6 +274,9 @@ class ProofSandbox:
             "min": min,
             "max": max,
             "sorted": sorted,
+            "कर्नेल_निर्णय": _kernel_spec,
+            "कर्नेल_रिपोर्ट": _kernel_report,
+            "कर्नेल_मान्य_है": _kernel_valid,
         }
         self.builtins.update(self.engine.predicates)
 
@@ -731,6 +755,7 @@ class NyayaProofVerifier:
         evidence: Any,
         *,
         statement_expr: Any = None,
+        kernel_expr: Any = None,
         certificate_hint: Optional[str] = None,
     ) -> ProofCertificate:
         if self.policy.emit_audit_events:
@@ -743,6 +768,25 @@ class NyayaProofVerifier:
             max_steps=self.policy.max_steps,
         )
         result = sandbox.execute(evidence)
+
+        kernel_payload = self._kernel_payload_from_result(
+            statement_expr=statement_expr,
+            kernel_expr=kernel_expr,
+            result_value=result.value,
+        )
+        if kernel_payload is not None:
+            cert = self._verify_kernel_payload(statement, kernel_payload, result)
+            self.proofs[statement] = cert
+            if self.policy.emit_audit_events:
+                emit_audit_event(
+                    "vak.proof.verify.complete",
+                    statement,
+                    cert.verified,
+                    cert.pramana.name,
+                    cert.confidence,
+                    result.steps,
+                )
+            return cert
 
         verified, reason = self._check_statement(
             statement,
@@ -784,6 +828,121 @@ class NyayaProofVerifier:
                 result.steps,
             )
         return cert
+
+    def _kernel_payload_from_result(
+        self,
+        *,
+        statement_expr: Any,
+        kernel_expr: Any,
+        result_value: Any,
+    ) -> dict[str, Any] | None:
+        payload = self._kernel_payload_from_value(result_value)
+        if payload is not None:
+            return payload
+        if kernel_expr is not None:
+            payload = self._kernel_payload_from_expr(kernel_expr)
+            if payload is not None:
+                return payload
+        return self._kernel_payload_from_expr(statement_expr)
+
+    @staticmethod
+    def _kernel_payload_from_value(value: Any) -> dict[str, Any] | None:
+        if isinstance(value, dict):
+            if value.get("kind") == "sansmatic_kernel_certificate":
+                return value
+            if "term" in value and ("type" in value or "expected_type" in value):
+                payload = dict(value)
+                if "expected_type" in payload and "type" not in payload:
+                    payload["type"] = payload.pop("expected_type")
+                return payload
+        return None
+
+    def _kernel_payload_from_expr(self, expr: Any) -> dict[str, Any] | None:
+        from .ast_nodes import (
+            BoolLiteral,
+            DictLiteral,
+            ListLiteral,
+            NullLiteral,
+            NumberLiteral,
+            SetLiteral,
+            StringLiteral,
+            TupleLiteral,
+        )
+
+        if isinstance(expr, DictLiteral):
+            payload: dict[str, Any] = {}
+            for key_expr, value_expr in expr.pairs:
+                key = self._kernel_literal_value(key_expr)
+                if not isinstance(key, str):
+                    return None
+                payload[key] = self._kernel_literal_value(value_expr)
+            return self._kernel_payload_from_value(payload)
+        if isinstance(expr, (StringLiteral, NumberLiteral, BoolLiteral, NullLiteral, ListLiteral, TupleLiteral, SetLiteral)):
+            return self._kernel_payload_from_value(self._kernel_literal_value(expr))
+        return None
+
+    def _kernel_literal_value(self, expr: Any) -> Any:
+        from .ast_nodes import (
+            BoolLiteral,
+            DictLiteral,
+            ListLiteral,
+            NullLiteral,
+            NumberLiteral,
+            SetLiteral,
+            StringLiteral,
+            TupleLiteral,
+        )
+
+        if isinstance(expr, NumberLiteral):
+            return expr.value
+        if isinstance(expr, StringLiteral):
+            return expr.value
+        if isinstance(expr, BoolLiteral):
+            return expr.value
+        if isinstance(expr, NullLiteral):
+            return None
+        if isinstance(expr, ListLiteral):
+            return [self._kernel_literal_value(item) for item in expr.elements]
+        if isinstance(expr, TupleLiteral):
+            return tuple(self._kernel_literal_value(item) for item in expr.elements)
+        if isinstance(expr, SetLiteral):
+            return [self._kernel_literal_value(item) for item in expr.elements]
+        if isinstance(expr, DictLiteral):
+            return {
+                self._kernel_literal_value(key): self._kernel_literal_value(value)
+                for key, value in expr.pairs
+            }
+        return None
+
+    def _verify_kernel_payload(
+        self,
+        statement: str,
+        payload: dict[str, Any],
+        result: ProofResult,
+    ) -> ProofCertificate:
+        if payload.get("kind") == "sansmatic_kernel_certificate":
+            verified = KernelProofVerifier().verify_certificate(payload)
+            certificate_hash = str(payload.get("hash", ""))
+            reason = payload.get("reason")
+            judgment = str(payload.get("judgment", statement))
+        else:
+            kernel_certificate = self.verify_kernel_judgment(payload)
+            verified = kernel_certificate.verified
+            certificate_hash = kernel_certificate.certificate_hash
+            reason = kernel_certificate.reason
+            judgment = kernel_certificate.judgment
+            payload = kernel_certificate.payload
+
+        return ProofCertificate(
+            statement=judgment,
+            verified=verified,
+            pramana=Pramana.SHABDA,
+            confidence=1.0 if verified else 0.0,
+            timestamp=time.time(),
+            certificate_hash=certificate_hash,
+            reason=reason,
+            payload=payload,
+        )
 
     def _check_statement(
         self,
@@ -878,6 +1037,7 @@ class NyayaProofVerifier:
             VarDecl,
             WhileStmt,
             WithStmt,
+            AsyncWithStmt,
         )
 
         if isinstance(node, Block):
@@ -886,7 +1046,7 @@ class NyayaProofVerifier:
             return NyayaProofVerifier._expression_has_meaningful_evidence(node.expr)
         if isinstance(node, VarDecl):
             return node.value is not None and NyayaProofVerifier._expression_has_meaningful_evidence(node.value)
-        if isinstance(node, (IfStmt, WhileStmt, ForStmt, MatchStmt, TryStmt, WithStmt, ThrowStmt, ReturnStmt)):
+        if isinstance(node, (IfStmt, WhileStmt, ForStmt, MatchStmt, TryStmt, WithStmt, AsyncWithStmt, ThrowStmt, ReturnStmt)):
             return True
         if isinstance(node, AssignExpr):
             return NyayaProofVerifier._expression_has_meaningful_evidence(node.value)
@@ -902,6 +1062,7 @@ class NyayaProofVerifier:
             DictLiteral,
             DictComp,
             FStringExpr,
+            GeneratorExpr,
             IdentifierExpr,
             IndexExpr,
             ListLiteral,
@@ -918,7 +1079,7 @@ class NyayaProofVerifier:
 
         if isinstance(node, CallExpr):
             return True
-        if isinstance(node, (ListComp, DictComp)):
+        if isinstance(node, (ListComp, DictComp, GeneratorExpr)):
             return True
         if isinstance(node, AssignExpr):
             return NyayaProofVerifier._expression_has_meaningful_evidence(node.value)

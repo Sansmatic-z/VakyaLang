@@ -8,6 +8,7 @@
 
 from typing import Any, Dict, List, Optional
 from .ast_nodes import *
+from .compiler_support import copy_dynamic_node_attrs
 from .errors import MacroError
 from .rewrite_engine import (
     match_pattern,
@@ -144,18 +145,29 @@ class MacroExpander:
                 body=self._transform_node(node.body),
                 line=node.line
             )
+
+        elif isinstance(node, AsyncForStmt):
+            return AsyncForStmt(
+                var_names=list(node.var_names),
+                iterable=self._transform_node(node.iterable),
+                body=self._transform_node(node.body),
+                line=node.line,
+            )
         
         elif isinstance(node, FuncDecl):
-            return FuncDecl(
-                name=node.name,
-                params=node.params,
-                defaults=node.defaults,
-                varargs=node.varargs,
-                body=self._transform_node(node.body),
-                return_type=node.return_type,
-                is_async=node.is_async,
-                vibhakti_signature=getattr(node, 'vibhakti_signature', None),
-                line=node.line
+            return copy_dynamic_node_attrs(
+                node,
+                FuncDecl(
+                    name=node.name,
+                    params=node.params,
+                    defaults=node.defaults,
+                    varargs=node.varargs,
+                    body=self._transform_node(node.body),
+                    return_type=node.return_type,
+                    is_async=node.is_async,
+                    vibhakti_signature=getattr(node, 'vibhakti_signature', None),
+                    line=node.line,
+                ),
             )
         
         elif isinstance(node, ClassDecl):
@@ -187,7 +199,19 @@ class MacroExpander:
                 value=self._transform_node(node.value) if node.value else None,
                 line=node.line
             )
-        
+
+        elif isinstance(node, YieldStmt):
+            return YieldStmt(
+                value=self._transform_node(node.value) if node.value else None,
+                line=node.line,
+            )
+
+        elif isinstance(node, YieldFromStmt):
+            return YieldFromStmt(
+                iterable=self._transform_node(node.iterable) if node.iterable else None,
+                line=node.line,
+            )
+
         elif isinstance(node, PrintStmt):
             return PrintStmt(
                 values=[self._transform_node(v) for v in node.values],
@@ -258,6 +282,7 @@ class MacroExpander:
                 var_name=node.var_name,
                 iterable=self._transform_node(node.iterable),
                 filter_expr=self._transform_node(node.filter_expr) if node.filter_expr else None,
+                is_async=node.is_async,
                 line=node.line
             )
 
@@ -268,6 +293,17 @@ class MacroExpander:
                 var_name=node.var_name,
                 iterable=self._transform_node(node.iterable),
                 filter_expr=self._transform_node(node.filter_expr) if node.filter_expr else None,
+                is_async=node.is_async,
+                line=node.line
+            )
+
+        elif isinstance(node, GeneratorExpr):
+            return GeneratorExpr(
+                expr=self._transform_node(node.expr),
+                var_name=node.var_name,
+                iterable=self._transform_node(node.iterable),
+                filter_expr=self._transform_node(node.filter_expr) if node.filter_expr else None,
+                is_async=node.is_async,
                 line=node.line
             )
         
@@ -279,6 +315,14 @@ class MacroExpander:
         
         elif isinstance(node, WithStmt):
             return WithStmt(
+                expr=self._transform_node(node.expr),
+                var_name=node.var_name,
+                body=self._transform_node(node.body),
+                line=node.line
+            )
+
+        elif isinstance(node, AsyncWithStmt):
+            return AsyncWithStmt(
                 expr=self._transform_node(node.expr),
                 var_name=node.var_name,
                 body=self._transform_node(node.body),

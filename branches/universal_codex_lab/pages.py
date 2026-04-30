@@ -40,6 +40,7 @@ class CSubsetCodexPage(CodexPage):
     emits_vak = True
     extensions = ("c", "h")
     experimental = True
+    max_fixpoint_passes = 2
 
     def probe(self, source: str, *, filename: str | None = None) -> CodexPageProbe:
         if filename and filename.lower().endswith((".c", ".h")):
@@ -106,6 +107,19 @@ class CSubsetCodexPage(CodexPage):
             )
             if decl_only_match:
                 lines.append(f"चर {decl_only_match.group(1)}")
+                continue
+
+            for_match = re.match(
+                r"^for\s*\(\s*(?:int\s+)?([A-Za-z_]\w*)\s*=\s*(.+?)\s*;\s*\1\s*(<|<=)\s*(.+?)\s*;\s*\1\+\+\s*\)\s*\{?$",
+                line,
+            )
+            if for_match:
+                name, start, comparator, stop = for_match.groups()
+                range_stop = stop if comparator == "<" else f"({stop}) + 1"
+                suffix = " {" if raw.strip().endswith("{") else ""
+                lines.append(
+                    f"प्रत्येक चर {name} अन्तर्गत परास({start}, {range_stop}){suffix}"
+                )
                 continue
 
             while_match = re.match(r"^while\s*\((.+)\)\s*\{?$", line)
@@ -177,6 +191,7 @@ class RustSubsetCodexPage(CodexPage):
     emits_vak = True
     extensions = ("rs",)
     experimental = True
+    max_fixpoint_passes = 2
 
     def probe(self, source: str, *, filename: str | None = None) -> CodexPageProbe:
         if filename and filename.lower().endswith(".rs"):
@@ -248,6 +263,18 @@ class RustSubsetCodexPage(CodexPage):
                 suffix = " {" if raw.strip().endswith("{") else ""
                 lines.append(f"यावत् {while_match.group(1)}{suffix}")
                 continue
+            for_match = re.match(
+                r"^for\s+([A-Za-z_]\w*)\s+in\s+(.+?)\.\.(=?)(.+?)(?:\s*\{)?$",
+                line,
+            )
+            if for_match:
+                name, start, inclusive, stop = for_match.groups()
+                range_stop = stop if inclusive != "=" else f"({stop}) + 1"
+                suffix = " {" if raw.strip().endswith("{") else ""
+                lines.append(
+                    f"प्रत्येक चर {name} अन्तर्गत परास({start}, {range_stop}){suffix}"
+                )
+                continue
             if re.match(r"^loop\s*\{?$", line):
                 suffix = " {" if raw.strip().endswith("{") else ""
                 lines.append(f"यावत् सत्य{suffix}")
@@ -300,6 +327,7 @@ class NaturalLanguageSuggestCodexPage(CodexPage):
     _SUPPORTED_PATTERNS = (
         re.compile(r"^print numbers from \d+ to \d+$"),
         re.compile(r"^print even numbers from \d+ to \d+$"),
+        re.compile(r"^repeat \d+ times print .+$"),
         re.compile(r"^set [a-z_]\w* to .+$"),
         re.compile(r"^if [a-z_]\w* is greater than \d+ then print [a-z_]\w*$"),
     )
@@ -340,17 +368,26 @@ class NaturalLanguageSuggestCodexPage(CodexPage):
                 )
                 transformed = True
             else:
-                match = re.fullmatch(r"set ([a-z_]\w*) to (.+)", lowered)
+                match = re.fullmatch(r"repeat (\d+) times print (.+)", lowered)
                 if match:
-                    name, value = match.groups()
-                    output = f"चर {name} = {value}"
+                    count, value = match.groups()
+                    output = (
+                        f"प्रत्येक चर _i अन्तर्गत परास(0, {count}):\n"
+                        f"    मुद्रय({value})"
+                    )
                     transformed = True
                 else:
-                    match = re.fullmatch(r"if ([a-z_]\w*) is greater than (\d+) then print ([a-z_]\w*)", lowered)
+                    match = re.fullmatch(r"set ([a-z_]\w*) to (.+)", lowered)
                     if match:
-                        name, number, target = match.groups()
-                        output = f"यदि {name} > {number}:\n    मुद्रय({target})"
+                        name, value = match.groups()
+                        output = f"चर {name} = {value}"
                         transformed = True
+                    else:
+                        match = re.fullmatch(r"if ([a-z_]\w*) is greater than (\d+) then print ([a-z_]\w*)", lowered)
+                        if match:
+                            name, number, target = match.groups()
+                            output = f"यदि {name} > {number}:\n    मुद्रय({target})"
+                            transformed = True
 
         if not transformed:
             diagnostics.append(

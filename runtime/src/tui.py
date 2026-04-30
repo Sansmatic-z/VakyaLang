@@ -159,6 +159,7 @@ class VakTuiApp:
         self.vpm_last_output = ""
         self.vpm_last_search: list[dict[str, Any]] = []
         self.vpm_last_info: dict[str, Any] | None = None
+        self.vpm_last_cache: dict[str, Any] | None = None
         self.repair_file: Path | None = None
         self.repair_original_source = ""
         self.repair_result: RupantarResult | None = None
@@ -239,6 +240,10 @@ class VakTuiApp:
                 "  define <name> <prop...>\n"
                 "  assert <entity> <relation> <property> [proof_id]\n"
                 "  rule <a b c> => <x y z>\n"
+                "  theorem list [tag]\n"
+                "  theorem show <name>\n"
+                "  theorem fact <name> <entity> <relation> <property>\n"
+                "  theorem rule <name> <a b c> => <x y z>\n"
                 "  eval <entity> <relation> <property>\n"
                 "  backward <entity> <relation> <property>\n"
                 "  summary\n"
@@ -270,35 +275,49 @@ class VakTuiApp:
                 "VPM आदेश:\n"
                 "  init\n"
                 "  installed\n"
+                "  python\n"
                 "  search <query>\n"
                 "  info <package>\n"
                 "  install <package>\n"
                 "  remove <package>\n"
+                "  remove-py <package>\n"
+                "  update [package]\n"
+                "  lock\n"
+                "  cache [info|clear]\n"
                 "  cwd <path>\n"
             ),
             "repair": (
                 "रूपान्तर आदेश:\n"
-                "  load <path>\n"
+                "  load|open <path>\n"
+                "  reload\n"
+                "  workspace\n"
                 "  branches [name...]\n"
+                "  branch <name> [on|off|toggle]\n"
                 "  analyze\n"
                 "  report\n"
                 "  diff\n"
                 "  show original|current\n"
                 "  apply [path]\n"
+                "  save [path]\n"
                 "  reject\n"
             ),
             "codex": (
                 "कोडेक्स आदेश:\n"
-                "  load <path>\n"
+                "  load|open <path>\n"
+                "  reload\n"
+                "  workspace\n"
                 "  chapters\n"
                 "  pages\n"
                 "  page <name|auto>\n"
                 "  branches [name...]\n"
+                "  branch <name> [on|off|toggle]\n"
+                "  promotion [page]\n"
                 "  analyze\n"
                 "  report\n"
                 "  diff\n"
                 "  show original|current\n"
                 "  apply [path]\n"
+                "  save [path]\n"
                 "  reject\n"
             ),
         }
@@ -400,18 +419,94 @@ class VakTuiApp:
             proved = self.sansmatic.backward_chain((parts[1], parts[2], parts[3]))
             result = "✓ लक्ष्य सिद्ध है" if proved else "✗ लक्ष्य सिद्ध नहीं है"
         elif op == "summary":
-            result = str(self.sansmatic.summary())
+            result = self.sansmatic.summary_text()
         elif op == "trace":
             limit = int(parts[1]) if len(parts) > 1 else 10
-            result = str(self.sansmatic.trace(limit=limit))
+            result = self.sansmatic.trace_text(limit=limit)
         elif op == "tree":
             if len(parts) < 4:
                 raise VakTuiError("tree <entity> <relation> <property> अपेक्षित")
-            result = str(self.sansmatic.proof_tree((parts[1], parts[2], parts[3])))
+            result = self.sansmatic.proof_tree_text((parts[1], parts[2], parts[3]))
         elif op == "explain":
             if len(parts) < 4:
                 raise VakTuiError("explain <entity> <relation> <property> अपेक्षित")
-            result = str(self.sansmatic.explain((parts[1], parts[2], parts[3])))
+            result = self.sansmatic.explain_text((parts[1], parts[2], parts[3]))
+        elif op == "theorems":
+            rows = self.sansmatic.list_theorems(parts[1] if len(parts) > 1 else None)
+            if not rows:
+                result = "कोई प्रमेय पंजीकृत नहीं"
+            else:
+                lines = ["प्रमेय सूची"]
+                for item in rows:
+                    suffix = ""
+                    if "proved" in item:
+                        suffix = f" | सिद्ध={'हाँ' if item['proved'] else 'नहीं'}"
+                    if "active" in item:
+                        suffix = f"{suffix} | सक्रिय={'हाँ' if item['active'] else 'नहीं'}"
+                    lines.append(
+                        f"- {item['name']} [{item['kind']}] {item['statement']}{suffix}"
+                    )
+                result = "\n".join(lines)
+        elif op == "theorem":
+            if len(parts) < 2:
+                raise VakTuiError("theorem list|show|fact|rule अपेक्षित")
+            subop = parts[1].lower()
+            if subop == "list":
+                rows = self.sansmatic.list_theorems(parts[2] if len(parts) > 2 else None)
+                if not rows:
+                    result = "कोई प्रमेय पंजीकृत नहीं"
+                else:
+                    lines = ["प्रमेय सूची"]
+                    for item in rows:
+                        lines.append(f"- {item['name']} [{item['kind']}] {item['statement']}")
+                    result = "\n".join(lines)
+            elif subop == "show":
+                if len(parts) < 3:
+                    raise VakTuiError("theorem show <name> अपेक्षित")
+                detail = self.sansmatic.theorem_details(parts[2])
+                if detail is None:
+                    raise VakTuiError(f"अज्ञात प्रमेय: {parts[2]}")
+                lines = [
+                    f"प्रमेय: {detail['name']}",
+                    f"प्रकार: {detail['kind']}",
+                ]
+                if "statement" in detail:
+                    lines.append(f"वचन: {detail['statement']}")
+                if "premise" in detail and "conclusion" in detail:
+                    lines.append(f"नियम: {detail['premise']} ⇒ {detail['conclusion']}")
+                if "proved" in detail:
+                    lines.append(f"सिद्ध: {'हाँ' if detail['proved'] else 'नहीं'}")
+                if detail.get("blocked_by"):
+                    lines.append(f"अवरोध: {', '.join(detail['blocked_by'])}")
+                if detail.get("tags"):
+                    lines.append(f"टैग: {', '.join(detail['tags'])}")
+                if detail.get("note"):
+                    lines.append(f"टिप्पणी: {detail['note']}")
+                result = "\n".join(lines)
+            elif subop == "fact":
+                if len(parts) < 6:
+                    raise VakTuiError("theorem fact <name> <entity> <relation> <property> अपेक्षित")
+                payload = self.sansmatic.register_theorem(
+                    parts[2],
+                    (parts[3], parts[4], parts[5]),
+                    note=" ".join(parts[6:]) if len(parts) > 6 else None,
+                )
+                result = f"प्रमेय पंजीकृत: {payload['name']}"
+            elif subop == "rule":
+                if "=>" not in parts:
+                    raise VakTuiError("theorem rule <name> <a b c> => <x y z> अपेक्षित")
+                if len(parts) < 4:
+                    raise VakTuiError("theorem rule <name> <a b c> => <x y z> अपेक्षित")
+                arrow_index = parts.index("=>")
+                theorem_name = parts[2]
+                left = parts[3:arrow_index]
+                right = parts[arrow_index + 1 :]
+                premise = self._parse_fact_parts(left)
+                conclusion = self._parse_fact_parts(right)
+                payload = self.sansmatic.register_rule_theorem(theorem_name, premise, conclusion)
+                result = f"प्रमेय नियम पंजीकृत: {payload['name']}"
+            else:
+                raise VakTuiError("theorem list|show|fact|rule अपेक्षित")
         elif op == "snapshot":
             name = parts[1] if len(parts) > 1 else f"snapshot_{len(self.proof_snapshots) + 1}"
             self.proof_snapshots[name] = self.sansmatic.snapshot()
@@ -443,6 +538,47 @@ class VakTuiApp:
         if not path.is_absolute():
             path = self.cwd / path
         return path.resolve()
+
+    def _default_workspace_save_path(self, target: Path | None, suffix: str) -> Path:
+        if target is None:
+            return (self.cwd / suffix).resolve()
+        return target.with_name(f"{target.stem}.{suffix}{target.suffix}")
+
+    @staticmethod
+    def _toggle_workspace_branch(
+        branches: tuple[str, ...],
+        name: str,
+        action: str,
+    ) -> tuple[str, ...]:
+        updated = list(branches)
+        exists = name in updated
+        mode = action.lower()
+        if mode == "toggle":
+            mode = "off" if exists else "on"
+        if mode == "on" and not exists:
+            updated.append(name)
+        elif mode == "off" and exists:
+            updated.remove(name)
+        return tuple(updated)
+
+    def _workspace_summary(
+        self,
+        *,
+        kind: str,
+        file: Path | None,
+        branches: tuple[str, ...],
+        page: str | None = None,
+        analyzed: bool = False,
+    ) -> str:
+        lines = [
+            f"कार्यस्थल: {kind}",
+            f"फ़ाइल: {file if file is not None else 'कोई नहीं'}",
+            f"शाखाएँ: {', '.join(branches) if branches else 'कोई नहीं'}",
+            f"विश्लेषण: {'हाँ' if analyzed else 'नहीं'}",
+        ]
+        if page is not None:
+            lines.append(f"पृष्ठ: {page}")
+        return "\n".join(lines)
 
     def _repair_diff_text(self) -> str:
         if self.repair_result is None or self.repair_file is None:
@@ -481,7 +617,7 @@ class VakTuiApp:
         if not parts:
             return self.status_message
         op = parts[0].lower()
-        if op == "load":
+        if op in {"load", "open"}:
             if len(parts) < 2:
                 raise VakTuiError("load <path> अपेक्षित")
             target = self._resolve_workspace_path(parts[1])
@@ -489,11 +625,42 @@ class VakTuiApp:
             self.repair_original_source = target.read_text(encoding="utf-8")
             self.repair_result = None
             return self._record(f"रूपान्तर फ़ाइल लोड हुई: {target}")
+        if op == "reload":
+            if self.repair_file is None:
+                raise VakTuiError("पहले load <path> चलाएँ")
+            self.repair_original_source = self.repair_file.read_text(encoding="utf-8")
+            self.repair_result = None
+            return self._record(f"रूपान्तर फ़ाइल पुनः लोड हुई: {self.repair_file}")
+        if op == "workspace":
+            return self._record(
+                self._workspace_summary(
+                    kind="रूपान्तर",
+                    file=self.repair_file,
+                    branches=self.repair_branches,
+                    analyzed=self.repair_result is not None,
+                )
+            )
         if op == "branches":
+            if len(parts) == 1:
+                if self.repair_branches:
+                    return self._record(f"रूपान्तर शाखाएँ: {', '.join(self.repair_branches)}")
+                return self._record("रूपान्तर शाखाएँ: कोई नहीं")
             self.repair_branches = tuple(parts[1:])
             if self.repair_branches:
                 return self._record(f"रूपान्तर शाखाएँ: {', '.join(self.repair_branches)}")
             return self._record("रूपान्तर शाखाएँ साफ की गईं")
+        if op == "branch":
+            if len(parts) < 2:
+                raise VakTuiError("branch <name> [on|off|toggle] अपेक्षित")
+            action = parts[2] if len(parts) > 2 else "toggle"
+            self.repair_branches = self._toggle_workspace_branch(
+                self.repair_branches,
+                parts[1],
+                action,
+            )
+            if self.repair_branches:
+                return self._record(f"रूपान्तर शाखाएँ: {', '.join(self.repair_branches)}")
+            return self._record("रूपान्तर शाखाएँ: कोई नहीं")
         if op == "analyze":
             if self.repair_file is None:
                 raise VakTuiError("पहले load <path> चलाएँ")
@@ -529,7 +696,20 @@ class VakTuiApp:
             if target is None:
                 raise VakTuiError("कोई लक्ष्य फ़ाइल नहीं")
             target.write_text(self.repair_result.source, encoding="utf-8")
+            if self.repair_file is not None and target == self.repair_file:
+                self.repair_original_source = self.repair_result.source
+                self.repair_result = None
             return self._record(f"रूपान्तर परिणाम लिखा गया: {target}")
+        if op == "save":
+            if self.repair_result is None:
+                raise VakTuiError("पहले analyze चलाएँ")
+            target = (
+                self._default_workspace_save_path(self.repair_file, "rupantar")
+                if len(parts) < 2
+                else self._resolve_workspace_path(parts[1])
+            )
+            target.write_text(self.repair_result.source, encoding="utf-8")
+            return self._record(f"रूपान्तर सहेजा गया: {target}")
         if op == "reject":
             self.repair_result = None
             return self._record("रूपान्तर परिणाम हटाया गया")
@@ -540,7 +720,7 @@ class VakTuiApp:
         if not parts:
             return self.status_message
         op = parts[0].lower()
-        if op == "load":
+        if op in {"load", "open"}:
             if len(parts) < 2:
                 raise VakTuiError("load <path> अपेक्षित")
             target = self._resolve_workspace_path(parts[1])
@@ -548,6 +728,22 @@ class VakTuiApp:
             self.codex_original_source = target.read_text(encoding="utf-8")
             self.codex_result = None
             return self._record(f"कोडेक्स फ़ाइल लोड हुई: {target}")
+        if op == "reload":
+            if self.codex_file is None:
+                raise VakTuiError("पहले load <path> चलाएँ")
+            self.codex_original_source = self.codex_file.read_text(encoding="utf-8")
+            self.codex_result = None
+            return self._record(f"कोडेक्स फ़ाइल पुनः लोड हुई: {self.codex_file}")
+        if op == "workspace":
+            return self._record(
+                self._workspace_summary(
+                    kind="कोडेक्स",
+                    file=self.codex_file,
+                    branches=self.codex_branches,
+                    page=self.codex_page,
+                    analyzed=self.codex_result is not None,
+                )
+            )
         if op == "pages":
             codex = build_default_codex(active_branches=list(self.codex_branches))
             names = ", ".join(item["name"] for item in codex.list_pages())
@@ -561,14 +757,34 @@ class VakTuiApp:
             return self._record("\n".join(lines) if lines else "कोई कोडेक्स अध्याय नहीं")
         if op == "page":
             if len(parts) < 2:
-                raise VakTuiError("page <name|auto> अपेक्षित")
+                return self._record(f"कोडेक्स पृष्ठ: {self.codex_page}")
             self.codex_page = parts[1]
             return self._record(f"कोडेक्स पृष्ठ: {self.codex_page}")
         if op == "branches":
+            if len(parts) == 1:
+                if self.codex_branches:
+                    return self._record(f"कोडेक्स शाखाएँ: {', '.join(self.codex_branches)}")
+                return self._record("कोडेक्स शाखाएँ: कोई नहीं")
             self.codex_branches = tuple(parts[1:])
             if self.codex_branches:
                 return self._record(f"कोडेक्स शाखाएँ: {', '.join(self.codex_branches)}")
             return self._record("कोडेक्स शाखाएँ साफ की गईं")
+        if op == "branch":
+            if len(parts) < 2:
+                raise VakTuiError("branch <name> [on|off|toggle] अपेक्षित")
+            action = parts[2] if len(parts) > 2 else "toggle"
+            self.codex_branches = self._toggle_workspace_branch(
+                self.codex_branches,
+                parts[1],
+                action,
+            )
+            if self.codex_branches:
+                return self._record(f"कोडेक्स शाखाएँ: {', '.join(self.codex_branches)}")
+            return self._record("कोडेक्स शाखाएँ: कोई नहीं")
+        if op == "promotion":
+            target_page = parts[1] if len(parts) > 1 else self.codex_page
+            codex = build_default_codex(active_branches=list(self.codex_branches))
+            return self._record(codex.promotion_report(target_page).text())
         if op == "analyze":
             if self.codex_file is None:
                 raise VakTuiError("पहले load <path> चलाएँ")
@@ -605,7 +821,20 @@ class VakTuiApp:
             if target is None:
                 raise VakTuiError("कोई लक्ष्य फ़ाइल नहीं")
             target.write_text(self.codex_result.source, encoding="utf-8")
+            if self.codex_file is not None and target == self.codex_file:
+                self.codex_original_source = self.codex_result.source
+                self.codex_result = None
             return self._record(f"कोडेक्स परिणाम लिखा गया: {target}")
+        if op == "save":
+            if self.codex_result is None:
+                raise VakTuiError("पहले analyze चलाएँ")
+            target = (
+                self._default_workspace_save_path(self.codex_file, "codex")
+                if len(parts) < 2
+                else self._resolve_workspace_path(parts[1])
+            )
+            target.write_text(self.codex_result.source, encoding="utf-8")
+            return self._record(f"कोडेक्स सहेजा गया: {target}")
         if op == "reject":
             self.codex_result = None
             return self._record("कोडेक्स परिणाम हटाया गया")
@@ -820,19 +1049,32 @@ class VakTuiApp:
         op = parts[0].lower()
         if op == "init":
             result, output = self._capture_vpm(self.vpm.init)
+            self.vpm_last_info = None
+            self.vpm_last_cache = None
             return self._record(output or ("vakya.json तैयार" if result else "vakya.json पहले से मौजूद"))
         if op == "installed":
             self.vpm_last_search = self.vpm.list_installed()
+            self.vpm_last_info = None
+            self.vpm_last_cache = None
             return self._record(f"स्थापित पैकेज: {len(self.vpm_last_search)}")
+        if op == "python":
+            deps = self.vpm.list_python_deps()
+            self.vpm_last_search = [{"name": item, "version": "python"} for item in deps]
+            self.vpm_last_info = None
+            self.vpm_last_cache = None
+            return self._record(f"Python निर्भरताएँ: {len(deps)}")
         if op == "search":
             if len(parts) < 2:
                 raise VakTuiError("search <query> अपेक्षित")
             self.vpm_last_search = self.vpm.search(" ".join(parts[1:]))
+            self.vpm_last_info = None
+            self.vpm_last_cache = None
             return self._record(f"खोज परिणाम: {len(self.vpm_last_search)}")
         if op == "info":
             if len(parts) < 2:
                 raise VakTuiError("info <package> अपेक्षित")
             self.vpm_last_info = self.vpm.info(parts[1])
+            self.vpm_last_cache = None
             if self.vpm_last_info is None:
                 return self._record(f"पैकेज नहीं मिला: {parts[1]}")
             return self._record(f"पैकेज सूचना लोड हुई: {parts[1]}")
@@ -840,17 +1082,67 @@ class VakTuiApp:
             if len(parts) < 2:
                 raise VakTuiError("install <package> अपेक्षित")
             result, output = self._capture_vpm(self.vpm.install, parts[1])
+            self.vpm_last_info = None
+            self.vpm_last_cache = None
             return self._record(output or ("पैकेज स्थापित" if result else "स्थापना विफल"))
         if op == "remove":
             if len(parts) < 2:
                 raise VakTuiError("remove <package> अपेक्षित")
             result, output = self._capture_vpm(self.vpm.remove, parts[1])
+            self.vpm_last_info = None
+            self.vpm_last_cache = None
             return self._record(output or ("पैकेज हटाया गया" if result else "हटाना विफल"))
+        if op == "remove-py":
+            if len(parts) < 2:
+                raise VakTuiError("remove-py <package> अपेक्षित")
+            result, output = self._capture_vpm(self.vpm.remove_python_dep, parts[1])
+            self.vpm_last_info = None
+            self.vpm_last_cache = None
+            return self._record(output or ("Python निर्भरता हटाई गई" if result else "हटाना विफल"))
+        if op == "update":
+            target = parts[1] if len(parts) > 1 else None
+            result, output = self._capture_vpm(self.vpm.update, target)
+            self.vpm_last_info = None
+            self.vpm_last_cache = None
+            return self._record(output or ("पैकेज अद्यतन" if result else "अद्यतन विफल"))
+        if op == "lock":
+            payload, output = self._capture_vpm(self.vpm.write_lockfile)
+            if isinstance(payload, dict):
+                self.vpm_last_info = {
+                    "नाम": "vakya.lock.json",
+                    "संस्करण": payload.get("version"),
+                    "स्थिति": "generated",
+                    "पैकेज": len(payload.get("packages", [])),
+                    "Python": len(payload.get("python_dependencies", [])),
+                }
+                self.vpm_last_search = []
+                self.vpm_last_cache = None
+            return self._record(output or f"लॉकफ़ाइल लिखी गई: {self.vpm.lockfile_path}")
+        if op == "cache":
+            action = parts[1].lower() if len(parts) > 1 else "info"
+            if action == "clear":
+                result, output = self._capture_vpm(self.vpm.clear_cache)
+                self.vpm_last_cache = self.vpm.cache_info()
+                self.vpm_last_info = None
+                self.vpm_last_search = []
+                return self._record(output or ("कैश साफ किया गया" if result else "कैश साफ नहीं हुआ"))
+            self.vpm_last_cache = self.vpm.cache_info()
+            self.vpm_last_info = None
+            self.vpm_last_search = []
+            return self._record(
+                "कैश जानकारी: "
+                f"metadata={self.vpm_last_cache['metadata_files']}, "
+                f"archives={self.vpm_last_cache['archive_files']}, "
+                f"size={self.vpm_last_cache['size_bytes']}"
+            )
         if op == "cwd":
             if len(parts) < 2:
                 raise VakTuiError("cwd <path> अपेक्षित")
             self.cwd = Path(parts[1]).resolve()
             self.vpm = VakPackageManager(str(self.cwd))
+            self.vpm_last_info = None
+            self.vpm_last_search = []
+            self.vpm_last_cache = None
             return self._record(f"VPM कार्य-पथ बदला गया: {self.cwd}")
         raise VakTuiError(f"अज्ञात VPM आदेश: {parts[0]}")
 
@@ -915,6 +1207,7 @@ class VakTuiApp:
                 f"नियम: {summary['rules']}",
                 f"दायित्व: {summary['obligations']['pending']}",
                 f"विरोध: {summary['contradictions']}",
+                f"प्रमेय: {summary['theorems']}",
                 f"अनुक्रम: {summary['trace_events']}",
                 "",
                 "हाल के तथ्य:",
@@ -931,6 +1224,26 @@ class VakTuiApp:
                 lines.extend(f"  • {a} {b} {c}" for a, b, c in derived)
             else:
                 lines.append("  • (अभी कोई व्युत्पन्न तथ्य नहीं)")
+            lines.append("")
+            lines.append("पंजीकृत प्रमेय:")
+            theorems = self.sansmatic.list_theorems()[-6:]
+            if theorems:
+                for item in theorems:
+                    lines.append(f"  • {item['name']} [{item['kind']}]")
+            else:
+                lines.append("  • (अभी कोई प्रमेय नहीं)")
+            explanation = getattr(self.sansmatic, "_last_explanation", None)
+            if explanation:
+                lines.append("")
+                lines.append("अंतिम व्याख्या:")
+                lines.append(f"  • लक्ष्य: {explanation.get('goal', '—')}")
+                lines.append(
+                    f"  • सिद्ध: {'हाँ' if explanation.get('proved') else 'नहीं'}"
+                )
+                if explanation.get("blocked_by"):
+                    lines.append(
+                        f"  • अवरोध: {', '.join(explanation.get('blocked_by', ())) }".rstrip()
+                    )
             lines.append("")
             lines.append("हाल के लॉग:")
             recent = self.proof_log[-8:] or ["  • (अभी कोई सान्समैटिक आउटपुट नहीं)"]
@@ -959,7 +1272,7 @@ class VakTuiApp:
                 lines.extend(
                     [
                         "",
-                        "आदेश: load / branches / analyze / report / diff / apply / reject",
+                        "आदेश: load / reload / workspace / branches / branch / analyze / report / diff / apply / save / reject",
                     ]
                 )
             else:
@@ -970,6 +1283,7 @@ class VakTuiApp:
                         f"संकलन मान्य: {'हाँ' if self.repair_result.compiled else 'नहीं'}",
                         f"संशोधन: {len(self.repair_result.edits)}",
                         f"सुझाव: {len(self.repair_result.suggestions)}",
+                        f"अस्वीकृत: {len(self.repair_result.rejected_fixes)}",
                         "",
                         self._repair_diff_text(),
                     ]
@@ -985,8 +1299,7 @@ class VakTuiApp:
                 lines.extend(
                     [
                         "",
-                        "आदेश: load / pages / page / branches / analyze / report / diff / apply / reject",
-                        "अध्याय देखने के लिए: chapters",
+                        "आदेश: load / reload / workspace / pages / chapters / page / branches / branch / promotion / analyze / report / diff / apply / save / reject",
                     ]
                 )
             else:
@@ -1007,6 +1320,7 @@ class VakTuiApp:
         lines = [
             f"कार्य-पथ: {self.cwd}",
             f"vakya.json: {'हाँ' if (self.cwd / 'vakya.json').exists() else 'नहीं'}",
+            f"लॉकफ़ाइल: {'हाँ' if (self.cwd / 'vakya.lock.json').exists() else 'नहीं'}",
             f"पैकेज निर्देशिका: {self.cwd / PACKAGE_DIR}",
             f"स्थापित पैकेज: {len(installed)}",
             "",
@@ -1016,6 +1330,11 @@ class VakTuiApp:
             for key in ("नाम", "संस्करण", "विवरण", "स्थिति"):
                 if key in self.vpm_last_info:
                     lines.append(f"  • {key}: {self.vpm_last_info[key]}")
+        elif self.vpm_last_cache:
+            lines.append("कैश:")
+            lines.append(f"  • metadata: {self.vpm_last_cache['metadata_files']}")
+            lines.append(f"  • archives: {self.vpm_last_cache['archive_files']}")
+            lines.append(f"  • size_bytes: {self.vpm_last_cache['size_bytes']}")
         elif self.vpm_last_search:
             lines.append("परिणाम:")
             for item in self.vpm_last_search[:10]:
@@ -1023,7 +1342,7 @@ class VakTuiApp:
                 version = item.get("संस्करण") or item.get("version") or "?"
                 lines.append(f"  • {name} ({version})")
         else:
-            lines.append("आदेश: init / installed / search / info / install / remove")
+            lines.append("आदेश: init / installed / python / search / info / install / remove / remove-py / update / lock / cache")
         if self.vpm_last_output:
             lines.extend(["", "अंतिम आउटपुट:", self.vpm_last_output])
         return "\n".join(lines)
@@ -1183,7 +1502,7 @@ class VakTuiApp:
                 return self._record("पटल ताज़ा किया गया")
             if lower.startswith("mode "):
                 return self.set_mode(text.split(None, 1)[1])
-            if lower.startswith("open "):
+            if self.mode == "main" and lower.startswith("open "):
                 return self.set_mode(text.split(None, 1)[1])
 
             if self.mode == "main":

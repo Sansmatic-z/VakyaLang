@@ -285,14 +285,17 @@ class EventLoop:
         coro = task.coro
         
         # Resume coroutine execution in its owning VM context
-        from runtime.src.vm import SUSPEND
+        from runtime.src.vm import SUSPEND, VakAsyncGeneratorNext
 
         vm = task.vm or getattr(coro, "vm", None)
         if vm is None:
             raise RuntimeError("Vak task has no owning VM context")
         
         try:
-            result = vm._resume_coroutine(coro)
+            if isinstance(coro, VakAsyncGeneratorNext):
+                result = vm._resume_async_generator_next(coro)
+            else:
+                result = vm._resume_coroutine(coro)
             
             if result is SUSPEND:
                 # Coroutine suspended (hit await)

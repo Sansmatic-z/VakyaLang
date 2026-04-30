@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from typing import Any
 
 from sansmatic.src.config import SansmaticSettings
 from sansmatic.src.engine import SansmaticEngine
 
 from .ast_nodes import *
+from .compiler_support import function_contains_yield
 from .errors import CompileError
 from .types import (
     ADTType,
@@ -149,6 +150,7 @@ class TypeChecker:
         if not isinstance(node, Program):
             return
         self._predeclare_block(node.body, self.globals)
+        self._infer_block_function_signatures(node.body, self.globals)
         self._check_block(node.body, self.globals, None)
 
     def _install_builtins(self) -> None:
@@ -207,6 +209,10 @@ class TypeChecker:
         self.globals.define("न्याय_सिद्धि_रिपोर्ट", FunctionType((STR, STR, STR, STR, STR), one_report), fixed=True)
         self.globals.define("न्याय_सिद्धि_मान्य_है", FunctionType((STR, STR, STR, STR, STR), BOOL), fixed=True)
         self.globals.define("पदार्थ_वर्गीकरण", FunctionType((ANY,), STR), fixed=True)
+        self.globals.define("अतुल्य_अग्रिम", FunctionType((ANY,), ANY), fixed=True)
+        self.globals.define("async_next", FunctionType((ANY,), ANY), fixed=True)
+        self.globals.define("अतुल्य_समाप्त", FunctionType((ANY,), BOOL), fixed=True)
+        self.globals.define("async_done", FunctionType((ANY,), BOOL), fixed=True)
 
     def _predeclare_block(self, stmts: list[Any], env: TypeEnv) -> None:
         for stmt in stmts:
@@ -281,17 +287,20 @@ class TypeChecker:
                 param_type = InstanceType(class_name)
             param_names.append(param_name)
             param_types.append(param_type)
+        return_type = ANY if function_contains_yield(node.body) else parse_type_hint(node.return_type)
         return FunctionType(
             tuple(param_types),
-            parse_type_hint(node.return_type),
+            return_type,
             tuple(param_names),
             defaults_count=sum(1 for d in node.defaults if d is not None),
             varargs_name=node.varargs,
             is_async=node.is_async,
+            kwargs_name=getattr(node, "kwargs_name", None),
         )
 
     def _check_block(self, stmts: list[Any], env: TypeEnv, fn_ctx: FunctionContext | None) -> None:
         self._predeclare_block(stmts, env)
+        self._infer_block_function_signatures(stmts, env)
         for stmt in stmts:
             self._check_stmt(stmt, env, fn_ctx)
 
@@ -389,6 +398,19 @@ class TypeChecker:
             fn_ctx.observed_return = combine_types(fn_ctx.observed_return, value_type)
             return
 
+        if isinstance(stmt, YieldStmt):
+            if fn_ctx is None:
+                raise CompileError("उपज केवल कर्म के भीतर प्रयोग किया जा सकता है", stmt.line)
+            if stmt.value is not None:
+                self._infer_expr(stmt.value, env)
+            return
+
+        if isinstance(stmt, YieldFromStmt):
+            if fn_ctx is None:
+                raise CompileError("उपज से केवल कर्म के भीतर प्रयोग किया जा सकता है", stmt.line)
+            self._infer_expr(stmt.iterable, env)
+            return
+
         if isinstance(stmt, IfStmt):
             self._require_bool(
                 self._infer_expr(stmt.condition, env),
@@ -417,6 +439,20 @@ class TypeChecker:
             return
 
         if isinstance(stmt, ForStmt):
+            iterable_type = self._infer_expr(stmt.iterable, env)
+            loop_env = env.child()
+            element_type = iterable_element_type(iterable_type)
+            if len(stmt.var_names) == 1:
+                loop_env.define(stmt.var_names[0], element_type)
+            else:
+                element_types = self._destructure_types(element_type, len(stmt.var_names))
+                for name, item_type in zip(stmt.var_names, element_types):
+                    loop_env.define(name, item_type)
+            self._check_block(stmt.body.stmts, loop_env, fn_ctx)
+            return
+
+        if isinstance(stmt, AsyncForStmt):
+            self._ensure_async_context(env, stmt.line, "अतुल्यकालिक प्रत्येक")
             iterable_type = self._infer_expr(stmt.iterable, env)
             loop_env = env.child()
             element_type = iterable_element_type(iterable_type)
@@ -488,6 +524,19 @@ class TypeChecker:
             self._check_block(stmt.body.stmts, with_env, fn_ctx)
             return
 
+        if isinstance(stmt, AsyncWithStmt):
+            self._ensure_async_context(env, stmt.line, "अतुल्यकालिक साथ")
+            expr_type = self._infer_expr(stmt.expr, env)
+            with_env = env.child()
+            if stmt.var_name:
+                with_env.define(
+                    stmt.var_name,
+                    expr_type,
+                    static_value=self._static_value(stmt.expr, env),
+                )
+            self._check_block(stmt.body.stmts, with_env, fn_ctx)
+            return
+
         if isinstance(stmt, ThrowStmt):
             self._infer_expr(stmt.value, env)
             return
@@ -515,12 +564,658 @@ class TypeChecker:
         class_env = env.child()
         class_env.define(node.name, ClassType(node.name), fixed=True)
         self.class_fields.setdefault(node.name, {})
+        self._infer_class_method_signatures(node, class_env)
         for stmt in node.body.stmts:
             if isinstance(stmt, FuncDecl):
                 self._check_function(stmt, class_env, class_name=node.name)
 
-    def _check_function(self, node: FuncDecl, env: TypeEnv, class_name: str | None = None) -> None:
+    def _infer_block_function_signatures(self, stmts: list[Any], env: TypeEnv) -> None:
+        functions = [stmt for stmt in stmts if isinstance(stmt, FuncDecl)]
+        if not functions:
+            return
+        function_map = {stmt.name: stmt for stmt in functions}
+        analysis_signatures: dict[str, FunctionType] = {}
+        for node in functions:
+            current = env.lookup(node.name)
+            if isinstance(current, FunctionType):
+                analysis_signatures[node.name] = current
+            else:
+                analysis_signatures[node.name] = self._signature_from_func(node)
+        max_passes = max(2, len(functions) * 2)
+        for _ in range(max_passes):
+            changed = False
+            analysis_env = env.child()
+            for name, signature in analysis_signatures.items():
+                analysis_env.define(name, signature, fixed=True)
+            call_constraints = self._collect_function_call_constraints(stmts, analysis_env, function_map)
+            for node in functions:
+                inferred = self._infer_function_signature(
+                    node,
+                    analysis_env,
+                    param_constraints=call_constraints.get(node.name),
+                )
+                analysis_signature = self._apply_param_constraints(
+                    inferred,
+                    call_constraints.get(node.name),
+                    skip_param_names=self._callable_param_names(node),
+                )
+                if analysis_signatures.get(node.name) != analysis_signature:
+                    analysis_signatures[node.name] = analysis_signature
+                    changed = True
+                current = env.lookup(node.name)
+                if current != inferred:
+                    env.assign(node.name, inferred)
+                    changed = True
+            if not changed:
+                break
+
+    def _infer_class_method_signatures(self, node: ClassDecl, env: TypeEnv) -> None:
+        if not isinstance(node.body, Block):
+            return
+        methods: dict[str, FunctionType] = dict(self.class_methods.get(node.name, {}))
+        function_nodes = [stmt for stmt in node.body.stmts if isinstance(stmt, FuncDecl)]
+        if not function_nodes:
+            self.class_methods[node.name] = methods
+            return
+        method_nodes = {stmt.name: stmt for stmt in function_nodes}
+        analysis_signatures: dict[str, FunctionType] = {
+            name: signature for name, signature in methods.items()
+        }
+        max_passes = max(2, len(function_nodes) * 2)
+        for _ in range(max_passes):
+            changed = False
+            analysis_env = env.child()
+            for name, signature in analysis_signatures.items():
+                analysis_env.define(name, signature, fixed=True)
+            call_constraints = self._collect_function_call_constraints(
+                node.body.stmts,
+                analysis_env,
+                method_nodes,
+                class_name=node.name,
+            )
+            for func in function_nodes:
+                inferred = self._infer_function_signature(
+                    func,
+                    analysis_env,
+                    class_name=node.name,
+                    param_constraints=call_constraints.get(func.name),
+                )
+                analysis_signature = self._apply_param_constraints(
+                    inferred,
+                    call_constraints.get(func.name),
+                    skip_param_names=self._callable_param_names(func),
+                )
+                if analysis_signatures.get(func.name) != analysis_signature:
+                    analysis_signatures[func.name] = analysis_signature
+                    changed = True
+                if methods.get(func.name) != inferred:
+                    methods[func.name] = inferred
+                    changed = True
+            self.class_methods[node.name] = dict(methods)
+            if not changed:
+                break
+
+    def _infer_function_signature(
+        self,
+        node: FuncDecl,
+        env: TypeEnv,
+        class_name: str | None = None,
+        param_constraints: list[VakType] | None = None,
+    ) -> FunctionType:
         signature = self._signature_from_func(node, class_name=class_name)
+        analysis_signature = self._apply_param_constraints(
+            signature,
+            param_constraints,
+            skip_param_names=self._callable_param_names(node),
+        )
+        if signature.return_type != ANY:
+            return signature
+
+        fn_env = env.child()
+        if analysis_signature.is_async:
+            fn_env.define("__vak_async_context__", BOOL, fixed=True, static_value=True)
+        for name, value_type in zip(analysis_signature.param_names, analysis_signature.param_types):
+            fn_env.define(name, value_type, fixed=True)
+        if analysis_signature.varargs_name:
+            fn_env.define(analysis_signature.varargs_name, ListType(ANY), fixed=True)
+        if analysis_signature.kwargs_name:
+            fn_env.define(analysis_signature.kwargs_name, DictType(STR, ANY), fixed=True)
+        if isinstance(node.body, Block):
+            self._predeclare_block(node.body.stmts, fn_env)
+            self._infer_block_function_signatures(node.body.stmts, fn_env)
+            observed = self._infer_return_type_from_stmts(node.body.stmts, fn_env)
+        else:
+            observed = NEVER
+        final_return = observed if observed != NEVER else NULL
+        return FunctionType(
+            signature.param_types,
+            final_return,
+            signature.param_names,
+            signature.defaults_count,
+            signature.varargs_name,
+            signature.is_async,
+            signature.kwargs_name,
+        )
+
+    def _apply_param_constraints(
+        self,
+        signature: FunctionType,
+        param_constraints: list[VakType] | None,
+        *,
+        skip_param_names: set[str] | None = None,
+    ) -> FunctionType:
+        if not param_constraints:
+            return signature
+        refined = list(signature.param_types)
+        changed = False
+        for index, observed in enumerate(param_constraints):
+            if (
+                index >= len(refined)
+                or observed == NEVER
+                or refined[index] != ANY
+                or (
+                    skip_param_names
+                    and index < len(signature.param_names)
+                    and signature.param_names[index] in skip_param_names
+                )
+            ):
+                continue
+            refined[index] = observed
+            changed = True
+        if not changed:
+            return signature
+        return FunctionType(
+            tuple(refined),
+            signature.return_type,
+            signature.param_names,
+            signature.defaults_count,
+            signature.varargs_name,
+            signature.is_async,
+            signature.kwargs_name,
+        )
+
+    def _callable_param_names(self, node: FuncDecl) -> set[str]:
+        signature = self._signature_from_func(node)
+        param_names = set(signature.param_names)
+        if not param_names or not isinstance(node.body, Block):
+            return set()
+        called: set[str] = set()
+        for stmt in node.body.stmts:
+            self._collect_called_param_names_from_value(stmt, param_names, called)
+        return called
+
+    def _collect_called_param_names_from_value(
+        self,
+        value: Any,
+        param_names: set[str],
+        called: set[str],
+    ) -> None:
+        if isinstance(value, CallExpr) and isinstance(value.callee, IdentifierExpr):
+            if value.callee.name in param_names:
+                called.add(value.callee.name)
+
+        if isinstance(value, Node) and is_dataclass(value):
+            for field in fields(value):
+                if field.name == "line":
+                    continue
+                self._collect_called_param_names_from_value(getattr(value, field.name), param_names, called)
+            return
+        if isinstance(value, dict):
+            for item in value.values():
+                self._collect_called_param_names_from_value(item, param_names, called)
+            return
+        if isinstance(value, (list, tuple, set)):
+            for item in value:
+                self._collect_called_param_names_from_value(item, param_names, called)
+
+    def _collect_function_call_constraints(
+        self,
+        stmts: list[Any],
+        env: TypeEnv,
+        functions: dict[str, FuncDecl],
+        class_name: str | None = None,
+    ) -> dict[str, list[VakType]]:
+        if not functions:
+            return {}
+
+        signatures: dict[str, FunctionType] = {}
+        constraints: dict[str, list[VakType]] = {}
+        analysis_env = env.child()
+
+        for name, node in functions.items():
+            signature = env.lookup(name)
+            if not isinstance(signature, FunctionType):
+                signature = self._signature_from_func(node, class_name=class_name)
+            signatures[name] = signature
+            constraints[name] = [NEVER] * len(signature.param_types)
+            analysis_env.define(name, signature, fixed=True)
+
+        self._predeclare_block(stmts, analysis_env)
+        for stmt in stmts:
+            self._collect_call_constraints_from_stmt(
+                stmt,
+                analysis_env,
+                signatures,
+                constraints,
+                class_name=class_name,
+            )
+        return constraints
+
+    def _collect_call_constraints_from_stmt(
+        self,
+        stmt: Any,
+        env: TypeEnv,
+        signatures: dict[str, FunctionType],
+        constraints: dict[str, list[VakType]],
+        *,
+        class_name: str | None = None,
+    ) -> None:
+        if isinstance(stmt, VarDecl):
+            if stmt.value is not None:
+                self._collect_call_constraints_from_expr(stmt.value, env, signatures, constraints, class_name=class_name)
+                value_type = self._infer_expr(stmt.value, env)
+            else:
+                value_type = NULL
+            declared_type = parse_type_hint(stmt.type_hint)
+            final_type = declared_type if declared_type != ANY else value_type
+            if len(stmt.names) == 1:
+                env.define(stmt.names[0], final_type, fixed=declared_type != ANY)
+            else:
+                for name, item_type in zip(stmt.names, self._destructure_types(final_type, len(stmt.names))):
+                    env.define(name, item_type, fixed=declared_type != ANY)
+            return
+
+        if isinstance(stmt, ConstDecl):
+            self._collect_call_constraints_from_expr(stmt.value, env, signatures, constraints, class_name=class_name)
+            value_type = self._infer_expr(stmt.value, env)
+            declared_type = parse_type_hint(stmt.type_hint)
+            env.define(stmt.name, declared_type if declared_type != ANY else value_type, fixed=True)
+            return
+
+        if isinstance(stmt, ReturnStmt):
+            if stmt.value is not None:
+                self._collect_call_constraints_from_expr(stmt.value, env, signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, YieldStmt):
+            if stmt.value is not None:
+                self._collect_call_constraints_from_expr(stmt.value, env, signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, YieldFromStmt):
+            self._collect_call_constraints_from_expr(stmt.iterable, env, signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, ExprStmt):
+            self._collect_call_constraints_from_expr(stmt.expr, env, signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, PrintStmt):
+            for value in stmt.values:
+                self._collect_call_constraints_from_expr(value, env, signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, Block):
+            block_env = env.child()
+            self._predeclare_block(stmt.stmts, block_env)
+            for nested in stmt.stmts:
+                self._collect_call_constraints_from_stmt(
+                    nested,
+                    block_env,
+                    signatures,
+                    constraints,
+                    class_name=class_name,
+                )
+            return
+
+        if isinstance(stmt, IfStmt):
+            self._collect_call_constraints_from_expr(stmt.condition, env, signatures, constraints, class_name=class_name)
+            self._collect_call_constraints_from_stmt(stmt.then_body, env.child(), signatures, constraints, class_name=class_name)
+            for guard, body in stmt.elif_clauses:
+                self._collect_call_constraints_from_expr(guard, env, signatures, constraints, class_name=class_name)
+                self._collect_call_constraints_from_stmt(body, env.child(), signatures, constraints, class_name=class_name)
+            if stmt.else_body:
+                self._collect_call_constraints_from_stmt(stmt.else_body, env.child(), signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, WhileStmt):
+            self._collect_call_constraints_from_expr(stmt.condition, env, signatures, constraints, class_name=class_name)
+            self._collect_call_constraints_from_stmt(stmt.body, env.child(), signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, ForStmt):
+            self._collect_call_constraints_from_expr(stmt.iterable, env, signatures, constraints, class_name=class_name)
+            loop_env = env.child()
+            element_type = iterable_element_type(self._infer_expr(stmt.iterable, env))
+            for name in stmt.var_names:
+                loop_env.define(name, element_type)
+            self._collect_call_constraints_from_stmt(stmt.body, loop_env, signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, AsyncForStmt):
+            self._collect_call_constraints_from_expr(stmt.iterable, env, signatures, constraints, class_name=class_name)
+            loop_env = env.child()
+            element_type = iterable_element_type(self._infer_expr(stmt.iterable, env))
+            for name in stmt.var_names:
+                loop_env.define(name, element_type)
+            self._collect_call_constraints_from_stmt(stmt.body, loop_env, signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, MatchStmt):
+            self._collect_call_constraints_from_expr(stmt.subject, env, signatures, constraints, class_name=class_name)
+            for case in stmt.cases:
+                case_env = env.child()
+                if case.guard is not None:
+                    self._collect_call_constraints_from_expr(case.guard, case_env, signatures, constraints, class_name=class_name)
+                self._collect_call_constraints_from_stmt(case.body, case_env, signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, TryStmt):
+            self._collect_call_constraints_from_stmt(stmt.try_body, env.child(), signatures, constraints, class_name=class_name)
+            for handler in stmt.handlers:
+                catch_env = env.child()
+                if handler.bind_name:
+                    catch_env.define(handler.bind_name, ANY)
+                self._collect_call_constraints_from_stmt(handler.body, catch_env, signatures, constraints, class_name=class_name)
+            if stmt.finally_body:
+                self._collect_call_constraints_from_stmt(stmt.finally_body, env.child(), signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, WithStmt):
+            self._collect_call_constraints_from_expr(stmt.expr, env, signatures, constraints, class_name=class_name)
+            with_env = env.child()
+            if stmt.var_name:
+                with_env.define(stmt.var_name, self._infer_expr(stmt.expr, env))
+            self._collect_call_constraints_from_stmt(stmt.body, with_env, signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, AsyncWithStmt):
+            self._collect_call_constraints_from_expr(stmt.expr, env, signatures, constraints, class_name=class_name)
+            with_env = env.child()
+            if stmt.var_name:
+                with_env.define(stmt.var_name, self._infer_expr(stmt.expr, env))
+            self._collect_call_constraints_from_stmt(stmt.body, with_env, signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, ThrowStmt):
+            self._collect_call_constraints_from_expr(stmt.value, env, signatures, constraints, class_name=class_name)
+            return
+
+        if isinstance(stmt, FuncDecl):
+            fn_env = env.child()
+            signature = signatures.get(stmt.name)
+            if signature is None:
+                existing = env.lookup(stmt.name)
+                if isinstance(existing, FunctionType):
+                    signature = existing
+                else:
+                    signature = self._signature_from_func(stmt, class_name=class_name)
+            fn_env.define(stmt.name, signature, fixed=True)
+            if signature.is_async:
+                fn_env.define("__vak_async_context__", BOOL, fixed=True, static_value=True)
+            for name, value_type in zip(signature.param_names, signature.param_types):
+                fn_env.define(name, value_type, fixed=True)
+            if stmt.varargs:
+                fn_env.define(stmt.varargs, ListType(ANY), fixed=True)
+            if getattr(stmt, "kwargs_name", None):
+                fn_env.define(stmt.kwargs_name, DictType(STR, ANY), fixed=True)
+            if isinstance(stmt.body, Block):
+                self._predeclare_block(stmt.body.stmts, fn_env)
+                for nested in stmt.body.stmts:
+                    self._collect_call_constraints_from_stmt(
+                        nested,
+                        fn_env,
+                        signatures,
+                        constraints,
+                        class_name=class_name,
+                    )
+            return
+
+        if isinstance(stmt, ClassDecl):
+            class_env = env.child()
+            class_env.define(stmt.name, ClassType(stmt.name), fixed=True)
+            if isinstance(stmt.body, Block):
+                self._predeclare_block(stmt.body.stmts, class_env)
+                for nested in stmt.body.stmts:
+                    self._collect_call_constraints_from_stmt(
+                        nested,
+                        class_env,
+                        signatures,
+                        constraints,
+                        class_name=stmt.name,
+                    )
+            return
+
+    def _collect_call_constraints_from_expr(
+        self,
+        expr: Any,
+        env: TypeEnv,
+        signatures: dict[str, FunctionType],
+        constraints: dict[str, list[VakType]],
+        *,
+        class_name: str | None = None,
+    ) -> None:
+        if expr is None:
+            return
+
+        if isinstance(expr, CallExpr):
+            callee_name = None
+            signature = None
+            if isinstance(expr.callee, IdentifierExpr):
+                callee_name = expr.callee.name
+                signature = signatures.get(callee_name)
+            elif class_name and isinstance(expr.callee, MemberExpr):
+                owner_type = self._infer_expr(expr.callee.obj, env)
+                if isinstance(owner_type, InstanceType) and owner_type.name == class_name:
+                    callee_name = expr.callee.attr
+                    signature = signatures.get(callee_name)
+
+            if callee_name and signature is not None:
+                param_constraints = constraints.get(callee_name)
+                if param_constraints is not None:
+                    for index, arg_expr in enumerate(expr.args[: len(signature.param_types)]):
+                        inferred_type = self._infer_expr(arg_expr, env)
+                        current = param_constraints[index]
+                        param_constraints[index] = inferred_type if current == NEVER else combine_types(current, inferred_type)
+                    for name, value_expr in expr.kwargs.items():
+                        if name in signature.param_names:
+                            index = signature.param_names.index(name)
+                            if index < len(param_constraints):
+                                inferred_type = self._infer_expr(value_expr, env)
+                                current = param_constraints[index]
+                                param_constraints[index] = inferred_type if current == NEVER else combine_types(current, inferred_type)
+
+        if isinstance(expr, Node) and is_dataclass(expr):
+            for field in fields(expr):
+                if field.name == "line":
+                    continue
+                self._collect_call_constraints_from_value(
+                    getattr(expr, field.name),
+                    env,
+                    signatures,
+                    constraints,
+                    class_name=class_name,
+                )
+
+    def _collect_call_constraints_from_value(
+        self,
+        value: Any,
+        env: TypeEnv,
+        signatures: dict[str, FunctionType],
+        constraints: dict[str, list[VakType]],
+        *,
+        class_name: str | None = None,
+    ) -> None:
+        if isinstance(value, Node):
+            self._collect_call_constraints_from_expr(value, env, signatures, constraints, class_name=class_name)
+            return
+        if isinstance(value, dict):
+            for item in value.values():
+                self._collect_call_constraints_from_value(item, env, signatures, constraints, class_name=class_name)
+            return
+        if isinstance(value, (list, tuple, set)):
+            for item in value:
+                self._collect_call_constraints_from_value(item, env, signatures, constraints, class_name=class_name)
+
+    def _infer_return_type_from_stmts(self, stmts: list[Any], env: TypeEnv) -> VakType:
+        observed = NEVER
+        for stmt in stmts:
+            observed = combine_types(observed, self._infer_return_type_from_stmt(stmt, env))
+        return observed
+
+    def _infer_return_type_from_stmt(self, stmt: Any, env: TypeEnv) -> VakType:
+        if isinstance(stmt, VarDecl):
+            value_type = self._infer_expr(stmt.value, env) if stmt.value is not None else NULL
+            declared_type = parse_type_hint(stmt.type_hint)
+            final_type = declared_type if declared_type != ANY else value_type
+            static_value = self._static_value(stmt.value, env) if stmt.value is not None else None
+            if len(stmt.names) == 1:
+                env.define(stmt.names[0], final_type, fixed=declared_type != ANY, static_value=static_value)
+            else:
+                element_types = self._destructure_types(final_type, len(stmt.names))
+                static_items = (
+                    list(static_value)
+                    if isinstance(static_value, (list, tuple)) and len(static_value) == len(stmt.names)
+                    else [_NO_STATIC_VALUE] * len(stmt.names)
+                )
+                for name, element_type, item_static in zip(stmt.names, element_types, static_items):
+                    env.define(name, element_type, fixed=declared_type != ANY, static_value=item_static)
+            return NEVER
+
+        if isinstance(stmt, ConstDecl):
+            value_type = self._infer_expr(stmt.value, env)
+            declared_type = parse_type_hint(stmt.type_hint)
+            env.define(
+                stmt.name,
+                declared_type if declared_type != ANY else value_type,
+                fixed=True,
+                static_value=self._static_value(stmt.value, env),
+            )
+            return NEVER
+
+        if isinstance(stmt, ReturnStmt):
+            return NULL if stmt.value is None else self._infer_expr(stmt.value, env)
+
+        if isinstance(stmt, YieldStmt):
+            if stmt.value is not None:
+                self._infer_expr(stmt.value, env)
+            return NEVER
+
+        if isinstance(stmt, YieldFromStmt):
+            self._infer_expr(stmt.iterable, env)
+            return NEVER
+
+        if isinstance(stmt, ExprStmt):
+            self._infer_expr(stmt.expr, env)
+            return NEVER
+
+        if isinstance(stmt, PrintStmt):
+            for value in stmt.values:
+                self._infer_expr(value, env)
+            return NEVER
+
+        if isinstance(stmt, Block):
+            return self._infer_return_type_from_stmts(stmt.stmts, env.child())
+
+        if isinstance(stmt, IfStmt):
+            self._infer_expr(stmt.condition, env)
+            observed = self._infer_return_type_from_stmts(stmt.then_body.stmts, env.child())
+            for cond, body in stmt.elif_clauses:
+                self._infer_expr(cond, env)
+                observed = combine_types(observed, self._infer_return_type_from_stmts(body.stmts, env.child()))
+            if stmt.else_body is not None:
+                observed = combine_types(observed, self._infer_return_type_from_stmts(stmt.else_body.stmts, env.child()))
+            return observed
+
+        if isinstance(stmt, WhileStmt):
+            self._infer_expr(stmt.condition, env)
+            return self._infer_return_type_from_stmts(stmt.body.stmts, env.child())
+
+        if isinstance(stmt, ForStmt):
+            loop_env = env.child()
+            iterable_type = self._infer_expr(stmt.iterable, env)
+            element_type = iterable_element_type(iterable_type)
+            if len(stmt.var_names) == 1:
+                loop_env.define(stmt.var_names[0], element_type)
+            else:
+                for name, item_type in zip(stmt.var_names, self._destructure_types(element_type, len(stmt.var_names))):
+                    loop_env.define(name, item_type)
+            return self._infer_return_type_from_stmts(stmt.body.stmts, loop_env)
+
+        if isinstance(stmt, AsyncForStmt):
+            self._ensure_async_context(env, stmt.line, "अतुल्यकालिक प्रत्येक")
+            loop_env = env.child()
+            iterable_type = self._infer_expr(stmt.iterable, env)
+            element_type = iterable_element_type(iterable_type)
+            if len(stmt.var_names) == 1:
+                loop_env.define(stmt.var_names[0], element_type)
+            else:
+                for name, item_type in zip(stmt.var_names, self._destructure_types(element_type, len(stmt.var_names))):
+                    loop_env.define(name, item_type)
+            return self._infer_return_type_from_stmts(stmt.body.stmts, loop_env)
+
+        if isinstance(stmt, MatchStmt):
+            subject_type = self._infer_expr(stmt.subject, env)
+            observed = NEVER
+            for case in stmt.cases:
+                case_env = env.child()
+                for name, binding_type in self._pattern_bindings(case.pattern, subject_type).items():
+                    case_env.define(name, binding_type)
+                if case.guard is not None:
+                    self._infer_expr(case.guard, case_env)
+                observed = combine_types(observed, self._infer_return_type_from_stmts(case.body.stmts, case_env))
+            return observed
+
+        if isinstance(stmt, TryStmt):
+            observed = self._infer_return_type_from_stmts(stmt.try_body.stmts, env.child())
+            for handler in stmt.handlers:
+                catch_env = env.child()
+                if handler.bind_name:
+                    catch_env.define(handler.bind_name, ANY)
+                observed = combine_types(observed, self._infer_return_type_from_stmts(handler.body.stmts, catch_env))
+            if stmt.finally_body:
+                self._infer_return_type_from_stmts(stmt.finally_body.stmts, env.child())
+            return observed
+
+        if isinstance(stmt, WithStmt):
+            with_env = env.child()
+            expr_type = self._infer_expr(stmt.expr, env)
+            if stmt.var_name:
+                with_env.define(stmt.var_name, expr_type, static_value=self._static_value(stmt.expr, env))
+            return self._infer_return_type_from_stmts(stmt.body.stmts, with_env)
+
+        if isinstance(stmt, AsyncWithStmt):
+            self._ensure_async_context(env, stmt.line, "अतुल्यकालिक साथ")
+            with_env = env.child()
+            expr_type = self._infer_expr(stmt.expr, env)
+            if stmt.var_name:
+                with_env.define(stmt.var_name, expr_type, static_value=self._static_value(stmt.expr, env))
+            return self._infer_return_type_from_stmts(stmt.body.stmts, with_env)
+
+        if isinstance(stmt, ThrowStmt):
+            self._infer_expr(stmt.value, env)
+            return NEVER
+
+        if isinstance(stmt, FuncDecl):
+            env.assign(stmt.name, self._infer_function_signature(stmt, env))
+            return NEVER
+
+        if isinstance(stmt, ClassDecl):
+            self._infer_class_method_signatures(stmt, env.child())
+            return NEVER
+
+        return NEVER
+
+    def _check_function(self, node: FuncDecl, env: TypeEnv, class_name: str | None = None) -> None:
+        signature = None
+        if class_name:
+            signature = self.class_methods.get(class_name, {}).get(node.name)
+        else:
+            existing = env.lookup(node.name)
+            if isinstance(existing, FunctionType):
+                signature = existing
+        if not isinstance(signature, FunctionType):
+            signature = self._signature_from_func(node, class_name=class_name)
         for name, default_expr, expected_type in zip(signature.param_names, node.defaults, signature.param_types):
             if default_expr is None:
                 continue
@@ -539,10 +1234,14 @@ class TypeChecker:
                 f"परिमाण '{name}'",
             )
         fn_env = env.child()
+        if node.is_async:
+            fn_env.define("__vak_async_context__", BOOL, fixed=True, static_value=True)
         for name, value_type in zip(signature.param_names, signature.param_types):
             fn_env.define(name, value_type, fixed=True)
         if node.varargs:
             fn_env.define(node.varargs, ListType(ANY), fixed=True)
+        if getattr(node, "kwargs_name", None):
+            fn_env.define(node.kwargs_name, DictType(STR, ANY), fixed=True)
         fn_ctx = FunctionContext(
             name=node.name,
             declared_return=signature.return_type,
@@ -573,6 +1272,7 @@ class TypeChecker:
                 signature.defaults_count,
                 signature.varargs_name,
                 signature.is_async,
+                signature.kwargs_name,
             ),
         )
 
@@ -805,6 +1505,10 @@ class TypeChecker:
         if value_type != ANY and not is_assignable(value_type, BOOL):
             raise CompileError(f"{context} के लिए बूल चाहिए, मिला {value_type}", line)
 
+    def _ensure_async_context(self, env: TypeEnv, line: int, context: str) -> None:
+        if env.lookup("__vak_async_context__") is None:
+            raise CompileError(f"{context} केवल async कर्म के भीतर प्रयोग किया जा सकता है", line)
+
     def _base_type(self, value_type: VakType) -> VakType:
         while isinstance(value_type, RefinementType):
             value_type = value_type.base_type
@@ -1007,6 +1711,8 @@ class TypeChecker:
         return DictType(key_type, value_type)
 
     def _infer_ListComp(self, expr: ListComp, env: TypeEnv) -> VakType:
+        if getattr(expr, "is_async", False):
+            self._ensure_async_context(env, expr.line, "अतुल्य सूची comprehension")
         loop_env = env.child()
         loop_env.define(expr.var_name, iterable_element_type(self._infer_expr(expr.iterable, env)))
         if expr.filter_expr is not None:
@@ -1018,6 +1724,8 @@ class TypeChecker:
         return ListType(self._infer_expr(expr.expr, loop_env))
 
     def _infer_DictComp(self, expr: DictComp, env: TypeEnv) -> VakType:
+        if getattr(expr, "is_async", False):
+            self._ensure_async_context(env, expr.line, "अतुल्य शब्दकोश comprehension")
         loop_env = env.child()
         loop_env.define(expr.var_name, iterable_element_type(self._infer_expr(expr.iterable, env)))
         if expr.filter_expr is not None:
@@ -1030,6 +1738,20 @@ class TypeChecker:
             self._infer_expr(expr.key_expr, loop_env),
             self._infer_expr(expr.value_expr, loop_env),
         )
+
+    def _infer_GeneratorExpr(self, expr: GeneratorExpr, env: TypeEnv) -> VakType:
+        if getattr(expr, "is_async", False):
+            self._ensure_async_context(env, expr.line, "अतुल्य जनक अभिव्यक्ति")
+        loop_env = env.child()
+        loop_env.define(expr.var_name, iterable_element_type(self._infer_expr(expr.iterable, env)))
+        if expr.filter_expr is not None:
+            self._require_bool(
+                self._infer_expr(expr.filter_expr, loop_env),
+                getattr(expr.filter_expr, "line", expr.line),
+                "जनक अभिव्यक्ति filter",
+            )
+        self._infer_expr(expr.expr, loop_env)
+        return ANY
 
     def _infer_IndexExpr(self, expr: IndexExpr, env: TypeEnv) -> VakType:
         obj_type = self._base_type(self._infer_expr(expr.obj, env))
@@ -1086,6 +1808,7 @@ class TypeChecker:
                     max(0, method.defaults_count - 1),
                     method.varargs_name,
                     method.is_async,
+                    method.kwargs_name,
                 )
         return ANY
 
@@ -1484,7 +2207,7 @@ class TypeChecker:
             )
         provided_named = set(kwarg_types.keys())
         unknown_kwargs = provided_named - set(signature.param_names)
-        if unknown_kwargs:
+        if unknown_kwargs and signature.kwargs_name is None:
             names = ", ".join(sorted(unknown_kwargs))
             raise CompileError(f"अज्ञात नामित तर्क: {names}", line)
         positional_names = set(signature.param_names[:min(len(arg_types), len(signature.param_names))])
@@ -1494,7 +2217,7 @@ class TypeChecker:
             raise CompileError(f"तर्क बार-बार दिया गया: {names}", line)
 
         required = signature.min_args
-        provided_total = len(arg_types) + len(kwarg_types)
+        provided_total = len(arg_types) + len(provided_named & set(signature.param_names))
         if signature.varargs_name is None and provided_total < required:
             raise CompileError(
                 f"अपर्याप्त तर्क: कम से कम {required}, मिला {provided_total}",

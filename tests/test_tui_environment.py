@@ -59,6 +59,17 @@ class VakTuiEnvironmentTests(unittest.TestCase):
         self.assertIn("अग्नि HAS ताप", rendered)
         self.assertIn("अग्नि IS तेज", rendered)
 
+    def test_sansmatic_explorer_supports_theorem_commands(self):
+        self.app.set_mode("proof")
+        self.app.execute_command("define अग्नि ताप")
+        registered = self.app.execute_command("theorem fact ताप_प्रमेय अग्नि HAS ताप")
+        self.assertIn("प्रमेय पंजीकृत", registered)
+        listed = self.app.execute_command("theorem list")
+        self.assertIn("ताप_प्रमेय", listed)
+        shown = self.app.execute_command("theorem show ताप_प्रमेय")
+        self.assertIn("प्रमेय: ताप_प्रमेय", shown)
+        self.assertIn("वचन: अग्नि HAS ताप", shown)
+
     def test_chitrakala_studio_creates_preview_and_saves_png(self):
         if not self.app.chitra_support.available:
             self.skipTest("Chitrakala support unavailable in this environment")
@@ -83,6 +94,22 @@ class VakTuiEnvironmentTests(unittest.TestCase):
         rendered = self.app.render_text()
         self.assertIn("स्थापित पैकेज", rendered)
 
+    def test_vpm_panel_supports_lock_cache_and_python_dependency_removal(self):
+        self.app.set_mode("vpm")
+        self.app.execute_command("init")
+        self.app.vpm._save_python_dep("requests>=2")
+        python_rows = self.app.execute_command("python")
+        self.assertIn("Python निर्भरताएँ: 1", python_rows)
+        lock_result = self.app.execute_command("lock")
+        self.assertIn("लॉकफ़ाइल", lock_result)
+        self.assertTrue((self.cwd / "vakya.lock.json").exists())
+        cache_result = self.app.execute_command("cache")
+        self.assertIn("कैश जानकारी", cache_result)
+        removed = self.app.execute_command("remove-py requests")
+        self.assertIn("Python dependency", removed)
+        rendered = self.app.render_text()
+        self.assertIn("लॉकफ़ाइल: हाँ", rendered)
+
     def test_repair_workspace_loads_runs_diff_and_applies(self):
         source_path = self.cwd / "broken.vak"
         source_path.write_text(
@@ -99,6 +126,30 @@ class VakTuiEnvironmentTests(unittest.TestCase):
         applied = self.app.execute_command("apply")
         self.assertIn("रूपान्तर परिणाम लिखा गया", applied)
         self.assertIn("सूची.जोड़ो(१)", source_path.read_text(encoding="utf-8"))
+
+    def test_repair_workspace_supports_workspace_reload_branch_save_and_reject(self):
+        source_path = self.cwd / "repair_workspace.vak"
+        source_path.write_text("चर सूची = []\nसूची.apend(१)\n", encoding="utf-8")
+        self.app.set_mode("repair")
+        self.app.execute_command(f"open {source_path.name}")
+        workspace = self.app.execute_command("workspace")
+        self.assertIn("कार्यस्थल: रूपान्तर", workspace)
+        self.assertIn("विश्लेषण: नहीं", workspace)
+        branches = self.app.execute_command("branch adaptive_rupantar on")
+        self.assertIn("adaptive_rupantar", branches)
+        self.app.execute_command("analyze")
+        saved = self.app.execute_command("save")
+        saved_path = self.cwd / "repair_workspace.rupantar.vak"
+        self.assertIn(str(saved_path), saved)
+        self.assertTrue(saved_path.exists())
+        self.assertIn("सूची.जोड़ो(१)", saved_path.read_text(encoding="utf-8"))
+        source_path.write_text("चर सूची = []\nसूची.append(१)\n", encoding="utf-8")
+        reloaded = self.app.execute_command("reload")
+        self.assertIn("पुनः लोड", reloaded)
+        rejected = self.app.execute_command("reject")
+        self.assertIn("हटाया गया", rejected)
+        workspace_after = self.app.execute_command("workspace")
+        self.assertIn("विश्लेषण: नहीं", workspace_after)
 
     def test_codex_workspace_loads_runs_diff_and_applies(self):
         source_path = self.cwd / "roman.svk"
@@ -124,12 +175,42 @@ class VakTuiEnvironmentTests(unittest.TestCase):
         rendered = self.app.render_text()
         self.assertIn("कोडेक्स", rendered)
 
+    def test_codex_workspace_supports_workspace_reload_branch_save_and_promotion(self):
+        source_path = self.cwd / "sample.c"
+        source_path.write_text(
+            "int main() {\n    int x = 1;\n    printf(\"%d\", x);\n    return 0;\n}\n",
+            encoding="utf-8",
+        )
+        self.app.set_mode("codex")
+        self.app.execute_command(f"open {source_path.name}")
+        workspace = self.app.execute_command("workspace")
+        self.assertIn("कार्यस्थल: कोडेक्स", workspace)
+        self.assertIn("पृष्ठ: auto", workspace)
+        branches = self.app.execute_command("branch universal_codex_lab on")
+        self.assertIn("universal_codex_lab", branches)
+        self.app.execute_command("page c_subset")
+        report = self.app.execute_command("promotion c_subset")
+        self.assertIn("कोडेक्स उन्नयन रिपोर्ट", report)
+        self.assertIn("c_subset", report)
+        self.app.execute_command("analyze")
+        saved = self.app.execute_command("save")
+        saved_path = self.cwd / "sample.codex.c"
+        self.assertIn(str(saved_path), saved)
+        self.assertTrue(saved_path.exists())
+        self.assertIn("कर्म main():", saved_path.read_text(encoding="utf-8"))
+        source_path.write_text("int main() {\n    return 0;\n}\n", encoding="utf-8")
+        reloaded = self.app.execute_command("reload")
+        self.assertIn("पुनः लोड", reloaded)
+        rejected = self.app.execute_command("reject")
+        self.assertIn("हटाया गया", rejected)
+
     def test_builtin_and_module_help_commands_are_available(self):
         builtins_output = self.app.execute_command("builtins proof")
         codex_builtins_output = self.app.execute_command("builtins codex")
         modules_output = self.app.execute_command("modules")
         self.assertIn("प्रमाण_सारांश", builtins_output)
         self.assertIn("कोडेक्स_विवरण", codex_builtins_output)
+        self.assertIn("कोडेक्स_उन्नयन", codex_builtins_output)
         self.assertIn("रंग_पुस्तकालय", modules_output)
 
     def test_cli_main_supports_noninteractive_commands(self):

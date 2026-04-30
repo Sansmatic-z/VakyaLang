@@ -12,8 +12,10 @@ class CodexStressCorpusTests(unittest.TestCase):
     def test_codex_corpus_routes_and_validates(self):
         cases = [
             ("legacy_vak.vak", [], "vak_legacy", ("यावत् x < 3:",), "vak"),
-            ("english_bridge.py", [], "english_vak", ("कर्म add(a, b):",), "english_vak"),
+            ("english_bridge.py", [], "python_vak", ("कर्म add(a, b):",), "python"),
+            ("english_loop_bridge.py", [], "python_vak", ("यावत् (total < 2):", "मुद्रय(total)"), "python"),
             ("math_logic.logic", [], "math_logic", ("यदि न (a  और  b):",), "math_logic"),
+            ("math_logic_nested.logic", [], "math_logic", ("अथवा",), "math_logic"),
             (
                 "sanskrit_notation.svk",
                 [],
@@ -21,9 +23,17 @@ class CodexStressCorpusTests(unittest.TestCase):
                 ("कर्म yoga(x, y):",),
                 "sanskrit_notation",
             ),
+            (
+                "sanskrit_notation_loop.svk",
+                [],
+                "sanskrit_notation",
+                ("यावत् total < 2:", "मुद्रय(total)"),
+                "sanskrit_notation",
+            ),
             ("sample.c", ["universal_codex_lab"], "c_subset", ("कर्म main():",), "c_subset"),
             ("sample.rs", ["universal_codex_lab"], "rust_subset", ("कर्म main():",), "rust_subset"),
             ("command.txt", ["universal_codex_lab"], "natural_language", ("यदि i % 2 == 0:",), "natural_language"),
+            ("branch_repeat.txt", ["universal_codex_lab"], "natural_language", ("परास(0, 3)", "मुद्रय(7)"), "natural_language"),
         ]
 
         for filename, branches, expected_page, snippets, source_kind in cases:

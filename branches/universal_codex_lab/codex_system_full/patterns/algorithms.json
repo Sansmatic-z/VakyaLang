@@ -1,0 +1,84 @@
+{
+  "patterns": [
+    {
+      "name": "bubble_sort",
+      "description": "Bubble sort: O(n²) comparison-based stable sort",
+      "category": "algorithm",
+      "regex": "(?:bubble_sort|bubbleSort|बबल_सॉर्ट)",
+      "template": "कर्म bubble_sort(arr) {\n    n = arr.लंबाई()\n    के_लिए i में range(n) {\n        के_लिए j में range(0, n-i-1) {\n            यदि arr[j] > arr[j+1] {\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n            }\n        }\n    }\n    लौटाओ arr\n}",
+      "metadata": {"time_complexity": "O(n²)", "space_complexity": "O(1)", "stable": true}
+    },
+    {
+      "name": "quick_sort",
+      "description": "Quick sort: O(n log n) average divide-and-conquer sort",
+      "category": "algorithm",
+      "regex": "(?:quick_sort|quickSort|क्विक_सॉर्ट)",
+      "template": "कर्म quick_sort(arr) {\n    यदि arr.लंबाई() <= 1 {\n        लौटाओ arr\n    }\n    pivot = arr[arr.लंबाई() // 2]\n    left = [x के_लिए x में arr यदि x < pivot]\n    middle = [x के_लिए x में arr यदि x == pivot]\n    right = [x के_लिए x में arr यदि x > pivot]\n    लौटाओ quick_sort(left) + middle + quick_sort(right)\n}",
+      "metadata": {"time_complexity": "O(n log n) avg", "space_complexity": "O(log n)", "stable": false}
+    },
+    {
+      "name": "merge_sort",
+      "description": "Merge sort: O(n log n) stable divide-and-conquer sort",
+      "category": "algorithm",
+      "regex": "(?:merge_sort|mergeSort|मर्ज_सॉर्ट)",
+      "template": "कर्म merge_sort(arr) {\n    यदि arr.लंबाई() <= 1 {\n        लौटाओ arr\n    }\n    mid = arr.लंबाई() // 2\n    left = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    लौटाओ merge(left, right)\n}\nकर्म merge(left, right) {\n    result = []\n    i = 0, j = 0\n    जबतक i < left.लंबाई() और j < right.लंबाई() {\n        यदि left[i] <= right[j] {\n            result.जोडें(left[i])\n            i += 1\n        } और {\n            result.जोडें(right[j])\n            j += 1\n        }\n    }\n    result.जोडें(left[i:])\n    result.जोडें(right[j:])\n    लौटाओ result\n}",
+      "metadata": {"time_complexity": "O(n log n)", "space_complexity": "O(n)", "stable": true}
+    },
+    {
+      "name": "binary_search",
+      "description": "Binary search: O(log n) search in sorted array",
+      "category": "algorithm",
+      "regex": "(?:binary_search|binarySearch|बाइनरी_सर्च)",
+      "template": "कर्म binary_search(arr, target) {\n    low = 0\n    high = arr.लंबाई() - 1\n    जबतक low <= high {\n        mid = (low + high) // 2\n        यदि arr[mid] == target {\n            लौटाओ mid\n        } अन्य यदि arr[mid] < target {\n            low = mid + 1\n        } अन्य {\n            high = mid - 1\n        }\n    }\n    लौटाओ -1\n}",
+      "metadata": {"time_complexity": "O(log n)", "space_complexity": "O(1)", "requires_sorted": true}
+    },
+    {
+      "name": "linear_search",
+      "description": "Linear search: O(n) sequential search",
+      "category": "algorithm",
+      "regex": "(?:linear_search|linearSearch|लीनियर_सर्च)",
+      "template": "कर्म linear_search(arr, target) {\n    के_लिए i में range(arr.लंबाई()) {\n        यदि arr[i] == target {\n            लौटाओ i\n        }\n    }\n    लौटाओ -1\n}",
+      "metadata": {"time_complexity": "O(n)", "space_complexity": "O(1)", "requires_sorted": false}
+    },
+    {
+      "name": "bfs",
+      "description": "Breadth-First Search: level-order graph traversal",
+      "category": "algorithm",
+      "regex": "(?:bfs|breadth_first|breadthFirst|BFS)",
+      "template": "कर्म bfs(graph, start) {\n    visited = सेट()\n    queue = [start]\n    visited.जोडें(start)\n    result = []\n    जबतक queue.लंबाई() > 0 {\n        node = queue.पहला()\n        queue.हटाएं(0)\n        result.जोडें(node)\n        के_लिए neighbor में graph[node] {\n            यदि neighbor not in visited {\n                visited.जोडें(neighbor)\n                queue.जोडें(neighbor)\n            }\n        }\n    }\n    लौटाओ result\n}",
+      "metadata": {"time_complexity": "O(V + E)", "space_complexity": "O(V)", "traversal_type": "breadth-first"}
+    },
+    {
+      "name": "dfs",
+      "description": "Depth-First Search: recursive graph traversal",
+      "category": "algorithm",
+      "regex": "(?:dfs|depth_first|depthFirst|DFS)",
+      "template": "कर्म dfs(graph, start, visited=None) {\n    यदि visited == None {\n        visited = सेट()\n    }\n    visited.जोडें(start)\n    result = [start]\n    के_लिए neighbor में graph[start] {\n        यदि neighbor not in visited {\n            result.विस्तार(dfs(graph, neighbor, visited))\n        }\n    }\n    लौटाओ result\n}",
+      "metadata": {"time_complexity": "O(V + E)", "space_complexity": "O(V)", "traversal_type": "depth-first"}
+    },
+    {
+      "name": "dijkstra",
+      "description": "Dijkstra's shortest path algorithm",
+      "category": "algorithm",
+      "regex": "(?:dijkstra|shortest_path|ShortestPath)",
+      "template": "कर्म dijkstra(graph, start) {\n    distances = {node: अनंत के_लिए node में graph.nodes}\n    distances[start] = 0\n    visited = सेट()\n    जबतक visited.लंबाई() < graph.nodes.लंबाई() {\n        # Find unvisited node with minimum distance\n        min_node = None\n        के_लिए node में graph.nodes {\n            यदि node not in visited और (min_node == None या distances[node] < distances[min_node]) {\n                min_node = node\n            }\n        }\n        यदि min_node == None {\n            तोडें\n        }\n        visited.जोडें(min_node)\n        के_लिए neighbor, weight में graph[min_node] {\n            new_dist = distances[min_node] + weight\n            यदि new_dist < distances[neighbor] {\n                distances[neighbor] = new_dist\n            }\n        }\n    }\n    लौटाओ distances\n}",
+      "metadata": {"time_complexity": "O(V²)", "space_complexity": "O(V)", "weighted": true}
+    },
+    {
+      "name": "hash_table",
+      "description": "Hash table: O(1) average key-value lookup",
+      "category": "algorithm",
+      "regex": "(?:hash_table|hashTable|HashMap|hash_map)",
+      "template": "श्रेणी HashTable {\n    परिवर्तनी buckets = []\n    कर्म __init__(capacity=16) {\n        buckets = [{} के_लिए _ में range(capacity)]\n    }\n    कर्म _hash(key) {\n        लौटाओ hash(key) % buckets.लंबाई()\n    }\n    कर्म put(key, value) {\n        idx = _hash(key)\n        buckets[idx][key] = value\n    }\n    कर्म get(key) {\n        idx = _hash(key)\n        लौटाओ buckets[idx].get(key)\n    }\n    कर्म delete(key) {\n        idx = _hash(key)\n        यदि key in buckets[idx] {\n            हटाएं buckets[idx][key]\n        }\n    }\n}",
+      "metadata": {"time_complexity": "O(1) avg", "space_complexity": "O(n)", "collision_strategy": "chaining"}
+    },
+    {
+      "name": "fibonacci",
+      "description": "Fibonacci sequence: recursive with memoization",
+      "category": "algorithm",
+      "regex": "(?:fibonacci|fib|फिबोनाची)",
+      "template": "कर्म fibonacci(n, memo={}) {\n    यदि n in memo {\n        लौटाओ memo[n]\n    }\n    यदि n <= 1 {\n        लौटाओ n\n    }\n    memo[n] = fibonacci(n-1, memo) + fibonacci(n-2, memo)\n    लौटाओ memo[n]\n}",
+      "metadata": {"time_complexity": "O(n)", "space_complexity": "O(n)", "technique": "memoization"}
+    }
+  ]
+}

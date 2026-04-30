@@ -3,6 +3,7 @@
 
 from enum import Enum
 from typing import List, Any, Dict, Optional
+from pathlib import Path
 from .opcodes import OpCode, OPCODE_NAMES
 
 ABI_FORMAT = "vak_bytecode_abi"
@@ -90,8 +91,19 @@ class Bytecode:
         
     def disassemble(self) -> str:
         """Create human-readable disassembly."""
+        lines = self._disassemble_lines()
+        if self.functions:
+            for name in sorted(self.functions):
+                nested = self.functions[name]
+                lines.append("")
+                lines.append(f"=== Nested Bytecode: {nested.name} ===")
+                lines.extend(nested._disassemble_lines(include_header=False))
+        return "\n".join(lines)
+
+    def _disassemble_lines(self, *, include_header: bool = True) -> list[str]:
         lines = []
-        lines.append(f"=== Bytecode: {self.name} ===")
+        if include_header:
+            lines.append(f"=== Bytecode: {self.name} ===")
         lines.append(f"Constants: {self.constants}")
         lines.append(f"Variables: {self.var_names}")
         lines.append("")
@@ -134,7 +146,7 @@ class Bytecode:
             lines.append(f"{i:04d}: {op_name}")
             i += 1
             
-        return "\n".join(lines)
+        return lines
         
     def _format_const(self, idx: int) -> str:
         """Format constant for display."""
@@ -401,3 +413,8 @@ class Bytecode:
         import json
 
         return cls.from_abi_dict(json.loads(payload))
+
+    @staticmethod
+    def companion_path(path: str | Path) -> Path:
+        compiled_path = Path(path)
+        return compiled_path.with_suffix(compiled_path.suffix + ".meta.json")

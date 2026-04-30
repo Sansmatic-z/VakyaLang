@@ -27,6 +27,7 @@ class Parser:
         self.tokens  = [t for t in tokens
                         if t.type != TokenType.COMMENT]
         self.pos     = 0
+        self.errors: list[ParseError] = []
 
     # ── Token helpers ─────────────────────────────────────────────────────────
 
@@ -132,12 +133,40 @@ class Parser:
     # ── Entry ─────────────────────────────────────────────────────────────────
 
     def parse(self) -> Program:
-        stmts = []
-        self.skip_newlines()
-        while not self.check(TokenType.EOF):
-            stmts.append(self._stmt())
-            self.skip_newlines()
+        self.errors = []
+        stmts = self._stmt_sequence((TokenType.EOF,))
+        if self.errors:
+            raise ParseError.aggregate(self.errors)
         return Program(body=stmts)
+
+    def _record_error(self, error: ParseError) -> None:
+        self.errors.append(error)
+
+    def _stmt_sequence(self, terminators: tuple[TokenType, ...]) -> list[Node]:
+        stmts: list[Node] = []
+        self.skip_newlines()
+        while not self.check(*terminators):
+            try:
+                stmts.append(self._stmt())
+            except ParseError as error:
+                self._record_error(error)
+                self._synchronize_statement(terminators)
+            self.skip_newlines()
+        return stmts
+
+    def _synchronize_statement(self, terminators: tuple[TokenType, ...] = ()) -> None:
+        while not self.check(TokenType.EOF):
+            if self.current.type in terminators:
+                return
+            if self.current.type == TokenType.DEDENT:
+                self.pos += 1
+                self.skip_newlines()
+                return
+            if self.current.type in (TokenType.NEWLINE, TokenType.SEMICOLON):
+                self.pos += 1
+                self.skip_newlines()
+                return
+            self.pos += 1
 
     # ── Statements ────────────────────────────────────────────────────────────
 
@@ -155,11 +184,17 @@ class Parser:
             return self._sutra_decl(is_apavada=True)
         if self.check(TokenType.PARINAMA):
             return self._parinama_decl()
+        if self.check(TokenType.AT):
+            return self._decorated_stmt()
 
         if self.check(TokenType.VAR):
             return self._var_decl()
         if self.check(TokenType.CONST):
             return self._const_decl()
+        if self.check(TokenType.ASYNC) and self.peek().type == TokenType.FOR:
+            return self._async_for_stmt()
+        if self.check(TokenType.ASYNC) and self.peek().type == TokenType.WITH:
+            return self._async_with_stmt()
         if self.check(TokenType.FUNC, TokenType.ASYNC):
             return self._func_decl()
         if self.check(TokenType.CLASS):
@@ -176,6 +211,8 @@ class Parser:
             return self._for_stmt()
         if self.check(TokenType.RETURN):
             return self._return_stmt()
+        if self.check(TokenType.YIELD):
+            return self._yield_stmt()
         if self.check(TokenType.PRINT):
             return self._print_stmt()
         if self.check(TokenType.BREAK):
@@ -200,6 +237,45 @@ class Parser:
             return self._import_stmt()
 
         return self._expr_stmt()
+
+    def _decorated_stmt(self) -> Node:
+        ln = self.line()
+        decorators: list[Node] = []
+        while self.match(TokenType.AT):
+            decorators.append(self._expr())
+            if not self.check(TokenType.NEWLINE, TokenType.SEMICOLON, TokenType.EOF):
+                raise ParseError("डेकोरेटर पंक्ति के अंत में नई पंक्ति अपेक्षित है", self.line())
+            self._end_stmt()
+            self.skip_newlines()
+
+        if self.check(TokenType.FUNC, TokenType.ASYNC):
+            decl = self._func_decl()
+        elif self.check(TokenType.CLASS):
+            decl = self._class_decl()
+        else:
+            raise ParseError("डेकोरेटर के बाद केवल कर्म या वर्ग आ सकता है", self.line())
+
+        target = IdentifierExpr(name=decl.name, line=decl.line)
+        stmts: list[Node] = [decl]
+        for decorator in reversed(decorators):
+            decorated_value = CallExpr(
+                callee=decorator,
+                args=[IdentifierExpr(name=decl.name, line=decl.line)],
+                kwargs={},
+                line=ln,
+            )
+            stmts.append(
+                ExprStmt(
+                    expr=AssignExpr(
+                        target=target,
+                        op='=',
+                        value=decorated_value,
+                        line=ln,
+                    ),
+                    line=ln,
+                )
+            )
+        return Block(stmts=stmts, line=ln)
 
     def _end_stmt(self):
         """Consume optional semicolon or newline."""
@@ -231,6 +307,8 @@ class Parser:
 
         value = None
         if self.match(TokenType.ASSIGN):
+            if self.check(TokenType.NEWLINE, TokenType.SEMICOLON, TokenType.EOF, TokenType.DEDENT):
+                raise ParseError("मान को मान चाहिए (var requires a value)", self.line())
             # Parse one or more expressions
             exprs = [self._expr()]
             while self.match(TokenType.COMMA):
@@ -252,6 +330,8 @@ class Parser:
         if self.match(TokenType.COLON):
             type_hint = self._type_hint()
         self.expect(TokenType.ASSIGN, "स्थिर को मान चाहिए (const requires a value)")
+        if self.check(TokenType.NEWLINE, TokenType.SEMICOLON, TokenType.EOF, TokenType.DEDENT):
+            raise ParseError("स्थिर को मान चाहिए (const requires a value)", self.line())
         value = self._expr()
         self._end_stmt()
         return ConstDecl(name=name, value=value, type_hint=type_hint, line=ln)
@@ -264,7 +344,7 @@ class Parser:
         self.expect(TokenType.FUNC)
         name = self.expect_name().value
         self.expect(TokenType.LPAREN)
-        params, defaults, varargs = self._param_list()
+        params, defaults, varargs, kwargs_name = self._param_list()
         self.expect(TokenType.RPAREN)
 
         return_type = None
@@ -279,9 +359,12 @@ class Parser:
                 self.expect(TokenType.COLON)
 
         body = self._block()
-        return FuncDecl(name=name, params=params, defaults=defaults,
+        node = FuncDecl(name=name, params=params, defaults=defaults,
                         varargs=varargs, body=body, return_type=return_type,
                         is_async=is_async, line=ln)
+        if kwargs_name is not None:
+            setattr(node, "kwargs_name", kwargs_name)
+        return node
 
     def _param_list(self):
         """
@@ -298,13 +381,27 @@ class Parser:
         
         params, defaults = [], []
         varargs = None
+        kwargs_name = None
         while not self.check(TokenType.RPAREN):
             # Check for variadic argument: *name
             if self.match(TokenType.STAR):
                 varargs = self.expect_name().value
-                # Variadic must be the last parameter
-                if not self.check(TokenType.RPAREN):
+                if self.match(TokenType.COMMA):
+                    if self.match(TokenType.POWER):
+                        kwargs_name = self.expect_name().value
+                        if not self.check(TokenType.RPAREN):
+                            raise ParseError("नामित-संग्रह (**kwargs) अंतिम होना चाहिए", self.line())
+                        break
+                    if not self.check(TokenType.RPAREN):
+                        raise ParseError("अनियत तर्क (*args) अंतिम होना चाहिए या **kwargs से पहले आना चाहिए", self.line())
+                elif not self.check(TokenType.RPAREN):
                     raise ParseError("अनियत तर्क (*args) अंतिम होना चाहिए", self.line())
+                break
+
+            if self.match(TokenType.POWER):
+                kwargs_name = self.expect_name().value
+                if not self.check(TokenType.RPAREN):
+                    raise ParseError("नामित-संग्रह (**kwargs) अंतिम होना चाहिए", self.line())
                 break
 
             # Check for Vibhakti semantic role marker
@@ -346,7 +443,7 @@ class Parser:
                 defaults.append(None)
             if not self.match(TokenType.COMMA):
                 break
-        return params, defaults, varargs
+        return params, defaults, varargs, kwargs_name
 
     def _type_hint(self) -> str:
         return self._type_hint_union()
@@ -453,14 +550,18 @@ class Parser:
 
         cases = []
         while not self.check(TokenType.DEDENT, TokenType.EOF):
-            case_line = self.line()
-            pattern = self._pattern()
-            guard = None
-            if self.match(TokenType.IF):
-                guard = self._expr()
-            self.expect(TokenType.COLON)
-            body = self._block()
-            cases.append(MatchCase(pattern=pattern, body=body, guard=guard, line=case_line))
+            try:
+                case_line = self.line()
+                pattern = self._pattern()
+                guard = None
+                if self.match(TokenType.IF):
+                    guard = self._expr()
+                self.expect(TokenType.COLON)
+                body = self._block()
+                cases.append(MatchCase(pattern=pattern, body=body, guard=guard, line=case_line))
+            except ParseError as error:
+                self._record_error(error)
+                self._synchronize_statement((TokenType.DEDENT, TokenType.EOF))
             self.skip_newlines()
 
         self.expect(TokenType.DEDENT)
@@ -509,7 +610,7 @@ class Parser:
         ln = self.line()
         self.expect(TokenType.FOR)
         # Optional 'चर' before loop variable
-        self.match(TokenType.VAR)
+        self._match_explicit_var_prefix()
         var_names = [self.expect_name().value]
         while self.match(TokenType.COMMA):
             var_names.append(self.expect_name().value)
@@ -518,6 +619,20 @@ class Parser:
         self.expect(TokenType.COLON)
         body = self._block()
         return ForStmt(var_names=var_names, iterable=iterable, body=body, line=ln)
+
+    def _async_for_stmt(self) -> AsyncForStmt:
+        ln = self.line()
+        self.expect(TokenType.ASYNC)
+        self.expect(TokenType.FOR)
+        self._match_explicit_var_prefix()
+        var_names = [self.expect_name().value]
+        while self.match(TokenType.COMMA):
+            var_names.append(self.expect_name().value)
+        self.expect(TokenType.IN)
+        iterable = self._expr()
+        self.expect(TokenType.COLON)
+        body = self._block()
+        return AsyncForStmt(var_names=var_names, iterable=iterable, body=body, line=ln)
 
     def _return_stmt(self) -> ReturnStmt:
         ln = self.line()
@@ -530,6 +645,22 @@ class Parser:
             value = values[0] if len(values) == 1 else TupleLiteral(elements=values, line=ln)
         self._end_stmt()
         return ReturnStmt(value=value, line=ln)
+
+    def _yield_stmt(self) -> YieldStmt:
+        ln = self.line()
+        self.expect(TokenType.YIELD)
+        if self.match(TokenType.FROM):
+            iterable = self._expr()
+            self._end_stmt()
+            return YieldFromStmt(iterable=iterable, line=ln)
+        value = None
+        if not self.check(TokenType.NEWLINE, TokenType.SEMICOLON, TokenType.EOF):
+            values = [self._expr()]
+            while self.match(TokenType.COMMA):
+                values.append(self._expr())
+            value = values[0] if len(values) == 1 else TupleLiteral(elements=values, line=ln)
+        self._end_stmt()
+        return YieldStmt(value=value, line=ln)
 
     def _print_stmt(self) -> PrintStmt:
         ln = self.line()
@@ -547,33 +678,45 @@ class Parser:
         try_body = self._block()
 
         handlers = []
-        while self.match(TokenType.CATCH):
-            handler_line = self.line()
-            match_name, bind_name = None, None
-            if self.check_name():
-                provisional_name = self.current.value
+        while self.check(TokenType.CATCH, TokenType.APAVADA):
+            try:
+                handler_line = self.line()
                 self.pos += 1
-                if self.match(TokenType.AS):
-                    match_name = provisional_name
-                    bind_name = self.expect_name().value
-                else:
-                    match_name = provisional_name
-                    bind_name = provisional_name
-            self.expect(TokenType.COLON)
-            catch_body = self._block()
-            handlers.append(
-                CatchHandler(
-                    match_name=match_name,
-                    bind_name=bind_name,
-                    body=catch_body,
-                    line=handler_line,
+                match_name, bind_name = None, None
+                if self.check_name():
+                    provisional_name = self.current.value
+                    self.pos += 1
+                    if self.match(TokenType.AS):
+                        match_name = provisional_name
+                        bind_name = self.expect_name().value
+                    else:
+                        match_name = provisional_name
+                        bind_name = provisional_name
+                self.expect(TokenType.COLON)
+                catch_body = self._block()
+                handlers.append(
+                    CatchHandler(
+                        match_name=match_name,
+                        bind_name=bind_name,
+                        body=catch_body,
+                        line=handler_line,
+                    )
                 )
-            )
+            except ParseError as error:
+                self._record_error(error)
+                self._synchronize_statement(
+                    (TokenType.CATCH, TokenType.APAVADA, TokenType.FINALLY, TokenType.DEDENT, TokenType.EOF)
+                )
+            self.skip_newlines()
 
         finally_body = None
         if self.match(TokenType.FINALLY):
-            self.expect(TokenType.COLON)
-            finally_body = self._block()
+            try:
+                self.expect(TokenType.COLON)
+                finally_body = self._block()
+            except ParseError as error:
+                self._record_error(error)
+                self._synchronize_statement((TokenType.DEDENT, TokenType.EOF))
 
         return TryStmt(
             try_body=try_body,
@@ -595,6 +738,34 @@ class Parser:
         body = self._block()
 
         return WithStmt(expr=expr, var_name=var_name, body=body, line=ln)
+
+    def _async_with_stmt(self) -> AsyncWithStmt:
+        ln = self.line()
+        self.expect(TokenType.ASYNC)
+        self.expect(TokenType.WITH)
+        expr = self._expr()
+
+        var_name = None
+        if self.match(TokenType.AS):
+            var_name = self.expect_name().value
+
+        self.expect(TokenType.COLON)
+        body = self._block()
+
+        return AsyncWithStmt(expr=expr, var_name=var_name, body=body, line=ln)
+
+    def _match_explicit_var_prefix(self) -> bool:
+        if self.check(TokenType.VAR) and self.peek().type in NAME_LIKE_TOKEN_TYPES:
+            self.pos += 1
+            return True
+        return False
+
+    def _is_async_marker(self) -> bool:
+        return self.check(TokenType.ASYNC) or (
+            self.check(TokenType.IDENTIFIER)
+            and self.current.value in ("अतुल्यकालिक", "असंकालिक")
+            and self.peek().type == TokenType.FOR
+        )
 
     def _throw_stmt(self) -> ThrowStmt:
         ln = self.line()
@@ -782,26 +953,38 @@ class Parser:
         self.expect(TokenType.INDENT)
         self.skip_newlines()
         
-        # Parse evidence block (प्रमाण)
-        evidence_body = None
+        evidence_body = Block(stmts=[], line=ln)
+        kernel_expr = None
         certificate = None
-        
-        if not self.check(TokenType.PRAMANA):
-            raise ParseError("सिद्धि के भीतर प्रमाण: अपेक्षित है", self.current.line)
+        saw_evidence = False
+        saw_kernel = False
 
-        self.expect(TokenType.PRAMANA)
-        self.expect(TokenType.COLON)
-        self.skip_newlines()
-        evidence_body = self._block()
-        self.skip_newlines()
-        
-        # Parse optional proof certificate (प्रमाण_पत्र)
-        if self.check(TokenType.PRAMANA_PATRA):
-            self.expect(TokenType.PRAMANA_PATRA)
-            self.expect(TokenType.COLON)
-            cert_token = self.expect(TokenType.STRING)
-            certificate = cert_token.value
-            self._end_stmt()
+        while not self.check(TokenType.DEDENT, TokenType.EOF):
+            try:
+                if self.check(TokenType.PRAMANA):
+                    self.expect(TokenType.PRAMANA)
+                    self.expect(TokenType.COLON)
+                    self.skip_newlines()
+                    evidence_body = self._block()
+                    saw_evidence = True
+                elif self.check(TokenType.PRAMANA_PATRA):
+                    self.expect(TokenType.PRAMANA_PATRA)
+                    self.expect(TokenType.COLON)
+                    cert_token = self.expect(TokenType.STRING)
+                    certificate = cert_token.value
+                    self._end_stmt()
+                elif self.check_name() and self.current.value == "कर्नेल":
+                    kernel_expr = self._proof_kernel_section()
+                    saw_kernel = True
+                else:
+                    raise ParseError("सिद्धि के भीतर प्रमाण:, कर्नेल:, या प्रमाण_पत्र: अपेक्षित है", self.current.line)
+            except ParseError as error:
+                self._record_error(error)
+                self._synchronize_statement((TokenType.PRAMANA, TokenType.PRAMANA_PATRA, TokenType.DEDENT, TokenType.EOF))
+            self.skip_newlines()
+
+        if not saw_evidence and not saw_kernel:
+            raise ParseError("सिद्धि के भीतर प्रमाण: या कर्नेल: अपेक्षित है", self.current.line)
         
         self.match(TokenType.DEDENT)
         
@@ -809,9 +992,77 @@ class Parser:
             statement=statement,
             evidence_body=evidence_body,
             statement_expr=statement_expr,
+            kernel_expr=kernel_expr,
             certificate=certificate,
             line=ln
         )
+
+    def _proof_kernel_section(self) -> Node:
+        ln = self.line()
+        section_name = self.expect_name("कर्नेल अपेक्षित है")
+        if section_name.value != "कर्नेल":
+            raise ParseError("कर्नेल अपेक्षित है", section_name.line)
+        self.expect(TokenType.COLON)
+
+        if not self.check(TokenType.NEWLINE):
+            expr = self._expr()
+            self._end_stmt()
+            return expr
+
+        self.expect(TokenType.NEWLINE)
+        self.skip_newlines()
+        if not self.check(TokenType.INDENT):
+            raise ParseError("कर्नेल के लिए इंडेंटेड ब्लॉक आवश्यक है", self.current.line)
+        self.expect(TokenType.INDENT)
+        self.skip_newlines()
+
+        payload_expr = None
+        fields: dict[str, Node] = {}
+        key_map = {
+            "पद": "term",
+            "term": "term",
+            "निर्णय": "payload",
+            "स्पेक": "payload",
+            "spec": "payload",
+            "payload": "payload",
+            "प्रकार": "type",
+            "type": "type",
+            "अपेक्षित_प्रकार": "type",
+            "expected_type": "type",
+            "सन्दर्भ": "context",
+            "context": "context",
+        }
+
+        while not self.check(TokenType.DEDENT, TokenType.EOF):
+            try:
+                key_token = self.expect_name("कर्नेल खंड अपेक्षित है")
+                canonical = key_map.get(key_token.value)
+                if canonical is None:
+                    raise ParseError(f"अमान्य कर्नेल खंड: {key_token.value}", key_token.line)
+                self.expect(TokenType.COLON)
+                value_expr = self._expr()
+                self._end_stmt()
+                if canonical == "payload":
+                    payload_expr = value_expr
+                else:
+                    fields[canonical] = value_expr
+            except ParseError as error:
+                self._record_error(error)
+                self._synchronize_statement((TokenType.DEDENT, TokenType.EOF))
+            self.skip_newlines()
+
+        self.match(TokenType.DEDENT)
+
+        if payload_expr is not None:
+            return payload_expr
+        if not fields:
+            raise ParseError("कर्नेल खंड में पद:/प्रकार: या निर्णय: अपेक्षित है", ln)
+
+        pairs = []
+        for key in ("term", "type", "context"):
+            if key in fields:
+                pairs.append((StringLiteral(value=key, line=ln), fields[key]))
+        return DictLiteral(pairs=pairs, line=ln)
 
     def _match_ellipsis(self) -> bool:
         return (
@@ -944,19 +1195,19 @@ class Parser:
 
     def _block(self) -> Block:
         ln = self.line()
-        stmts = []
         self.skip_newlines()
 
         # Inline single statement (no indent)
         if not self.check(TokenType.INDENT):
-            stmts.append(self._stmt())
-            return Block(stmts=stmts, line=ln)
+            try:
+                return Block(stmts=[self._stmt()], line=ln)
+            except ParseError as error:
+                self._record_error(error)
+                self._synchronize_statement((TokenType.DEDENT,))
+                return Block(stmts=[], line=ln)
 
         self.expect(TokenType.INDENT)
-        self.skip_newlines()
-        while not self.check(TokenType.DEDENT, TokenType.EOF):
-            stmts.append(self._stmt())
-            self.skip_newlines()
+        stmts = self._stmt_sequence((TokenType.DEDENT, TokenType.EOF))
         self.match(TokenType.DEDENT)
         return Block(stmts=stmts, line=ln)
 
@@ -1294,7 +1545,7 @@ class Parser:
             varargs = None
 
             if self.match(TokenType.LPAREN):
-                params, _, varargs = self._param_list()
+                params, _, varargs, _ = self._param_list()
                 self.expect(TokenType.RPAREN)
             elif not self.check(TokenType.COLON):
                 while True:
@@ -1334,6 +1585,19 @@ class Parser:
                 return TupleLiteral(elements=[], line=ln)
 
             expr = self._expr()
+            self.skip_newlines()
+            if self.check(TokenType.FOR) or self._is_async_marker():
+                is_async, var_name, iterable, filter_expr = self._comprehension_clause()
+                self.skip_newlines()
+                self.expect(TokenType.RPAREN)
+                return GeneratorExpr(
+                    expr=expr,
+                    var_name=var_name,
+                    iterable=iterable,
+                    filter_expr=filter_expr,
+                    is_async=is_async,
+                    line=ln,
+                )
             if self.match(TokenType.COMMA):
                 elements = [expr]
                 self.skip_newlines()
@@ -1377,7 +1641,7 @@ class Parser:
             if self.peek().type == TokenType.LPAREN:
                 self.pos += 1 # skip FUNC
                 self.expect(TokenType.LPAREN)
-                params, _, varargs = self._param_list() # Discard defaults for lambda
+                params, _, varargs, _ = self._param_list() # Discard defaults for lambda
                 self.expect(TokenType.RPAREN)
                 self.expect(TokenType.COLON)
 
@@ -1411,14 +1675,8 @@ class Parser:
         first_expr = self._expr()
         self.skip_newlines()
 
-        if self.match(TokenType.FOR):
-            self.match(TokenType.VAR)
-            var_name = self.expect_name().value
-            self.expect(TokenType.IN)
-            iterable = self._or_expr()
-            filter_expr = None
-            if self.match(TokenType.IF):
-                filter_expr = self._expr()
+        if self.check(TokenType.FOR) or self._is_async_marker():
+            is_async, var_name, iterable, filter_expr = self._comprehension_clause()
             self.skip_newlines()
             self.expect(TokenType.RBRACKET)
             return ListComp(
@@ -1426,6 +1684,7 @@ class Parser:
                 var_name=var_name,
                 iterable=iterable,
                 filter_expr=filter_expr,
+                is_async=is_async,
                 line=ln,
             )
 
@@ -1459,14 +1718,8 @@ class Parser:
             # It's a dictionary
             first_value = self._expr()
             self.skip_newlines()
-            if self.match(TokenType.FOR):
-                self.match(TokenType.VAR)
-                var_name = self.expect_name().value
-                self.expect(TokenType.IN)
-                iterable = self._or_expr()
-                filter_expr = None
-                if self.match(TokenType.IF):
-                    filter_expr = self._expr()
+            if self.check(TokenType.FOR) or self._is_async_marker():
+                is_async, var_name, iterable, filter_expr = self._comprehension_clause()
                 self.skip_newlines()
                 self.expect(TokenType.RBRACE)
                 return DictComp(
@@ -1475,6 +1728,7 @@ class Parser:
                     var_name=var_name,
                     iterable=iterable,
                     filter_expr=filter_expr,
+                    is_async=is_async,
                     line=ln,
                 )
 
@@ -1547,3 +1801,18 @@ class Parser:
             pos = end + 1
 
         return FStringExpr(parts=parts, line=line)
+
+    def _comprehension_clause(self) -> tuple[bool, str, Node, Node | None]:
+        is_async = False
+        if self._is_async_marker():
+            is_async = True
+            self.pos += 1
+        self.expect(TokenType.FOR)
+        self._match_explicit_var_prefix()
+        var_name = self.expect_name().value
+        self.expect(TokenType.IN)
+        iterable = self._or_expr()
+        filter_expr = None
+        if self.match(TokenType.IF):
+            filter_expr = self._expr()
+        return is_async, var_name, iterable, filter_expr

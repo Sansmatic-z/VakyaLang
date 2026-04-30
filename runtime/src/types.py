@@ -97,6 +97,7 @@ class FunctionType(VakType):
     defaults_count: int = 0
     varargs_name: str | None = None
     is_async: bool = False
+    kwargs_name: str | None = None
 
     def __str__(self) -> str:
         params = ", ".join(str(t) for t in self.param_types)

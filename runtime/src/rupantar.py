@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from difflib import get_close_matches
 from pathlib import Path
 import re
@@ -14,6 +13,17 @@ from .errors import format_vak_error
 from .lexer import Lexer, is_identifier_part, is_identifier_start
 from .parser import Parser
 from .runtime_catalog import build_builtin_catalog, builtin_alias_map
+from .rupantar_models import (
+    RupantarEdit,
+    RupantarResult,
+    RupantarSuggestion,
+    ValidationEvent,
+    _CallSignature,
+    _ModuleMemberRepair,
+    _TypedMemberRepair,
+    _UnresolvedNameIssue,
+    _ValidationReport,
+)
 from .stdlib_manifest import build_stdlib_manifest, module_alias_map
 from .tokens import KEYWORDS
 from .vm import VakVM
@@ -62,6 +72,8 @@ _CANONICAL_TOKEN_MAP = {
     "तोड़ो": "विराम",
     "continue": "अग्रे",
     "जारी": "अग्रे",
+    "else": "अन्यथा",
+    "otherwise": "अन्यथा",
     "या": "अथवा",
     "return": "प्रत्यागच्छ",
     "वापस": "प्रत्यागच्छ",
@@ -143,6 +155,50 @@ _RESERVED_DECL_RE = re.compile(
     r"^(?P<indent>[ \t]*)(?P<decl>चर|मान|स्थिर)\s+"
     rf"(?P<name>{_IDENT_RE})(?!{_IDENT_BODY_RE})"
 )
+_ASSIGN_TARGET_RE = rf"{_IDENT_RE}(?:\s*(?:\.\s*{_IDENT_RE}|\[[^\n\]]+\]))*"
+_AUGMENTED_ASSIGN_RE = re.compile(
+    rf"^(?P<indent>[ \t]*)(?P<target>{_ASSIGN_TARGET_RE})\s*"
+    r"(?P<op>\+=|-=|\*=|/=|%=|\*\*=)\s*(?P<expr>.+?)\s*$"
+)
+_POSTFIX_INCREMENT_RE = re.compile(
+    rf"^(?P<indent>[ \t]*)(?P<target>{_ASSIGN_TARGET_RE})\s*(?P<op>\+\+|--)\s*$"
+)
+_PREFIX_INCREMENT_RE = re.compile(
+    rf"^(?P<indent>[ \t]*)(?P<op>\+\+|--)\s*(?P<target>{_ASSIGN_TARGET_RE})\s*$"
+)
+
+_PYTHON_FROM_IMPORT_RE = re.compile(
+    rf"^(?P<indent>[ \t]*)(?:से|from)\s+(?P<module>{_MODULE_RE})\s+(?:आयात|import)\s+(?P<names>.+?)\s*$"
+)
+
+_GENERATOR_CLASS_DECL_RE = re.compile(
+    rf"^(?P<indent>[ \t]*)(?:वर्ग|श्रेणी|class|क्लास)\s+"
+    rf"(?P<name>{_IDENT_RE})(?:\((?P<super>{_IDENT_RE})\))?\s*\{{\s*;?\s*$"
+)
+
+_GENERATOR_FUNC_DECL_RE = re.compile(
+    rf"^(?P<indent>[ \t]*)(?P<async>(?:अतुल्यकालिक|async)\s+)?"
+    rf"(?:कर्म|कार्य|def|function|फंक्शन)\s+(?P<name>{_IDENT_RE})"
+    r"\((?P<params>.*)\)(?P<rtype>\s*(?:→|->)\s*[^:{]+?)?\s*\{\s*;?\s*$"
+)
+
+_GENERATOR_VAR_DECL_RE = re.compile(
+    r"^(?P<indent>[ \t]*)(?P<decl>परिवर्तनी|let|var|const|स्थिरांक)\s+(?P<body>.+?)\s*;?\s*$"
+)
+
+_GENERATOR_RETURN_RE = re.compile(
+    r"^(?P<indent>[ \t]*)(?:लौटाओ|return)\b(?P<rest>.*?)(?:\s*;)?\s*$"
+)
+
+_GENERATOR_CLOSING_BRACE_RE = re.compile(r"^(?P<indent>[ \t]*)}\s*;?\s*$")
+_GENERATOR_JOINED_ELSE_RE = re.compile(
+    r"^(?P<indent>[ \t]*)}\s*(?:अन्यथा|else|otherwise)\s*\{\s*;?\s*$"
+)
+
+_GENERATOR_FOREACH_RE = re.compile(
+    rf"^(?P<indent>[ \t]*)(?:foreach|for\s+each|for)\s+(?:(?:char|var|let|const)\s+)?"
+    rf"(?P<vars>{_IDENT_RE}(?:\s*,\s*{_IDENT_RE})*)\s+in\s+(?P<iterable>.+?)\s*\{{?\s*;?\s*$"
+)
 
 _INSUFFICIENT_ARGS_RE = re.compile(
     r"\[Line (?P<line>\d+)\]\s+अपर्याप्त तर्क: कम से कम (?P<required>\d+), मिला (?P<provided>\d+)"
@@ -170,228 +226,6 @@ _TYPED_MEMBER_METHODS: dict[str, tuple[str, ...]] = {
     "dict": ("keys", "values", "कुंजियाँ", "मान"),
     "str": ("strip", "split", "join", "छाँटो", "विभाजन", "संयोग"),
 }
-
-@dataclass(frozen=True)
-class RupantarEdit:
-    line: int
-    layer: str
-    before: str
-    after: str
-    reason: str
-    confidence: str = "safe_auto_fix"
-
-
-@dataclass(frozen=True)
-class RupantarSuggestion:
-    line: int
-    layer: str
-    message: str
-    confidence: str
-    before: str | None = None
-    after: str | None = None
-
-
-@dataclass(frozen=True)
-class ValidationEvent:
-    stage: str
-    syntax_valid: bool
-    compiled: bool
-    warnings_count: int
-    unresolved_count: int
-    error_kind: str | None = None
-    error_line: int = 0
-    error_message: str | None = None
-
-
-@dataclass(frozen=True)
-class _UnresolvedNameIssue:
-    name: str
-    line: int
-    suggestion: str | None
-    candidates: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class _CallSignature:
-    name: str
-    required_args: int
-    max_args: int | None
-    keyword_names: tuple[str, ...] = ()
-    accepts_varargs: bool = False
-    accepts_kwargs: bool = False
-    source: str = "builtin"
-
-
-@dataclass(frozen=True)
-class _TypedMemberRepair:
-    line: int
-    receiver: str
-    before_attr: str
-    after_attr: str
-    receiver_kind: str
-
-
-@dataclass(frozen=True)
-class _ModuleMemberRepair:
-    line: int
-    module_alias: str
-    module_name: str
-    before_attr: str
-    after_attr: str
-
-
-@dataclass(frozen=True)
-class RupantarResult:
-    original_source: str
-    source: str
-    transformed: bool
-    edits: tuple[RupantarEdit, ...] = ()
-    rejected_fixes: tuple[RupantarSuggestion, ...] = ()
-    suggestions: tuple[RupantarSuggestion, ...] = ()
-    warnings: tuple[str, ...] = ()
-    active_branches: tuple[str, ...] = ()
-    translation_used: bool = False
-    translation_blocked_reason: str | None = None
-    syntax_valid: bool = False
-    compiled: bool = False
-    validation_events: tuple[ValidationEvent, ...] = ()
-
-    def report_text(self) -> str:
-        lines = [
-            "वाक्य-रूपान्तर रिपोर्ट",
-            f"  परिवर्तन: {'हाँ' if self.transformed else 'नहीं'}",
-            f"  अनुवाद चरण: {'हाँ' if self.translation_used else 'नहीं'}",
-            f"  सक्रिय शाखाएँ: {', '.join(self.active_branches) if self.active_branches else 'कोई नहीं'}",
-            f"  वाक्यरचना मान्य: {'हाँ' if self.syntax_valid else 'नहीं'}",
-            f"  संकलन मान्य: {'हाँ' if self.compiled else 'नहीं'}",
-            f"  संशोधन संख्या: {len(self.edits)}",
-            f"  अस्वीकृत संशोधन: {len(self.rejected_fixes)}",
-            f"  सुझाव संख्या: {len(self.suggestions)}",
-        ]
-        if self.translation_blocked_reason:
-            lines.append(f"  अनुवाद चेतावनी: {self.translation_blocked_reason}")
-        if self.validation_events:
-            lines.append("  सत्यापन चरण:")
-            for event in self.validation_events:
-                outcome = (
-                    f"वाक्यरचना={'हाँ' if event.syntax_valid else 'नहीं'}, "
-                    f"संकलन={'हाँ' if event.compiled else 'नहीं'}, "
-                    f"चेतावनी={event.warnings_count}, "
-                    f"अपरिभाषित={event.unresolved_count}"
-                )
-                if event.error_message:
-                    error_detail = f" [{event.error_kind or 'त्रुटि'}"
-                    if event.error_line:
-                        error_detail += f" L{event.error_line}"
-                    error_detail += f"] {event.error_message}"
-                else:
-                    error_detail = ""
-                lines.append(f"    - {event.stage}: {outcome}{error_detail}")
-        if self.edits:
-            lines.append("  संशोधन विवरण:")
-            for edit in self.edits:
-                lines.append(
-                    f"    - L{edit.line} [{edit.layer}/{edit.confidence}] {edit.reason}: "
-                    f"{edit.before!r} -> {edit.after!r}"
-                )
-        if self.suggestions:
-            lines.append("  सुझाव:")
-            for suggestion in self.suggestions:
-                detail = ""
-                if suggestion.before is not None or suggestion.after is not None:
-                    detail = f" ({suggestion.before!r} -> {suggestion.after!r})"
-                lines.append(
-                    f"    - L{suggestion.line} [{suggestion.layer}/{suggestion.confidence}] "
-                    f"{suggestion.message}{detail}"
-                )
-        if self.rejected_fixes:
-            lines.append("  अस्वीकृत संशोधन:")
-            for suggestion in self.rejected_fixes:
-                detail = ""
-                if suggestion.before is not None or suggestion.after is not None:
-                    detail = f" ({suggestion.before!r} -> {suggestion.after!r})"
-                lines.append(
-                    f"    - L{suggestion.line} [{suggestion.layer}/{suggestion.confidence}] "
-                    f"{suggestion.message}{detail}"
-                )
-        if self.warnings:
-            lines.append("  चेतावनियाँ:")
-            for warning in self.warnings:
-                lines.append(f"    - {warning}")
-        return "\n".join(lines)
-
-    def report_payload(self) -> dict[str, Any]:
-        return {
-            "transformed": self.transformed,
-            "translation_used": self.translation_used,
-            "translation_blocked_reason": self.translation_blocked_reason,
-            "syntax_valid": self.syntax_valid,
-            "compiled": self.compiled,
-            "active_branches": list(self.active_branches),
-            "validation_events": [
-                {
-                    "stage": event.stage,
-                    "syntax_valid": event.syntax_valid,
-                    "compiled": event.compiled,
-                    "warnings_count": event.warnings_count,
-                    "unresolved_count": event.unresolved_count,
-                    "error_kind": event.error_kind,
-                    "error_line": event.error_line,
-                    "error_message": event.error_message,
-                }
-                for event in self.validation_events
-            ],
-            "edits": [
-                {
-                    "line": edit.line,
-                    "layer": edit.layer,
-                    "confidence": edit.confidence,
-                    "before": edit.before,
-                    "after": edit.after,
-                    "reason": edit.reason,
-                }
-                for edit in self.edits
-            ],
-            "rejected_fixes": [
-                {
-                    "line": item.line,
-                    "layer": item.layer,
-                    "message": item.message,
-                    "confidence": item.confidence,
-                    "before": item.before,
-                    "after": item.after,
-                }
-                for item in self.rejected_fixes
-            ],
-            "suggestions": [
-                {
-                    "line": item.line,
-                    "layer": item.layer,
-                    "message": item.message,
-                    "confidence": item.confidence,
-                    "before": item.before,
-                    "after": item.after,
-                }
-                for item in self.suggestions
-            ],
-            "warnings": list(self.warnings),
-            "source": self.source,
-        }
-
-
-@dataclass(frozen=True)
-class _ValidationReport:
-    syntax_valid: bool
-    compiled: bool
-    warnings: tuple[str, ...]
-    unresolved: tuple[_UnresolvedNameIssue, ...]
-    suggestions: tuple[RupantarSuggestion, ...]
-    program: Any = None
-    error: Exception | None = None
-    error_kind: str | None = None
-    error_line: int = 0
-    error_message: str | None = None
-    event: ValidationEvent | None = None
 
 
 class _Scope:
@@ -551,6 +385,12 @@ class _UndefinedNameAnalyzer:
             inner.declare(getattr(stmt, "var_name", None))
             self._analyze_block(getattr(getattr(stmt, "body", None), "stmts", []), inner)
             return
+        if kind == "AsyncWithStmt":
+            self._visit_expr(getattr(stmt, "expr", None), scope)
+            inner = _Scope(scope)
+            inner.declare(getattr(stmt, "var_name", None))
+            self._analyze_block(getattr(getattr(stmt, "body", None), "stmts", []), inner)
+            return
         if kind == "ThrowStmt":
             self._visit_expr(getattr(stmt, "value", None), scope)
             return
@@ -664,6 +504,13 @@ class _UndefinedNameAnalyzer:
             self._visit_expr(expr.filter_expr, inner)
             self._visit_expr(expr.key_expr, inner)
             self._visit_expr(expr.value_expr, inner)
+            return
+        if kind == "GeneratorExpr":
+            inner = _Scope(scope)
+            inner.declare(getattr(expr, "var_name", None))
+            self._visit_expr(expr.iterable, scope)
+            self._visit_expr(expr.filter_expr, inner)
+            self._visit_expr(expr.expr, inner)
             return
 
     def _visit_assignment_target(self, target: Any, scope: _Scope) -> None:
@@ -1375,6 +1222,7 @@ class VakyaRupantar:
             source,
             validation.program,
             source_path=source_path,
+            unresolved=validation.unresolved,
         )
         if not candidate_edits:
             return source, [], validation
@@ -1661,13 +1509,15 @@ class VakyaRupantar:
         program: Any,
         *,
         source_path: str | None,
+        unresolved: tuple[_UnresolvedNameIssue, ...] = (),
     ) -> tuple[str, list[RupantarEdit]]:
         typed_repairs = self._collect_typed_member_repairs(program)
         module_repairs = self._collect_module_member_repairs(
             program,
             source_path=source_path,
         )
-        if not typed_repairs and not module_repairs:
+        call_repairs = self._collect_unresolved_call_repairs(program, unresolved)
+        if not typed_repairs and not module_repairs and not call_repairs:
             return source, []
 
         source_lines = source.splitlines(keepends=True)
@@ -1678,8 +1528,11 @@ class VakyaRupantar:
         module_grouped: dict[int, list[_ModuleMemberRepair]] = {}
         for repair in module_repairs:
             module_grouped.setdefault(repair.line, []).append(repair)
+        call_grouped: dict[int, dict[str, str]] = {}
+        for line_no, before_name, after_name in call_repairs:
+            call_grouped.setdefault(line_no, {})[before_name] = after_name
 
-        all_lines = sorted(set(typed_grouped) | set(module_grouped))
+        all_lines = sorted(set(typed_grouped) | set(module_grouped) | set(call_grouped))
         for line_no in all_lines:
             line_index = line_no - 1
             if line_index < 0 or line_index >= len(source_lines):
@@ -1740,9 +1593,77 @@ class VakyaRupantar:
                     )
                 )
 
+            if call_grouped.get(line_no):
+                reason = "AST-aware callable name normalized against a visible builtin/function candidate"
+                before_code = rewritten_code
+                updated, _ = self._replace_identifier_tokens(
+                    rewritten_code,
+                    call_grouped[line_no],
+                    line_no=line_no,
+                    layer="logic",
+                    reason=reason,
+                )
+                rewritten_code = updated
+                if rewritten_code != before_code:
+                    for before_name, after_name in call_grouped[line_no].items():
+                        if before_name == after_name:
+                            continue
+                        edits.append(
+                            RupantarEdit(
+                                line=line_no,
+                                layer="logic",
+                                before=f"{before_name}(",
+                                after=f"{after_name}(",
+                                reason=reason,
+                            )
+                        )
+
             source_lines[line_index] = f"{rewritten_code}{comment}{newline}"
 
         return "".join(source_lines), edits
+
+    def _collect_unresolved_call_repairs(
+        self,
+        program: Any,
+        unresolved: tuple[_UnresolvedNameIssue, ...],
+    ) -> list[tuple[int, str, str]]:
+        replacements = self._build_unambiguous_unresolved_replacement_map(unresolved)
+        if not replacements:
+            return []
+
+        repairs: list[tuple[int, str, str]] = []
+        seen: set[tuple[int, str, str]] = set()
+
+        def visit(node: Any) -> None:
+            if node is None:
+                return
+            if isinstance(node, list):
+                for item in node:
+                    visit(item)
+                return
+            if isinstance(node, tuple):
+                for item in node:
+                    visit(item)
+                return
+            if not hasattr(node, "__dict__"):
+                return
+
+            if type(node).__name__ == "CallExpr":
+                callee = getattr(node, "callee", None)
+                if type(callee).__name__ == "IdentifierExpr":
+                    before_name = getattr(callee, "name", "")
+                    after_name = replacements.get(before_name)
+                    line_no = getattr(callee, "line", 0) or getattr(node, "line", 0)
+                    if after_name and after_name != before_name and line_no:
+                        key = (line_no, before_name, after_name)
+                        if key not in seen:
+                            seen.add(key)
+                            repairs.append(key)
+            for value in vars(node).values():
+                visit(value)
+
+        visit(program)
+        return repairs
 
     def _collect_typed_member_repairs(self, program: Any) -> list[_TypedMemberRepair]:
         repairs: list[_TypedMemberRepair] = []
@@ -2712,9 +2633,13 @@ class VakyaRupantar:
             original_code = code
 
             code = self._rewrite_branch_member_calls(code, line_no, edits)
+            code = self._rewrite_branch_import_line(code, line_no, edits)
             code = self._rewrite_import_line(code, line_no, source_path, edits)
+            code = self._rewrite_generator_surface_line(code, line_no, edits)
             code = self._rewrite_type_patterns(code, line_no, edits)
+            code = self._rewrite_augmented_assignment(code, line_no, edits)
             code, new_multiline = self._scan_and_rewrite_code(code, line_no, edits)
+            code = self._rewrite_postscan_block_surface(code, line_no, edits)
 
             if original_code != code:
                 transformed_lines.append(f"{code}{comment}{newline}")
@@ -2942,6 +2867,253 @@ class VakyaRupantar:
             return rewritten
         return line
 
+    def _rewrite_augmented_assignment(
+        self,
+        line: str,
+        line_no: int,
+        edits: list[RupantarEdit],
+    ) -> str:
+        match = _AUGMENTED_ASSIGN_RE.match(line)
+        if match:
+            target = match.group("target").strip()
+            expr = match.group("expr").strip()
+            op = match.group("op")
+            operator = {
+                "+=": "+",
+                "-=": "-",
+                "*=": "*",
+                "/=": "/",
+                "%=": "%",
+                "**=": "**",
+            }[op]
+            rewritten = f"{match.group('indent')}{target} = {target} {operator} {expr}"
+            edits.append(
+                RupantarEdit(
+                    line=line_no,
+                    layer="syntax",
+                    before=line.strip(),
+                    after=rewritten.strip(),
+                    reason="augmented assignment normalized to explicit Vak assignment",
+                )
+            )
+            return rewritten
+
+        for pattern in (_POSTFIX_INCREMENT_RE, _PREFIX_INCREMENT_RE):
+            match = pattern.match(line)
+            if not match:
+                continue
+            target = match.group("target").strip()
+            op = match.group("op")
+            operator = "+" if op == "++" else "-"
+            rewritten = f"{match.group('indent')}{target} = {target} {operator} १"
+            edits.append(
+                RupantarEdit(
+                    line=line_no,
+                    layer="syntax",
+                    before=line.strip(),
+                    after=rewritten.strip(),
+                    reason="increment/decrement syntax normalized to explicit Vak assignment",
+                )
+            )
+            return rewritten
+
+        return line
+
+    def _rewrite_generator_surface_line(
+        self,
+        line: str,
+        line_no: int,
+        edits: list[RupantarEdit],
+    ) -> str:
+        match = _GENERATOR_CLASS_DECL_RE.match(line)
+        if match:
+            superclass = match.group("super")
+            rewritten = f"{match.group('indent')}वर्ग {match.group('name')}"
+            if superclass:
+                rewritten += f"({superclass})"
+            rewritten += ":"
+            edits.append(
+                RupantarEdit(
+                    line=line_no,
+                    layer="pattern",
+                    before=line.strip(),
+                    after=rewritten.strip(),
+                    reason="legacy/generated class surface normalized to live Vak class declaration",
+                )
+            )
+            return rewritten
+
+        match = _GENERATOR_FUNC_DECL_RE.match(line)
+        if match:
+            async_prefix = "अतुल्यकालिक " if match.group("async") else ""
+            rewritten = (
+                f"{match.group('indent')}{async_prefix}कर्म {match.group('name')}"
+                f"({match.group('params')})"
+            )
+            return_hint = (match.group("rtype") or "").strip()
+            if return_hint:
+                return_hint = return_hint.replace("->", "→", 1)
+                rewritten += f" {return_hint}"
+            rewritten += ":"
+            edits.append(
+                RupantarEdit(
+                    line=line_no,
+                    layer="pattern",
+                    before=line.strip(),
+                    after=rewritten.strip(),
+                    reason="legacy/generated function surface normalized to live Vak function declaration",
+                )
+            )
+            return rewritten
+
+        match = _GENERATOR_JOINED_ELSE_RE.match(line)
+        if match:
+            rewritten = f"{match.group('indent')}अन्यथा:"
+            edits.append(
+                RupantarEdit(
+                    line=line_no,
+                    layer="pattern",
+                    before=line.strip(),
+                    after=rewritten.strip(),
+                    reason="joined brace-style else block normalized to live Vak अन्यथा form",
+                )
+            )
+            return rewritten
+
+        match = _GENERATOR_FOREACH_RE.match(line)
+        if match:
+            rewritten = (
+                f"{match.group('indent')}प्रत्येक चर {match.group('vars').strip()} "
+                f"अन्तर्गत {match.group('iterable').strip()}:"
+            )
+            edits.append(
+                RupantarEdit(
+                    line=line_no,
+                    layer="pattern",
+                    before=line.strip(),
+                    after=rewritten.strip(),
+                    reason="legacy/generated foreach loop normalized to live Vak loop declaration",
+                )
+            )
+            return rewritten
+
+        match = _GENERATOR_VAR_DECL_RE.match(line)
+        if match:
+            decl = match.group("decl")
+            keyword = "स्थिर" if decl in {"const", "स्थिरांक"} else "चर"
+            rewritten = f"{match.group('indent')}{keyword} {match.group('body').strip()}"
+            edits.append(
+                RupantarEdit(
+                    line=line_no,
+                    layer="pattern",
+                    before=line.strip(),
+                    after=rewritten.strip(),
+                    reason="legacy/generated variable declaration normalized to live Vak declaration",
+                )
+            )
+            return rewritten
+
+        match = _GENERATOR_RETURN_RE.match(line)
+        if match:
+            rest = match.group("rest").strip()
+            rewritten = f"{match.group('indent')}प्रत्यागच्छ"
+            if rest:
+                rewritten += f" {rest}"
+            edits.append(
+                RupantarEdit(
+                    line=line_no,
+                    layer="pattern",
+                    before=line.strip(),
+                    after=rewritten.strip(),
+                    reason="legacy/generated return syntax normalized to live Vak प्रत्यागच्छ form",
+                )
+            )
+            return rewritten
+
+        if _GENERATOR_CLOSING_BRACE_RE.match(line):
+            edits.append(
+                RupantarEdit(
+                    line=line_no,
+                    layer="pattern",
+                    before=line.strip(),
+                    after="",
+                    reason="brace-only block closer removed after legacy/generated block normalization",
+                )
+            )
+            return ""
+
+        return line
+
+    def _rewrite_branch_import_line(
+        self,
+        line: str,
+        line_no: int,
+        edits: list[RupantarEdit],
+    ) -> str:
+        match = self._import_re.match(line)
+        if not match:
+            return line
+
+        module = match.group("module")
+        for branch_name in self.active_branches:
+            modules = self.branch_member_aliases.get(branch_name, {})
+            if module not in modules:
+                continue
+            edits.append(
+                RupantarEdit(
+                    line=line_no,
+                    layer="branch",
+                    before=line.strip(),
+                    after="",
+                    reason=f"{branch_name} branch pseudo-module import removed because builtins are provided directly",
+                )
+            )
+            return ""
+        return line
+
+    def _rewrite_postscan_block_surface(
+        self,
+        line: str,
+        line_no: int,
+        edits: list[RupantarEdit],
+    ) -> str:
+        stripped = line.strip()
+        if not stripped.endswith("{"):
+            return line
+
+        head = stripped[:-1].rstrip()
+        block_headers = (
+            "यदि ",
+            "अन्यत् ",
+            "अन्यथा",
+            "अन्य",
+            "यावत् ",
+            "प्रत्येक ",
+            "प्रयत्न",
+            "दोष",
+            "अन्ततः",
+            "साथ ",
+            "प्रत्यभिज्ञा ",
+            "वर्ग ",
+            "कर्म ",
+            "डेटा ",
+        )
+        if not any(head == prefix.rstrip() or head.startswith(prefix) for prefix in block_headers):
+            return line
+
+        indent = line[: len(line) - len(line.lstrip(" \t"))]
+        rewritten = f"{indent}{head}:"
+        edits.append(
+            RupantarEdit(
+                line=line_no,
+                layer="pattern",
+                before=line.strip(),
+                after=rewritten.strip(),
+                reason="brace-style block opener normalized to live Vak colon form",
+            )
+        )
+        return rewritten
+
     def _rewrite_import_line(
         self,
         line: str,
@@ -2949,6 +3121,46 @@ class VakyaRupantar:
         source_path: str | None,
         edits: list[RupantarEdit],
     ) -> str:
+        match = _PYTHON_FROM_IMPORT_RE.match(line)
+        if match:
+            names_text = match.group("names").strip()
+            if " as " in names_text or " जैसे " in names_text:
+                return line
+            module = match.group("module")
+            corrected = self._resolve_module_name(module, source_path=source_path)
+            rewritten_names = names_text
+            module_for_exports = corrected or module
+            corrected_names, name_edits = self._rewrite_imported_names(
+                names_text,
+                module_for_exports,
+                line_no=line_no,
+                source_path=source_path,
+            )
+            if name_edits:
+                edits.extend(name_edits)
+                rewritten_names = corrected_names
+            if corrected is not None and corrected != module:
+                edits.append(
+                    RupantarEdit(
+                        line=line_no,
+                        layer="import",
+                        before=module,
+                        after=corrected,
+                        reason="python-order import module name corrected against live Vak module files",
+                    )
+                )
+            rewritten = f"{match.group('indent')}आयात {rewritten_names} से {module_for_exports}"
+            edits.append(
+                RupantarEdit(
+                    line=line_no,
+                    layer="import",
+                    before=line.strip(),
+                    after=rewritten.strip(),
+                    reason="python-order import syntax normalized to live Vak import form",
+                )
+            )
+            return rewritten
+
         match = self._from_import_re.match(line)
         if match:
             module = match.group("module")

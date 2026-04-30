@@ -63,6 +63,7 @@ class SansmaticProofTests(unittest.TestCase):
         restored = engine.summary()
         self.assertEqual(restored["facts"], 1)
         self.assertEqual(restored["rules"], 1)
+        self.assertIn("सान्समैटिक सारांश", engine.summary_text())
 
     def test_backward_chain_supports_goal_directed_queries(self):
         engine = SansmaticEngine(verbose=False)
@@ -85,6 +86,9 @@ class SansmaticProofTests(unittest.TestCase):
         self.assertTrue(explanation["proved"])
         self.assertEqual(explanation["tree"]["status"], "proved_by_rule")
         self.assertEqual(explanation["tree"]["children"][0]["goal"], "entity HAS growth")
+        self.assertIn("प्रमाण अनुक्रम", engine.trace_text())
+        self.assertIn("प्रमाण वृक्ष", engine.proof_tree_text(("entity", "IS", "Alive")))
+        self.assertIn("प्रमाण व्याख्या", engine.explain_text(("entity", "IS", "Alive")))
 
     def test_engine_explain_reports_obligation_blocker(self):
         engine = SansmaticEngine(verbose=False)
@@ -95,6 +99,54 @@ class SansmaticProofTests(unittest.TestCase):
         self.assertFalse(explanation["proved"])
         self.assertIn("obligation", explanation["blocked_by"])
         self.assertEqual(explanation["obligations"][0]["statement"], "entity HAS growth")
+        self.assertIn("अवरोध: obligation", engine.explain_text(("entity", "HAS", "growth")))
+
+    def test_engine_theorem_library_tracks_fact_and_rule_theorems(self):
+        engine = SansmaticEngine(verbose=False)
+        engine.register_proof("proof_001", ("entity", "HAS", "growth"))
+        engine.assert_fact("entity", "HAS", "growth", "proof_001")
+        fact_theorem = engine.register_theorem("वृद्धि_सत्य", ("entity", "HAS", "growth"))
+        rule_theorem = engine.register_rule_theorem(
+            "जीवित_नियम",
+            ("X", "HAS", "growth"),
+            ("X", "IS", "Alive"),
+        )
+
+        theorems = engine.list_theorems()
+        self.assertEqual(fact_theorem["name"], "वृद्धि_सत्य")
+        self.assertTrue(fact_theorem["proved"])
+        self.assertEqual(rule_theorem["kind"], "rule")
+        self.assertTrue(any(item["name"] == "वृद्धि_सत्य" for item in theorems))
+        self.assertTrue(any(item["name"] == "जीवित_नियम" for item in theorems))
+
+        detail = engine.theorem_details("जीवित_नियम")
+        self.assertEqual(detail["conclusion"], "X IS Alive")
+
+        explanation = engine.explain(("entity", "IS", "Alive"))
+        self.assertIn("जीवित_नियम", explanation["matching_theorems"])
+
+    def test_engine_theorem_library_supports_tags_and_snapshot_restore(self):
+        engine = SansmaticEngine(verbose=False)
+        engine.register_proof("proof_001", ("entity", "HAS", "growth"))
+        engine.assert_fact("entity", "HAS", "growth", "proof_001")
+        engine.register_theorem(
+            "वृद्धि_प्रमेय",
+            ("entity", "HAS", "growth"),
+            tags=["जीवन", "वृद्धि"],
+            note="जीवित प्रणाली वृद्धि दिखाती है",
+        )
+        snapshot = engine.snapshot()
+        engine.reset()
+        self.assertEqual(engine.list_theorems(), [])
+        self.assertTrue(engine.restore(snapshot))
+
+        tagged = engine.list_theorems("जीवन")
+        self.assertEqual(len(tagged), 1)
+        self.assertEqual(tagged[0]["name"], "वृद्धि_प्रमेय")
+        detail = engine.theorem_details("वृद्धि_प्रमेय")
+        self.assertIn("जीवन", detail["tags"])
+        self.assertIn("वृद्धि", detail["tags"])
+        self.assertEqual(detail["note"], "जीवित प्रणाली वृद्धि दिखाती है")
 
     def test_verifier_rejects_unproven_statement(self):
         verifier = NyayaProofVerifier()
@@ -279,6 +331,27 @@ class SansmaticProofTests(unittest.TestCase):
         self.assertTrue(explanation["proved"])
         self.assertEqual(tree["status"], "proved_by_rule")
 
+    def test_vak_runtime_exposes_text_and_theorem_builtins(self):
+        vm = VakVM()
+        vm.builtins["प्रमाण_रीसेट"]()
+        vm.builtins["परिभाषय"]("entity", ["growth"])
+        vm.builtins["प्रमेय_तथ्य"]("वृद्धि_तथ्य", "entity", "HAS", "growth")
+        vm.builtins["प्रमेय_नियम"]("जीवन_नियम", "X", "HAS", "growth", "X", "IS", "Alive")
+
+        summary_text = vm.builtins["प्रमाण_सारांश_पाठ"]()
+        trace_text = vm.builtins["प्रमाण_अनुक्रम_पाठ"]()
+        tree_text = vm.builtins["प्रमाण_वृक्ष_पाठ"]("entity", "IS", "Alive")
+        explain_text = vm.builtins["प्रमाण_व्याख्या_पाठ"]("entity", "IS", "Alive")
+        theorem_rows = vm.builtins["प्रमेय_सूची"]()
+        theorem_detail = vm.builtins["प्रमेय_विवरण"]("जीवन_नियम")
+
+        self.assertIn("सान्समैटिक सारांश", summary_text)
+        self.assertIn("प्रमाण अनुक्रम", trace_text)
+        self.assertIn("प्रमाण वृक्ष", tree_text)
+        self.assertIn("मिलते प्रमेय: जीवन_नियम", explain_text)
+        self.assertTrue(any(item["name"] == "वृद्धि_तथ्य" for item in theorem_rows))
+        self.assertEqual(theorem_detail["kind"], "rule")
+
     def test_macro_validation_uses_sansmatic_preconditions(self):
         engine = SansmaticEngine(verbose=False)
         macro_engine = SansmaticMacroEngine(engine)
@@ -334,6 +407,50 @@ class SansmaticProofTests(unittest.TestCase):
         )
 
         self.assertTrue(NyayaProofVerifier.verify_certificate_payload(certificate.payload))
+
+    def test_compile_time_proof_block_can_emit_kernel_judgment(self):
+        source = """
+सिद्धि: "kernel-eq"
+    प्रमाण:
+        प्रत्यागच्छ कर्नेल_निर्णय("refl 2", "Eq Nat 2 2")
+"""
+        interpreter = VakInterpreter()
+        bytecode = interpreter.compile_only(source)
+
+        certificate = next(
+            item for item in bytecode.constants
+            if isinstance(item, dict) and item.get("kind") == "sansmatic_kernel_certificate"
+        )
+        self.assertEqual(certificate.get("kernel"), "sansmatic-kernel-v1")
+        self.assertIn("Eq Nat 2 2", certificate.get("normalized_type", ""))
+
+    def test_compile_time_proof_block_rejects_invalid_kernel_judgment(self):
+        source = """
+सिद्धि: "kernel-bad"
+    प्रमाण:
+        प्रत्यागच्छ कर्नेल_निर्णय("refl 2", "Eq Nat 2 3")
+"""
+        interpreter = VakInterpreter()
+
+        with self.assertRaisesRegex(CompileError, "सिद्धि असफल"):
+            interpreter.compile_only(source)
+
+    def test_compile_time_proof_block_accepts_explicit_kernel_section(self):
+        source = """
+सिद्धि: "kernel-section"
+    कर्नेल:
+        पद: "refl 2"
+        प्रकार: "Eq Nat 2 2"
+"""
+        interpreter = VakInterpreter()
+        bytecode = interpreter.compile_only(source)
+
+        certificate = next(
+            item for item in bytecode.constants
+            if isinstance(item, dict) and item.get("kind") == "sansmatic_kernel_certificate"
+        )
+        self.assertTrue(certificate.get("verified"))
+        self.assertIn("Eq Nat 2 2", certificate.get("normalized_type", ""))
 
 
 if __name__ == "__main__":

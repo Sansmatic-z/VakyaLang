@@ -83,6 +83,10 @@ COMPILED_BUILTIN_ORDER: tuple[str, ...] = (
     "सेट_इंटरवल",
     "क्लियर_टाइमआउट",
     "async_sleep",
+    "अतुल्य_अग्रिम",
+    "async_next",
+    "अतुल्य_समाप्त",
+    "async_done",
     "रेगेक्स_खोज",
     "रेगेक्स_बदलो",
     "जेसन_लिखो",
@@ -130,6 +134,10 @@ COMPILED_BUILTIN_ORDER: tuple[str, ...] = (
     "_chitra_rotate",
     "_chitra_mandala",
     "_chitra_kaleidoscope",
+    "प्रदर्शन_विवरण",
+    "प्रदर्शन_पाठ",
+    "आयात_प्रदर्शन_विवरण",
+    "आयात_प्रदर्शन_पाठ",
     "पायथन_आयात",
     "पायथन_चलाओ",
     "पायथन_मूल्यांकन",
@@ -375,6 +383,13 @@ _MANUAL_SPECS: dict[str, BuiltinSpec] = {
         category="proof",
         description="Structured proof summary",
     ),
+    "प्रमाण_सारांश_पाठ": BuiltinSpec(
+        "प्रमाण_सारांश_पाठ",
+        required_args=0,
+        max_args=0,
+        category="proof",
+        description="Formatted proof summary text",
+    ),
     "प्रमाण_स्नैपशॉट": BuiltinSpec(
         "प्रमाण_स्नैपशॉट",
         required_args=0,
@@ -403,6 +418,13 @@ _MANUAL_SPECS: dict[str, BuiltinSpec] = {
         category="proof",
         description="Structured proof trace events",
     ),
+    "प्रमाण_अनुक्रम_पाठ": BuiltinSpec(
+        "प्रमाण_अनुक्रम_पाठ",
+        required_args=0,
+        max_args=1,
+        category="proof",
+        description="Formatted proof trace text",
+    ),
     "प्रमाण_वृक्ष": BuiltinSpec(
         "प्रमाण_वृक्ष",
         required_args=3,
@@ -410,12 +432,54 @@ _MANUAL_SPECS: dict[str, BuiltinSpec] = {
         category="proof",
         description="Proof tree for a target fact",
     ),
+    "प्रमाण_वृक्ष_पाठ": BuiltinSpec(
+        "प्रमाण_वृक्ष_पाठ",
+        required_args=3,
+        max_args=3,
+        category="proof",
+        description="Formatted proof tree text",
+    ),
     "प्रमाण_व्याख्या": BuiltinSpec(
         "प्रमाण_व्याख्या",
         required_args=3,
         max_args=3,
         category="proof",
         description="Explain why a proof goal succeeded or failed",
+    ),
+    "प्रमाण_व्याख्या_पाठ": BuiltinSpec(
+        "प्रमाण_व्याख्या_पाठ",
+        required_args=3,
+        max_args=3,
+        category="proof",
+        description="Formatted proof explanation text",
+    ),
+    "प्रमेय_सूची": BuiltinSpec(
+        "प्रमेय_सूची",
+        required_args=0,
+        max_args=1,
+        category="proof",
+        description="List registered Sansmatic theorems",
+    ),
+    "प्रमेय_विवरण": BuiltinSpec(
+        "प्रमेय_विवरण",
+        required_args=1,
+        max_args=1,
+        category="proof",
+        description="Return theorem details",
+    ),
+    "प्रमेय_तथ्य": BuiltinSpec(
+        "प्रमेय_तथ्य",
+        required_args=4,
+        max_args=4,
+        category="proof",
+        description="Register a named fact theorem",
+    ),
+    "प्रमेय_नियम": BuiltinSpec(
+        "प्रमेय_नियम",
+        required_args=7,
+        max_args=7,
+        category="proof",
+        description="Register a named rule theorem",
     ),
     "रूपान्तर": BuiltinSpec(
         "रूपान्तर",
@@ -481,6 +545,62 @@ _MANUAL_SPECS: dict[str, BuiltinSpec] = {
         category="codex",
         description="List available Codex chapters",
     ),
+    "कोडेक्स_उन्नयन": BuiltinSpec(
+        "कोडेक्स_उन्नयन",
+        required_args=1,
+        max_args=2,
+        aliases=("codex_promotion",),
+        category="codex",
+        description="Evaluate whether a Codex page is ready to graduate from branch to main",
+    ),
+    "प्रदर्शन_विवरण": BuiltinSpec(
+        "प्रदर्शन_विवरण",
+        required_args=1,
+        max_args=4,
+        aliases=("profile_payload",),
+        category="tooling",
+        description="Structured runtime performance profile for Vak source",
+    ),
+    "प्रदर्शन_पाठ": BuiltinSpec(
+        "प्रदर्शन_पाठ",
+        required_args=1,
+        max_args=4,
+        aliases=("profile_text",),
+        category="tooling",
+        description="Formatted runtime performance profile for Vak source",
+    ),
+    "आयात_प्रदर्शन_विवरण": BuiltinSpec(
+        "आयात_प्रदर्शन_विवरण",
+        required_args=1,
+        max_args=3,
+        aliases=("profile_import_payload",),
+        category="tooling",
+        description="Structured runtime performance profile for module imports",
+    ),
+    "आयात_प्रदर्शन_पाठ": BuiltinSpec(
+        "आयात_प्रदर्शन_पाठ",
+        required_args=1,
+        max_args=3,
+        aliases=("profile_import_text",),
+        category="tooling",
+        description="Formatted runtime performance profile for module imports",
+    ),
+    "अतुल्य_अग्रिम": BuiltinSpec(
+        "अतुल्य_अग्रिम",
+        required_args=1,
+        max_args=1,
+        aliases=("async_next",),
+        category="async",
+        description="Advance one awaited step of an async generator",
+    ),
+    "अतुल्य_समाप्त": BuiltinSpec(
+        "अतुल्य_समाप्त",
+        required_args=1,
+        max_args=1,
+        aliases=("async_done",),
+        category="async",
+        description="Check whether an async generator has completed",
+    ),
 }
 
 
@@ -496,23 +616,33 @@ def _builtin_category(name: str) -> str:
         "पश्च_सिद्ध_है",
         "प्रमाण_लॉग",
         "प्रमाण_सारांश",
+        "प्रमाण_सारांश_पाठ",
         "प्रमाण_स्नैपशॉट",
         "प्रमाण_पुनर्स्थापय",
         "प्रमाण_रीसेट",
         "प्रमाण_अनुक्रम",
+        "प्रमाण_अनुक्रम_पाठ",
         "प्रमाण_वृक्ष",
+        "प्रमाण_वृक्ष_पाठ",
         "प्रमाण_व्याख्या",
+        "प्रमाण_व्याख्या_पाठ",
+        "प्रमेय_सूची",
+        "प्रमेय_विवरण",
+        "प्रमेय_तथ्य",
+        "प्रमेय_नियम",
     }:
         return "proof"
     if name in {"रूपान्तर", "रूपान्तर_रिपोर्ट", "रूपान्तर_विवरण"}:
         return "repair"
-    if name in {"कोडेक्स", "कोडेक्स_रिपोर्ट", "कोडेक्स_विवरण", "कोडेक्स_पृष्ठ", "कोडेक्स_अध्याय"}:
+    if name in {"कोडेक्स", "कोडेक्स_रिपोर्ट", "कोडेक्स_विवरण", "कोडेक्स_पृष्ठ", "कोडेक्स_अध्याय", "कोडेक्स_उन्नयन"}:
         return "codex"
+    if name in {"प्रदर्शन_विवरण", "प्रदर्शन_पाठ", "आयात_प्रदर्शन_विवरण", "आयात_प्रदर्शन_पाठ"}:
+        return "tooling"
     if name in {"पठन", "लेखन", "खोलो", "अस्तित्व", "मिटाओ", "सूची_निर्देशिका", "बनाओ_निर्देशिका"}:
         return "io"
     if name.startswith("जाल_"):
         return "network"
-    if name in {"समय", "निद्रा", "धागा_शुरू", "सेट_टाइमआउट", "सेट_इंटरवल", "क्लियर_टाइमआउट", "async_sleep"}:
+    if name in {"समय", "निद्रा", "धागा_शुरू", "सेट_टाइमआउट", "सेट_इंटरवल", "क्लियर_टाइमआउट", "async_sleep", "अतुल्य_अग्रिम", "async_next", "अतुल्य_समाप्त", "async_done"}:
         return "async"
     return "core"
 

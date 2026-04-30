@@ -1,0 +1,52 @@
+{
+  "patterns": [
+    {
+      "name": "mvc",
+      "description": "Model-View-Controller: separation of data, UI, and logic",
+      "category": "architecture",
+      "regex": "(?:MVC|ModelViewController|model.*view.*controller)",
+      "template": "# Model\nश्रेणी {model_name} {\n    परिवर्तनी data = {}\n    कर्म get(key) { लौटाओ data.get(key) }\n    कर्म set(key, value) { data[key] = value }\n}\n\n# View\nश्रेणी {view_name} {\n    कर्म render(model) {\n        # Display model data\n    }\n}\n\n# Controller\nश्रेणी {controller_name} {\n    परिवर्तनी model = अपरिभाषित\n    परिवर्तनी view = अपरिभाषित\n    कर्म __init__(model, view) {\n        this.model = model\n        this.view = view\n    }\n    कर्म update(key, value) {\n        model.set(key, value)\n        view.render(model)\n    }\n}",
+      "metadata": {"tier_count": 3, "coupling": "loose", "use_case": "web_applications"}
+    },
+    {
+      "name": "microservices",
+      "description": "Microservices architecture: independently deployable services",
+      "category": "architecture",
+      "regex": "(?:microservice|micro_service|MicroService|service_mesh)",
+      "template": "# Service: {service_name}\nश्रेणी {service_name}Service {\n    कर्म handle_request(request) {\n        # Process request\n        लौटाओ response\n    }\n    कर्म health_check() {\n        लौटाओ {\"status\": \"healthy\"}\n    }\n}\n\n# API Gateway\nश्रेणी APIGateway {\n    परिवर्तनी services = {}\n    कर्म route(path, request) {\n        service = services.get(path)\n        यदि service {\n            लौटाओ service.handle_request(request)\n        }\n        लौटाओ error(404)\n    }\n}",
+      "metadata": {"deployment": "independent", "communication": "async/sync", "scalability": "high"}
+    },
+    {
+      "name": "event_driven",
+      "description": "Event-Driven Architecture: event producers and consumers",
+      "category": "architecture",
+      "regex": "(?:event_driven|eventDriven|EventBus|event_bus|publisher|subscriber)",
+      "template": "# Event Bus\nश्रेणी EventBus {\n    परिवर्तनी handlers = {}\n    कर्म subscribe(event_type, handler) {\n        यदि event_type not in handlers {\n            handlers[event_type] = []\n        }\n        handlers[event_type].जोडें(handler)\n    }\n    कर्म publish(event_type, data) {\n        के_लिए handler में handlers.get(event_type, []) {\n            handler(data)\n        }\n    }\n}\n\n# Producer\nकर्म publish_event(bus, event_type, data) {\n    bus.publish(event_type, data)\n}\n\n# Consumer\nकर्म handle_event(data) {\n    # Process event\n}",
+      "metadata": {"coupling": "very_loose", "scalability": "high", "complexity": "medium"}
+    },
+    {
+      "name": "layered",
+      "description": "Layered Architecture: presentation, business, data access layers",
+      "category": "architecture",
+      "regex": "(?:layered|n_tier|n-tier|presentation.*business.*data)",
+      "template": "# Presentation Layer\nश्रेणी PresentationLayer {\n    कर्म handle_input(user_input) {\n        result = BusinessLayer.process(user_input)\n        लौटाओ format_output(result)\n    }\n}\n\n# Business Layer\nश्रेणी BusinessLayer {\n    कर्म process(input) {\n        # Business logic\n        data = DataAccessLayer.fetch(input)\n        लौटाओ transform(data)\n    }\n}\n\n# Data Access Layer\nश्रेणी DataAccessLayer {\n    कर्म fetch(query) {\n        # Database access\n        लौटाओ data\n    }\n}",
+      "metadata": {"tier_count": 3, "coupling": "strict_layers", "use_case": "enterprise"}
+    },
+    {
+      "name": "repository",
+      "description": "Repository Pattern: data access abstraction",
+      "category": "architecture",
+      "regex": "(?:Repository|repository|RepositoryPattern|data_access)",
+      "template": "# Repository Interface\nश्रेणी {entity}Repository {\n    कर्म find_by_id(id) {\n        लौटाओ db.query(id)\n    }\n    कर्म find_all() {\n        लौटाओ db.query_all()\n    }\n    कर्म save(entity) {\n        db.save(entity)\n    }\n    कर्म delete(id) {\n        db.delete(id)\n    }\n}",
+      "metadata": {"pattern_type": "data_access", "testability": "high", "use_case": "ddd"}
+    },
+    {
+      "name": "cqrs",
+      "description": "Command Query Responsibility Segregation: separate read/write models",
+      "category": "architecture",
+      "regex": "(?:CQRS|CommandQuery|command_query|read_model|write_model)",
+      "template": "# Command Side\nश्रेणी CommandHandler {\n    कर्म handle_command(command) {\n        # Mutate state\n        aggregate.execute(command)\n        event_store.save(aggregate.events)\n    }\n}\n\n# Query Side\nश्रेणी QueryHandler {\n    कर्म handle_query(query) {\n        # Read from read-optimized store\n        लौटाओ read_store.query(query)\n    }\n}",
+      "metadata": {"complexity": "high", "scalability": "very_high", "consistency": "eventual"}
+    }
+  ]
+}

@@ -141,6 +141,18 @@ class ReturnStmt(Node):
     line: int = 0
 
 @dataclass
+class YieldStmt(Node):
+    """उपज expr"""
+    value: Any
+    line: int = 0
+
+@dataclass
+class YieldFromStmt(Node):
+    """उपज से iterable"""
+    iterable: Any
+    line: int = 0
+
+@dataclass
 class PrintStmt(Node):
     """मुद्रय expr, expr, ..."""
     values: List[Any]
@@ -172,6 +184,27 @@ class WhileStmt(Node):
 @dataclass
 class ForStmt(Node):
     """प्रत्येक चर var अन्तर्गत iterable: body"""
+    var_names: List[str]
+    iterable: Any
+    body: Any
+    line: int = 0
+
+    @property
+    def var_name(self):
+        return self.var_names[0] if len(self.var_names) == 1 else tuple(self.var_names)
+
+    @var_name.setter
+    def var_name(self, value):
+        if isinstance(value, list):
+            self.var_names = value
+        elif isinstance(value, tuple):
+            self.var_names = list(value)
+        else:
+            self.var_names = [value]
+
+@dataclass
+class AsyncForStmt(Node):
+    """अतुल्यकालिक प्रत्येक चर var अन्तर्गत iterable: body"""
     var_names: List[str]
     iterable: Any
     body: Any
@@ -267,6 +300,14 @@ class TryStmt(Node):
 @dataclass
 class WithStmt(Node):
     """साथ expr जैसे var: body"""
+    expr: Any
+    var_name: Optional[str]
+    body: Any
+    line: int = 0
+
+@dataclass
+class AsyncWithStmt(Node):
+    """अतुल्यकालिक साथ expr जैसे var: body"""
     expr: Any
     var_name: Optional[str]
     body: Any
@@ -421,6 +462,7 @@ class ListComp(Node):
     var_name: str
     iterable: Any
     filter_expr: Optional[Any] = None
+    is_async: bool = False
     line: int = 0
 
 @dataclass
@@ -436,6 +478,17 @@ class DictComp(Node):
     var_name: str
     iterable: Any
     filter_expr: Optional[Any] = None
+    is_async: bool = False
+    line: int = 0
+
+@dataclass
+class GeneratorExpr(Node):
+    """(expr प्रत्येक चर var_name अन्तर्गत iterable)"""
+    expr: Any
+    var_name: str
+    iterable: Any
+    filter_expr: Optional[Any] = None
+    is_async: bool = False
     line: int = 0
 
 @dataclass
@@ -561,6 +614,7 @@ class ProofDeclaration(Node):
     statement: str               # The statement to prove (e.g., "अभाज्य_है(१७)")
     evidence_body: Any           # AST block containing proof evidence
     statement_expr: Any = None   # Original AST expression for stronger proof checking
+    kernel_expr: Any = None      # Optional kernel judgment/certificate spec expression
     certificate: Optional[str] = None  # Proof certificate string
     line: int = 0
     verified: bool = False       # True if proof was verified at compile-time
